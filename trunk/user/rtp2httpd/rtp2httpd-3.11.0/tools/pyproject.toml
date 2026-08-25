@@ -1,0 +1,27 @@
+[project]
+name = "rtp2httpd-tools"
+version = "0.1.0"
+description = "Test tools for rtp2httpd - multicast UDP replay utility"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "scapy>=2.5.0",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=8.0",
+    "pytest-xdist>=3.5",
+]
+
+[project.scripts]
+mcast-replay = "main:main"
+
+[tool.pytest.ini_options]
+testpaths = ["e2e"]
+markers = [
+    "multicast: requires multicast on loopback",
+    "rtsp: requires mock RTSP server",
+    "http_proxy: requires mock HTTP upstream",
+    "slow: tests that take longer",
+]

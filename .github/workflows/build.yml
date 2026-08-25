@@ -1,0 +1,129 @@
+name: Padavan Firmware Build
+
+on:
+  push:
+    branches:
+      - main
+      - release/*
+    paths-ignore:
+      - '**.md'
+      - '**.txt'
+      - 'LICENSE'
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }} (${{ matrix.toolchain }}) @ ${{ matrix.host }}
+    runs-on: ${{ matrix.host }}
+    permissions:
+      contents: write
+      actions: write
+    strategy:
+      fail-fast: false
+      matrix:
+        host: [ubuntu-latest, macos-14]
+        target: [K2P-USB]
+        toolchain: [mipsel-linux-musl, mipsel-linux-uclibc]
+
+    steps:
+      - name: Setup case-sensitive workspace (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          REPO="${GITHUB_REPOSITORY##*/}"
+          WORK_PARENT="$(dirname "$GITHUB_WORKSPACE")"
+          cd "$WORK_PARENT"
+          rmdir "$REPO"
+          hdiutil create "${HOME}/padavan.sparseimage" -volname "$REPO" -type SPARSE -size 30g -fs HFSX
+          hdiutil mount "${HOME}/padavan.sparseimage" -mountroot "$WORK_PARENT"
+
+      - uses: actions/checkout@main
+        with:
+          fetch-depth: 1
+
+      - uses: hendrikmuhs/ccache-action@main
+        with:
+          key: ${{ matrix.target }}-${{ matrix.toolchain }}-${{ matrix.host }}
+
+      - uses: actions/setup-go@main
+        with:
+          go-version: '1.27.x'
+          cache: false
+
+      - name: Install dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            unzip libtool-bin cmake gperf gawk flex bison xxd fakeroot kmod cpio bc zip \
+            python3-docutils gettext automake autopoint texinfo build-essential help2man \
+            zlib1g-dev libgmp3-dev libmpc-dev libmpfr-dev libncurses5-dev libltdl-dev \
+            liblzma-dev liblzo2-dev autoconf
+          echo "BUILD_DATE=$(TZ='Asia/Shanghai' date +%Y%m%d)" >> "$GITHUB_ENV"
+
+      - name: Install dependencies (macOS)
+        if: runner.os == 'macOS'
+        env:
+          HOMEBREW_NO_REQUIRE_TAP_TRUST: 1
+        run: |
+          export HOMEBREW_NO_REQUIRE_TAP_TRUST=1
+          brew untap aws/tap 2>/dev/null || true
+          brew install bash gawk gnu-sed gnu-tar gpatch make autoconf automake libtool flex bison \
+            help2man texinfo gettext binutils gcc m4 cmake gperf pkg-config \
+            gmp libmpc mpfr ncurses wget xz lzo bc coreutils diffutils findutils grep
+          pip3 install docutils 2>/dev/null || true
+          BREW_PREFIX=$(brew --prefix)
+          GNU_PATH="${BREW_PREFIX}/opt/coreutils/libexec/gnubin:${BREW_PREFIX}/opt/grep/libexec/gnubin:${BREW_PREFIX}/opt/findutils/libexec/gnubin:${BREW_PREFIX}/opt/gnu-sed/libexec/gnubin:${BREW_PREFIX}/opt/gnu-tar/libexec/gnubin:${BREW_PREFIX}/opt/gpatch/libexec/gnubin:${BREW_PREFIX}/opt/make/libexec/gnubin:${BREW_PREFIX}/opt/diffutils/bin:${BREW_PREFIX}/opt/m4/bin:${BREW_PREFIX}/opt/flex/bin:${BREW_PREFIX}/opt/bison/bin:${BREW_PREFIX}/opt/gawk/libexec/gnubin:${BREW_PREFIX}/opt/gawk/bin:${BREW_PREFIX}/bin"
+          echo "PATH=${GNU_PATH}:$PATH" >> "$GITHUB_ENV"
+          echo "BUILD_DATE=$(TZ='Asia/Shanghai' date +%Y%m%d)" >> "$GITHUB_ENV"
+
+      - name: Build Firmware
+        run: |
+          make ${{ matrix.target }} TOOLCHAIN=${{ matrix.toolchain }}
+
+          # Extract toolchain versions for release body
+          TC_BIN="toolchain/${{ matrix.toolchain }}/bin/${{ matrix.toolchain }}"
+          GCC_VER=$("${TC_BIN}-gcc" -dumpversion 2>/dev/null | head -1)
+          BINUTILS_VER=$("${TC_BIN}-ld" --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -1)
+          GO_VER=$(go version 2>/dev/null | grep -oE 'go[0-9.]+' | head -1)
+          if [ "${{ matrix.toolchain }}" = "mipsel-linux-musl" ]; then
+            LIBC="musl"
+          else
+            LIBC="uClibc-ng"
+          fi
+          echo "GCC_VER=${GCC_VER:-N/A}" >> "$GITHUB_ENV"
+          echo "BINUTILS_VER=${BINUTILS_VER:-N/A}" >> "$GITHUB_ENV"
+          echo "LIBC=$LIBC" >> "$GITHUB_ENV"
+          echo "GO_VER=${GO_VER:-N/A}" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@main
+        with:
+          name: ${{ matrix.target }}-${{ matrix.toolchain }}-${{ matrix.host }}-${{ env.BUILD_DATE }}
+          path: trunk/build/images/*.trx
+
+      - uses: ncipollo/release-action@main
+        with:
+          commit: ${{ github.sha }}
+          tag: ${{ env.BUILD_DATE }}
+          name: "Build ${{ env.BUILD_DATE }}"
+          body: |
+            ## Build Information
+            - **Host**: ${{ matrix.host }}
+            - **Target**: ${{ matrix.target }}
+            - **Toolchain**: ${{ matrix.toolchain }}
+            - **GCC**: ${{ env.GCC_VER }}
+            - **Binutils**: ${{ env.BINUTILS_VER }}
+            - **C Library**: ${{ env.LIBC }}
+            - **Go**: ${{ env.GO_VER }}
+            - **Commit**: ${{ github.sha }}
+          artifacts: trunk/build/images/*.trx
+          allowUpdates: true
+          replaceArtifacts: true
+          omitNameDuringUpdate: true
+          makeLatest: false
+          prerelease: true
+
+      - uses: Mattraks/delete-workflow-runs@main
+        with:
+          retain_days: 0
+          keep_minimum_runs: 3
+          delete_run_by_conclusion_pattern: "failure,cancelled"

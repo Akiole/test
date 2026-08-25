@@ -1,0 +1,34 @@
+diff --git a/src/fmemopen.c b/src/fmemopen.c
+index 37364ea939..e3dc1d9ce9 100644
+--- a/src/fmemopen.c
++++ b/src/fmemopen.c
+@@ -153,7 +153,28 @@ FILE *fmemopen(void *buf, size_t len, const char *type)
+ }
+ 
+ #else
+-#error Sorry, this platform currently has no fmemopen() replacement.
++/* Generic fallback for systems without funopen() (e.g. Linux/uClibc):
++ * back the memory buffer with a temporary file.  Sufficient for the
++ * read-only ("r") usage in libconfuse. */
++#include <stdlib.h>
++
++FILE *fmemopen(void *buf, size_t len, const char *type)
++{
++	FILE *fp = tmpfile();
++
++	if (!fp)
++		return NULL;
++
++	if (buf && len > 0) {
++		if (fwrite(buf, len, 1, fp) != 1) {
++			fclose(fp);
++			return NULL;
++		}
++		rewind(fp);
++	}
++
++	return fp;
++}
+ #endif
+ 
+ /**

@@ -1,0 +1,8 @@
+# Compiled host tools output directory
+bin/
+
+# Build artifacts (in case of local in-source builds)
+*.o
+*.a
+_o/
+.depend

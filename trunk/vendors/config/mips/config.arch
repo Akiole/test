@@ -1,0 +1,178 @@
+############################################################################
+#
+#  A Generic mips config.arch that can be included by other platforms
+#  to reduce the number of places that need to be edited when something
+#  common changes. If you include this file you may provide:
+#
+#    CPUFLAGS          - cpu specific flags to pass to the compiler
+#    VENDOR_CFLAGS     - vendor specific flags to pass to the compiler
+#    LOPT              - library optimisation flags
+#    UOPT              - user optimisation flags
+#    GLIBC_TARGET_OPTS - flags needed for gcc
+#
+#  David McCullough <davidm@snapgear.com>
+#
+############################################################################
+
+# Detect module dir
+ifneq ($(wildcard $(ROOTDIR)/modules),)
+  EXTRA_MODULE_DIRS := $(ROOTDIR)/modules
+endif
+
+# Default version information
+VERSIONPKG  ?= 4.4.302
+VERSIONSTR  ?= $(CONFIG_VENDOR)/$(CONFIG_PRODUCT) Version $(VERSIONPKG)
+
+# Default release files
+RELFILES ?= \
+  boot/boot.bin boot/boot.elf \
+  images/image.bin images/flash.bin \
+  $(LINUXDIR)/linux
+
+############################################################################
+# Target and toolchain
+############################################################################
+
+ENDIAN          := little
+ARCH            := mips
+MACHINE         := $(ARCH)
+
+# Derive HOST_TARGET from ENDIAN setting for automatic big/little endian support
+ifeq ($(ENDIAN),little)
+  HOST_TARGET   ?= mipsel-linux
+else
+  HOST_TARGET   ?= mips-linux
+endif
+
+# CROSS_COMPILE: prefer explicit CONFIG_CROSS_COMPILE, fallback to HOST_TARGET
+ifdef CONFIG_CROSS_COMPILE
+  CROSS_COMPILE ?= $(CONFIG_CROSS_COMPILE)-
+else
+  CROSS_COMPILE ?= $(HOST_TARGET)-
+endif
+
+CROSS           ?= $(CROSS_COMPILE)
+CONFIGURE_HOST  ?= $(CROSS_COMPILE)
+
+# Toolchain commands (gcc-ar/gcc-ranlib for LTO compatibility, ld.bfd consistent with rules.mk)
+CC       := $(CROSS_COMPILE)gcc
+CXX      := $(CROSS_COMPILE)g++
+AS       := $(CROSS_COMPILE)as
+AR       := $(CROSS_COMPILE)gcc-ar
+LD       := $(CROSS_COMPILE)ld.bfd
+NM       := $(CROSS_COMPILE)nm
+OBJCOPY  := $(CROSS_COMPILE)objcopy
+OBJDUMP  := $(CROSS_COMPILE)objdump
+RANLIB   := $(CROSS_COMPILE)gcc-ranlib
+STRIP    := $(CROSS_COMPILE)strip
+READELF  := $(CROSS_COMPILE)readelf
+
+############################################################################
+# Extra tools and defaults
+############################################################################
+
+GCC        ?= $(CC)
+STRIPTOOL  ?= $(STRIP)
+ELF2FLT    ?= elf2flt
+
+LIBC       ?=
+LIBGCC     ?=
+CRTN       ?=
+
+# have we set a special config below
+UCLINUX_BUILD_SET = 0
+
+# Include shared vendor config
+include $(ROOTDIR)/vendors/config/common/config.arch
+
+# Flags init
+CFLAGS   ?=
+CXXFLAGS ?=
+LDFLAGS  ?=
+INCCXX   ?=
+
+############################################################################
+# uClinux library build mode
+############################################################################
+
+ifdef UCLINUX_BUILD_LIB
+  ifdef CONFIG_LIB_DEBUG
+    CFLAGS := $(if $(LOPT),$(LOPT),-O1) -g
+  else
+    CFLAGS := $(if $(LOPT),$(LOPT),-O2) -fomit-frame-pointer
+  endif
+  CFLAGS  += -pipe $(VENDOR_CFLAGS) -DEMBED -Dlinux -D__linux__ -Dunix
+  CFLAGS  += -I$(STAGEDIR)/include -I$(ROOTDIR)/build/include
+  LDFLAGS += -L$(STAGEDIR)/lib
+
+  ARCH_CFLAGS := $(CFLAGS)
+  UCLINUX_BUILD_SET := 1
+endif
+
+############################################################################
+# uClinux user application build mode
+############################################################################
+
+ifdef UCLINUX_BUILD_USER
+  ifdef CONFIG_USER_DEBUG
+    CFLAGS := $(if $(UOPT),$(UOPT),-O1) -g
+  else
+    CFLAGS := $(if $(UOPT),$(UOPT),-Os) -fomit-frame-pointer
+  endif
+  CFLAGS  += -pipe $(VENDOR_CFLAGS)
+  CFLAGS  += -Dlinux -D__linux__ -Dunix -DEMBED
+  CFLAGS  += -I$(STAGEDIR)/include -I$(ROOTDIR)/build/include
+  LDFLAGS += -L$(STAGEDIR)/lib
+
+  # Define ARCH_CFLAGS for consistency with library build mode
+  ARCH_CFLAGS := $(CFLAGS)
+
+  FLTFLAGS :=
+  export FLTFLAGS
+
+  UCLINUX_BUILD_SET := 1
+endif
+
+############################################################################
+# Shared additional flags
+############################################################################
+
+ifeq ($(UCLINUX_BUILD_SET),1)
+  CFLAGS += $(CPUFLAGS)
+endif
+
+############################################################################
+# Common warnings
+############################################################################
+
+# Base warnings (supported by all GCC versions)
+CFLAGS += -Wall -Wno-trigraphs -Wno-strict-aliasing -Wno-unused
+
+# Optional warnings/optimizations: only add if compiler supports them
+# This prevents build failures on older toolchains
+ifneq ($(origin check-gcc-flag), undefined)
+  CFLAGS += $(call check-gcc-flag,-Wno-format-security,)
+  CFLAGS += $(call check-gcc-flag,-Wno-pointer-sign,)
+  CFLAGS += $(call check-gcc-flag,-fno-tree-slsr,)
+  CFLAGS += $(call check-gcc-flag,-fno-aggressive-loop-optimizations,)
+endif
+
+############################################################################
+# C++ specific flags
+############################################################################
+
+CXXFLAGS += $(CFLAGS) $(INCCXX)
+CXXLIBS  := -Wl,-Bdynamic $(LIBC) $(LIBGCC) $(CRTN)
+
+############################################################################
+# Optional debug print
+############################################################################
+
+DEBUG_PRINT ?= 0
+ifeq ($(DEBUG_PRINT),1)
+  $(info [DEBUG] CC        = $(CC))
+  $(info [DEBUG] CFLAGS    = $(CFLAGS))
+  $(info [DEBUG] CXXFLAGS  = $(CXXFLAGS))
+  $(info [DEBUG] LDFLAGS   = $(LDFLAGS))
+  $(info [DEBUG] TOOLCHAIN = $(CONFIG_TOOLCHAIN))
+endif

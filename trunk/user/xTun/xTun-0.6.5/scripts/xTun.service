@@ -1,0 +1,19 @@
+[Unit]
+Description=xTun service
+Documentation=http://github.com/lparam/xTun
+After=network-online.target
+
+[Service]
+Type=forking
+PIDFile=/var/run/xTun.pid
+AmbientCapabilities=CAP_NET_ADMIN CAP_NET_BIND_SERVICE
+# CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_BIND_SERVICE
+Environment=LOGFORMAT=0
+EnvironmentFile=-/etc/default/xTun
+ExecStart=/usr/local/bin/xTun $OPTIONS
+ExecStartPost=/usr/local/bin/xTun.sh start
+ExecStop=/bin/kill -s QUIT $MAINPID
+ExecStopPost=/usr/local/bin/xTun.sh stop
+
+[Install]
+WantedBy=multi-user.target

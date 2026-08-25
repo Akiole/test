@@ -1,0 +1,81 @@
+--- a/src/stream_sys.c
++++ b/src/stream_sys.c
+@@ -773,7 +773,7 @@ str_hub_send_to_client(str_hub_p str_hub, str_hub_cli_p strh_cli,
+ 	r_buf_data_get_conv2off(str_hub->r_buf, (iovec_p)iov, iov_cnt);
+ 	for (i = 0; i < iov_cnt; i ++) {
+ 		error = skt_sendfile(str_hub->r_buf_fd, strh_cli->skt,
+-		    (off_t)iov[i].iov_base, iov[i].iov_len,
++		    (intptr_t)iov[i].iov_base, iov[i].iov_len,
+ 		    (SKT_SF_F_NODISKIO), &sbytes);
+ 		tr_size += (size_t)sbytes;
+ 		if (0 != error)
+
+--- a/src/liblcb/include/crypto/hash/md5.h
++++ b/src/liblcb/include/crypto/hash/md5.h
+@@ -326,7 +326,7 @@ hmac_md5_init(const uint8_t *key, const size_t key_len, hmac_md5_ctx_p hctx) {
+ 	memcpy(hctx->k_opad, k_ipad, sizeof(k_ipad));
+ 
+ 	/* XOR key with ipad and opad values. */
+-#pragma unroll
++/* #pragma unroll - not supported by GCC */
+ 	for (i = 0; i < MD5_MSG_BLK_64CNT; i ++) {
+ 		k_ipad[i] ^= 0x3636363636363636ull;
+ 		hctx->k_opad[i] ^= 0x5c5c5c5c5c5c5c5cull;
+@@ -375,7 +375,7 @@ md5_cvt_hex(const uint8_t *bin, uint8_t *hex) {
+ 	register const uint8_t *bin_max;
+ 	register uint8_t byte;
+ 
+-#pragma unroll
++/* #pragma unroll - not supported by GCC */
+ 	for (bin_max = (bin + MD5_HASH_SIZE); bin < bin_max; bin ++) {
+ 		byte = (*bin);
+ 		(*hex ++) = hex_tbl[((byte >> 4) & 0x0f)];
+
+--- a/src/liblcb/src/threadpool/threadpool.c
++++ b/src/liblcb/src/threadpool/threadpool.c
+@@ -52,7 +52,7 @@
+ #endif /* Linux specific code. */
+ 
+ #include <sys/queue.h>
+-#include <sys/fcntl.h> /* open, fcntl */
++#include <fcntl.h> /* open, fcntl */
+ #include <inttypes.h>
+ #include <stdlib.h> /* malloc, exit */
+ #include <stdio.h>  /* snprintf, fprintf */
+@@ -539,6 +539,24 @@
+ #define TP_EV_OTHER(event)						\
+     (TP_EV_READ == (event) ? TP_EV_WRITE : TP_EV_READ)
+ 
++/* Older uClibc / cross-toolchains (e.g. mipsel Padavan) lack SYS_pidfd_open.
++ * Prefer __NR_pidfd_open when available; otherwise use arch-specific numbers. */
++#ifndef SYS_pidfd_open
++# ifdef __NR_pidfd_open
++#  define SYS_pidfd_open __NR_pidfd_open
++# elif defined(__mips__)
++#  if defined(_MIPS_SIM_ABI32) || defined(__mips_o32) || defined(_ABIO32)
++#   define SYS_pidfd_open 4434	/* mips o32 */
++#  elif defined(_MIPS_SIM_NABI32) || defined(__mips_n32) || defined(_ABIN32)
++#   define SYS_pidfd_open 6434	/* mips n32 */
++#  else
++#   define SYS_pidfd_open 5434	/* mips n64 */
++#  endif
++# else
++#  define SYS_pidfd_open 434	/* x86_64 / arm / riscv / most others */
++# endif
++#endif
++
+ static int
+ pidfd_open(pid_t pid, unsigned int flags) {
+ 	return syscall(SYS_pidfd_open, pid, flags);
+
+--- a/src/liblcb/src/threadpool/threadpool_msg_sys.c
++++ b/src/liblcb/src/threadpool/threadpool_msg_sys.c
+@@ -30,7 +30,7 @@
+ 
+ #include <sys/param.h>
+ #include <sys/types.h>
+-#include <sys/fcntl.h> /* open, fcntl */
++#include <fcntl.h> /* open, fcntl */
+ #include <inttypes.h>
+ #include <stdlib.h> /* malloc, exit */
+ #include <unistd.h> /* close, write, sysconf */

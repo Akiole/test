@@ -1,0 +1,109 @@
+diff -ur a/configure b/configure
+--- a/configure	2018-08-05 13:53:26
++++ b/configure	2026-08-19 00:40:52
+@@ -3998,40 +3998,10 @@
+ 	elif test "$OS" = "SOLARIS"; then
+ 	    LDFLAGS="$LDFLAGS -lpthread"
+ 	fi
+-	if test "$cross_compiling" = yes; then :
+-  { { $as_echo "$as_me:${as_lineno-$LINENO}: error: in \`$ac_pwd':" >&5
+-$as_echo "$as_me: error: in \`$ac_pwd':" >&2;}
+-as_fn_error $? "cannot run test program while cross compiling
+-See \`config.log' for more details" "$LINENO" 5; }
+-else
+-  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+-/* end confdefs.h.  */
+ 
+-#include <pthread.h>
+-void
+-init_routine()
+-{
+-    return;
+-}
+-main()
+-{
+-    pthread_once_t once_control = PTHREAD_ONCE_INIT;
+-    pthread_once(&once_control, &init_routine);
+-    return(0);
+-}
+-_ACEOF
+-if ac_fn_c_try_run "$LINENO"; then :
+   $as_echo "#define USE_THREAD 1" >>confdefs.h
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
+ $as_echo "yes" >&6; }
+-else
+-  CFLAGS="$save_CFLAGS"; LDFLAGS="$save_LDFLAGS"; { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+-$as_echo "no" >&6; }
+-
+-fi
+-rm -f core *.core core.conftest.* gmon.out bb.out conftest$ac_exeext \
+-  conftest.$ac_objext conftest.beam conftest.$ac_ext
+-fi
+ 
+     fi
+ fi
+diff -ur a/get-bind.c b/get-bind.c
+--- a/get-bind.c	2018-08-05 13:53:26
++++ b/get-bind.c	2026-08-19 00:43:56
+@@ -34,7 +34,7 @@
+ 
+ #include "srelay.h"
+ 
+-#if defined(FREEBSD) || defined(SOLARIS) || defined(MACOSX) 
++#if !defined(__linux__) && !defined(linux) && !defined(LINUX) && (defined(FREEBSD) || defined(SOLARIS) || defined(MACOSX))
+ #include <netinet/in.h>
+ #include <sys/ioctl.h>
+ #include <sys/sockio.h>
+@@ -46,7 +46,7 @@
+ 
+ #endif /* defined(FREEBSD) || defined(SOLARIS) || defined(MACOSX) */
+ 
+-#if defined(LINUX)
++#if defined(LINUX) || defined(__linux__) || defined(linux)
+ #include <asm/types.h>
+ #include <linux/netlink.h>
+ #include <linux/rtnetlink.h>
+@@ -64,10 +64,9 @@
+ #endif 
+ 
+ static int get_ifconf(int, struct addrinfo *);
+-#endif /* defined(LINUX) */
++#endif /* defined(LINUX) || defined(__linux__) || defined(linux) */
+ 
+-#if defined(FREEBSD) || defined(SOLARIS) || defined(MACOSX) 
+-
++#if !defined(__linux__) && !defined(linux) && !defined(LINUX) && (defined(FREEBSD) || defined(SOLARIS) || defined(MACOSX))
+ #ifndef RTAX_DST
+ #define RTAX_DST         0
+ #define RTAX_GATEWAY     1
+@@ -308,7 +307,7 @@
+ 
+ #endif /* defined(FREEBSD) || defined(SOLARIS) || defined(MACOSX) */
+ 
+-#if defined(LINUX)
++#if defined(LINUX) || defined(__linux__) || defined(linux)
+ 
+ int get_bind_addr(bin_addr *dest, struct addrinfo *ba)
+ {
+@@ -542,4 +541,4 @@
+   return(-1);
+ }
+ 
+-#endif /* defined(LINUX) */
++#endif /* defined(LINUX) || defined(__linux__) || defined(linux) */
+diff -ur a/srelay.h b/srelay.h
+--- a/srelay.h	2018-08-05 13:53:26
++++ b/srelay.h	2026-08-19 00:40:52
+@@ -50,10 +50,10 @@
+ #include <config.h>
+ #endif
+ 
+-#if defined(FREEBSD) || defined(SOLARIS) || defined(MACOSX)
++#if !defined(__linux__) && !defined(linux) && !defined(LINUX) && (defined(FREEBSD) || defined(SOLARIS) || defined(MACOSX))
+ #include <sys/filio.h>
+ #endif
+-#if defined(LINUX) || defined(MACOSX)
++#if defined(LINUX) || defined(__linux__) || defined(linux) || defined(MACOSX)
+ #include <sys/ioctl.h>
+ #endif
+ 

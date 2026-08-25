@@ -1,0 +1,4 @@
+--- /dev/null
++++ b/src/Makefile
+@@ -0,0 +1 @@
++include Makefile.var

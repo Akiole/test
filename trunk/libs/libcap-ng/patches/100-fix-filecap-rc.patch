@@ -1,0 +1,11 @@
+--- a/utils/filecap.c
++++ b/utils/filecap.c
+@@ -219,7 +219,7 @@
+ 		}
+ 		close(fd);
+ 	}
+-#endif
+ 	return rc;
++#endif
+ }
+ 

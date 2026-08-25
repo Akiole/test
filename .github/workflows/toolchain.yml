@@ -1,0 +1,161 @@
+name: Cross Toolchain Build
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: ${{ matrix.target }} @ ${{ matrix.host }}
+    runs-on: ${{ matrix.host }}
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        host: [ubuntu-latest, macos-14]
+        target: [mipsel-linux-musl, mipsel-linux-uclibc]
+
+    steps:
+      - name: Setup case-sensitive workspace (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          REPO="${GITHUB_REPOSITORY##*/}"
+          WORK_PARENT="$(dirname "$GITHUB_WORKSPACE")"
+          cd "$WORK_PARENT"
+          rmdir "$REPO"
+          hdiutil create "${HOME}/ctng.sparseimage" -volname "$REPO" -type SPARSE -size 20g -fs HFSX
+          hdiutil mount "${HOME}/ctng.sparseimage" -mountroot "$WORK_PARENT"
+
+      - uses: actions/checkout@main
+
+      - name: Install dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y autoconf automake bison flex gperf help2man libtool-bin texinfo
+
+      - name: Install dependencies (macOS)
+        if: runner.os == 'macOS'
+        env:
+          HOMEBREW_NO_REQUIRE_TAP_TRUST: 1
+        run: |
+          export HOMEBREW_NO_REQUIRE_TAP_TRUST=1
+          brew untap aws/tap 2>/dev/null || true
+          brew install autoconf automake bash binutils bison coreutils diffutils findutils flex gawk \
+              gcc gettext gnu-sed gnu-tar gpatch grep gperf help2man libtool m4 make ncurses \
+              pkg-config texinfo wget xz
+          BREW_PREFIX=$(brew --prefix)
+          GNU_PATH="${BREW_PREFIX}/opt/coreutils/libexec/gnubin:${BREW_PREFIX}/opt/grep/libexec/gnubin:${BREW_PREFIX}/opt/findutils/libexec/gnubin:${BREW_PREFIX}/opt/gnu-sed/libexec/gnubin:${BREW_PREFIX}/opt/gnu-tar/libexec/gnubin:${BREW_PREFIX}/opt/gpatch/libexec/gnubin:${BREW_PREFIX}/opt/make/libexec/gnubin:${BREW_PREFIX}/opt/diffutils/bin:${BREW_PREFIX}/opt/m4/bin:${BREW_PREFIX}/opt/flex/bin:${BREW_PREFIX}/opt/bison/bin:${BREW_PREFIX}/opt/gawk/libexec/gnubin:${BREW_PREFIX}/opt/gettext/bin"
+          echo "PATH=${GNU_PATH}:$PATH" >> "$GITHUB_ENV"
+
+      - name: Cache source tarballs
+        uses: actions/cache@main
+        with:
+          path: toolchain/tarballs
+          key: ctng-sources-${{ matrix.target }}-${{ hashFiles('trunk/libc/**/crosstool.config') }}
+          restore-keys: |
+            ctng-sources-${{ matrix.target }}-
+
+      - name: Build toolchain
+        run: |
+          make toolchain-build TOOLCHAIN="${{ matrix.target }}"
+          PLATFORM="$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m)"
+          TARBALL="toolchain/${{ matrix.target }}-${PLATFORM}.tar.xz"
+          echo "PLATFORM=$PLATFORM" >> "$GITHUB_ENV"
+          echo "TARBALL_PATH=$TARBALL" >> "$GITHUB_ENV"
+          ls -lh "$TARBALL"
+
+          # Extract component versions from generated crosstool-NG .config
+          CT_CONFIG="toolchain/crosstool-ng-1.29.0/.config"
+          extract_ver() {
+            grep -oE "$1" "$CT_CONFIG" 2>/dev/null | head -1 | \
+              sed -E 's/.*_V_([0-9_]+)=y/\1/;s/_/./g'
+          }
+          GCC_VER=$(extract_ver 'CT_GCC_V_[0-9_]+=y')
+          BINUTILS_VER=$(extract_ver 'CT_BINUTILS_V_[0-9_]+=y')
+          LINUX_VER=$(extract_ver 'CT_LINUX_V_[0-9_]+=y')
+          GDB_VER=$(extract_ver 'CT_GDB_V_[0-9_]+=y')
+          if grep -q 'CT_LIBC_MUSL=y' "$CT_CONFIG"; then
+            LIBC="musl"; LIBC_VER=$(extract_ver 'CT_MUSL_V_[0-9_]+=y')
+          elif grep -q 'CT_LIBC_UCLIBC_NG=y' "$CT_CONFIG"; then
+            LIBC="uClibc-ng"; LIBC_VER=$(extract_ver 'CT_UCLIBC_NG_V_[0-9_]+=y')
+          fi
+          echo "GCC_VER=${GCC_VER:-N/A}" >> "$GITHUB_ENV"
+          echo "BINUTILS_VER=${BINUTILS_VER:-N/A}" >> "$GITHUB_ENV"
+          echo "LINUX_VER=${LINUX_VER:-N/A}" >> "$GITHUB_ENV"
+          echo "LIBC=${LIBC:-N/A}" >> "$GITHUB_ENV"
+          echo "LIBC_VER=${LIBC_VER:-N/A}" >> "$GITHUB_ENV"
+          echo "GDB_VER=${GDB_VER:-N/A}" >> "$GITHUB_ENV"
+
+      - name: Upload toolchain
+        uses: actions/upload-artifact@main
+        with:
+          name: ${{ matrix.target }}-${{ env.PLATFORM }}
+          path: ${{ env.TARBALL_PATH }}
+          if-no-files-found: error
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@main
+        with:
+          name: log-${{ matrix.target }}-${{ env.PLATFORM }}
+          path: |
+            toolchain/crosstool-ng-1.29.0/build.log
+            toolchain/crosstool-ng-1.29.0/.config
+          if-no-files-found: ignore
+
+      - name: Upload to Release
+        uses: ncipollo/release-action@main
+        with:
+          tag: toolchain
+          artifacts: ${{ env.TARBALL_PATH }}
+          allowUpdates: true
+          replaceArtifacts: true
+          omitBodyDuringUpdate: true
+          body: |
+            ## Cross Toolchain Build
+            Prebuilt cross-compilation toolchains for Padavan firmware. Each host/libc combination is listed below.
+
+      - name: Update release body
+        uses: actions/github-script@main
+        env:
+          HOST_OS: ${{ matrix.host }}
+          TARGET: ${{ matrix.target }}
+          PLATFORM: ${{ env.PLATFORM }}
+          GCC_VER: ${{ env.GCC_VER }}
+          BINUTILS_VER: ${{ env.BINUTILS_VER }}
+          LINUX_VER: ${{ env.LINUX_VER }}
+          LIBC: ${{ env.LIBC }}
+          LIBC_VER: ${{ env.LIBC_VER }}
+          GDB_VER: ${{ env.GDB_VER }}
+        with:
+          script: |
+            const { HOST_OS, TARGET, PLATFORM, GCC_VER, BINUTILS_VER, LINUX_VER, LIBC, LIBC_VER, GDB_VER } = process.env;
+            const blockId = `${HOST_OS}-${TARGET}`;
+            const marker = `<!-- block:${blockId} -->`;
+
+            const { data: release } = await github.rest.repos.getReleaseByTag({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag: 'toolchain'
+            });
+
+            let body = release.body || '## Cross Toolchain Build\n';
+
+            const block = `### ${HOST_OS} / ${TARGET}\n- **Platform**: ${PLATFORM}\n- **GCC**: ${GCC_VER}\n- **Binutils**: ${BINUTILS_VER}\n- **Linux Headers**: ${LINUX_VER}\n- **C Library**: ${LIBC} ${LIBC_VER}\n- **GDB**: ${GDB_VER}\n${marker}`;
+
+            if (body.includes(marker)) {
+              const escaped = marker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+              const regex = new RegExp(`### ${HOST_OS} / ${TARGET}[\\s\\S]*?${escaped}`, 'g');
+              body = body.replace(regex, block);
+            } else {
+              body = body.trimEnd() + '\n\n' + block + '\n';
+            }
+
+            await github.rest.repos.updateRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              release_id: release.id,
+              body: body
+            });
+            console.log(`Updated body block for ${blockId}`);

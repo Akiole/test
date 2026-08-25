@@ -1,0 +1,13 @@
+diff --git a/src/smartdns.c b/src/smartdns.c
+index ac3c8ec5a4..8007385ca1 100644
+--- a/src/smartdns.c
++++ b/src/smartdns.c
+@@ -44,7 +44,7 @@
+ #include <sys/types.h>
+ #include <sys/wait.h>
+ #include <syslog.h>
+-#include <ucontext.h>
++#include <sys/ucontext.h>
+ 
+ #define MAX_KEY_LEN 64
+ #define SMARTDNS_PID_FILE "/run/smartdns.pid"

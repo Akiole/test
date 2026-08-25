@@ -1,0 +1,40 @@
+--- a/lib/route/cls/ematch_syntax.y
++++ b/lib/route/cls/ematch_syntax.y
+@@ -28,8 +28,8 @@
+ %}
+ 
+ %error-verbose
+-%define api.pure
+-%name-prefix "ematch_"
++%pure-parser
++%name-prefix="ematch_"
+ 
+ %parse-param {void *scanner}
+ %parse-param {char **errp}
+@@ -136,9 +136,9 @@
+ %type <q> pattern
+ %type <mv> meta_value
+ 
+-%destructor { free($$); NL_DBG(2, "string destructor\n"); } <s>
+-%destructor { rtnl_pktloc_put($$); NL_DBG(2, "pktloc destructor\n"); } <loc>
+-%destructor { free($$.data); NL_DBG(2, "quoted destructor\n"); } <q>
+-%destructor { rtnl_meta_value_put($$); NL_DBG(2, "meta value destructor\n"); } <mv>
++%destructor { free($$); NL_DBG(2, "string destructor\n"); } STR
++%destructor { rtnl_pktloc_put($$); NL_DBG(2, "pktloc destructor\n"); } pktloc text_from text_to
++%destructor { free($$.data); NL_DBG(2, "quoted destructor\n"); } QUOTED pattern
++%destructor { rtnl_meta_value_put($$); NL_DBG(2, "meta value destructor\n"); } meta_value
+ 
+ %start input
+--- a/lib/route/pktloc_syntax.y
++++ b/lib/route/pktloc_syntax.y
+@@ -8,8 +8,8 @@
+ 
+ %locations
+ %error-verbose
+-%define api.pure
+-%name-prefix "pktloc_"
++%pure-parser
++%name-prefix="pktloc_"
+ 
+ %parse-param {void *scanner}
+ %lex-param {void *scanner}

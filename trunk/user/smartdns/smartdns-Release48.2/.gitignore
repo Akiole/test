@@ -1,0 +1,13 @@
+.vscode
+*.o
+*.a
+*.pem
+.DS_Store
+*.swp.
+*.a
+systemd/smartdns.service
+test.bin
+package/target
+package/*.gz
+package/*.ipk
+target

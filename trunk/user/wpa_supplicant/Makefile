@@ -1,0 +1,45 @@
+include $(ROOTDIR)/rules.mk
+
+PKG_NAME:=wpa_supplicant
+
+include $(INCLUDE_DIR)/package.mk
+
+# libnl 3.x paths for nl80211 driver
+
+TARGET_CFLAGS += -I$(STAGING_DIR)/include/libnl3
+TARGET_CFLAGS += -Wno-cpp
+TARGET_LDFLAGS += -L$(STAGING_DIR)/lib
+CONFIGS :=
+ifeq ($(CONFIG_FIRMWARE_INCLUDE_EAP_PEAP),y)
+CONFIGS += \
+	CONFIG_EAP_TTLS=y \
+	CONFIG_EAP_PEAP=y \
+	CONFIG_EAP_MSCHAPV2=y
+else ifeq (,$(wildcard $(STAGING_DIR)/lib/pkgconfig/openssl.pc))
+CONFIGS += \
+	CONFIG_TLS=internal \
+	CONFIG_CRYPTO=internal \
+	CONFIG_INTERNAL_LIBTOMMATH=y \
+	CONFIG_INTERNAL_RC4=y
+endif
+
+define Build/Configure
+	(cd $(PKG_BUILD_DIR)/wpa_supplicant; \
+	cp -f .config.def .config; \
+	$(foreach c,$(CONFIGS),echo $(c) >> .config;) \
+	)
+endef
+
+define Build/Compile
+	$(MAKE) -C $(PKG_BUILD_DIR)/wpa_supplicant $(MAKE_FLAGS) \
+		EXTRA_CFLAGS="$(TARGET_CFLAGS)" \
+		LDFLAGS="$(TARGET_LDFLAGS)" \
+		all
+endef
+
+$(eval $(call BuildPackage,$(PKG_NAME)))
+
+romfs:
+	$(INSTALL_DIR) $(ROMFSDIR)/usr/sbin
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/wpa_supplicant/wpa_cli $(ROMFSDIR)/usr/sbin/wpa_cli
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/wpa_supplicant/wpa_supplicant $(ROMFSDIR)/usr/sbin/wpa_supplicant

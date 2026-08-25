@@ -1,0 +1,30 @@
+--- a/src/rawsend.c
++++ b/src/rawsend.c
+@@ -112,11 +112,18 @@
+ 
+ static int bind_iface(int fd, int ifindex)
+ {
+-    static int use_bindtoifindex = 1;
++    static int use_bindtoifindex =
++#ifdef SO_BINDTOIFINDEX
++        1
++#else
++        0
++#endif
++        ;
+ 
+     int res;
+     char *iface, iface_buf[IF_NAMESIZE];
+ 
++#ifdef SO_BINDTOIFINDEX
+     if (use_bindtoifindex) {
+         res = setsockopt(fd, SOL_SOCKET, SO_BINDTOIFINDEX, &ifindex,
+                          sizeof(ifindex));
+@@ -129,6 +136,7 @@
+             return 0;
+         }
+     }
++#endif
+ 
+     iface = if_indextoname(ifindex, iface_buf);
+     if (!iface) {

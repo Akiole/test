@@ -1,0 +1,65 @@
+--- a/pppd/auth.c	2026-08-23 13:48:48.126209104 +0800
++++ b/pppd/auth.c	2026-08-23 13:49:02.143860432 +0800
+@@ -81,7 +81,9 @@
+ #include <sys/types.h>
+ #include <sys/stat.h>
+ #include <sys/socket.h>
++#ifdef HAVE_UTMP_H
+ #include <utmp.h>
++#endif
+ #include <fcntl.h>
+ #if defined(_PATH_LASTLOG) && defined(__linux__)
+ #include <lastlog.h>
+
+--- a/pppd/utils.c	2026-08-23 13:48:48.140652952 +0800
++++ b/pppd/utils.c	2026-08-23 13:49:02.157818945 +0800
+@@ -40,7 +40,9 @@
+ #include <syslog.h>
+ #include <netdb.h>
+ #include <time.h>
++#ifdef HAVE_UTMP_H
+ #include <utmp.h>
++#endif
+ #include <pwd.h>
+ #include <sys/param.h>
+ #include <sys/types.h>
+
+--- a/pppd/main.c	2026-08-23 13:48:48.148729151 +0800
++++ b/pppd/main.c	2026-08-23 13:49:02.166503563 +0800
+@@ -76,7 +76,9 @@
+ #include <fcntl.h>
+ #include <syslog.h>
+ #include <netdb.h>
++#ifdef HAVE_UTMP_H
+ #include <utmp.h>
++#endif
+ #include <pwd.h>
+ #include <sys/param.h>
+ #include <sys/types.h>
+
+--- a/pppd/tty.c	2026-08-23 13:48:48.157660603 +0800
++++ b/pppd/tty.c	2026-08-23 13:49:02.175003805 +0800
+@@ -79,7 +79,9 @@
+ #include <fcntl.h>
+ #include <syslog.h>
+ #include <netdb.h>
++#ifdef HAVE_UTMP_H
+ #include <utmp.h>
++#endif
+ #include <pwd.h>
+ #include <sys/param.h>
+ #include <sys/types.h>
+
+--- a/pppd/session.c	2026-08-23 13:48:48.159875320 +0800
++++ b/pppd/session.c	2026-08-23 13:49:02.183176337 +0800
+@@ -86,7 +86,9 @@
+ #endif
+ 
+ #include <time.h>
++#ifdef HAVE_UTMP_H
+ #include <utmp.h>
++#endif
+ #include <fcntl.h>
+ #include <unistd.h>
+ #include "pppd-private.h"
+

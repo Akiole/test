@@ -1,0 +1,16 @@
+--- a/mbutil.c
++++ b/mbutil.c
+@@ -584,6 +584,8 @@
+ #endif
+ }
+ 
++#if defined (HANDLE_MULTIBYTE)
++
+ /* Compare the first N characters of S1 and S2 without regard to case. If
+    FLAGS&1, apply the mapping specified by completion-map-case and make
+    `-' and `_' equivalent. Returns 1 if the strings are equal. */
+@@ -658,3 +660,4 @@
+     return 1;
+   return (wc1 == wc2);
+ }
++#endif /* HANDLE_MULTIBYTE */

@@ -1,0 +1,36 @@
+--- /dev/null	2026-08-23 01:42:44.440031000 +0800
++++ b/cmake/Modules/Version.cmake	2026-08-23 01:43:11.294813543 +0800
+@@ -0,0 +1,14 @@
++# Version.cmake - derive VERSION and LIBVER from VERSION_INFO_* variables
++#
++# This file is part of rtl-sdr.  It was missing from the 2.0.2 release
++# tarball (it lives in cmake/Modules/ in the git repository) and is required
++# by the top-level CMakeLists.txt via include(Version).
++#
++# The parent CMakeLists.txt sets:
++#   VERSION_INFO_MAJOR_VERSION / MINOR / PATCH
++# before including this module.  We expose:
++#   VERSION  -> used by write_basic_package_version_file() and the summary
++#   LIBVER   -> used as the shared library VERSION property (src/CMakeLists.txt)
++
++set(VERSION "${VERSION_INFO_MAJOR_VERSION}.${VERSION_INFO_MINOR_VERSION}.${VERSION_INFO_PATCH_VERSION}")
++set(LIBVER  "${VERSION_INFO_MAJOR_VERSION}.${VERSION_INFO_MINOR_VERSION}.${VERSION_INFO_PATCH_VERSION}")
+
+--- /dev/null	2026-08-23 01:42:44.440031000 +0800
++++ b/cmake/rtlsdrConfig.cmake	2026-08-23 01:43:11.296792053 +0800
+@@ -0,0 +1,15 @@
++# rtlsdrConfig.cmake - CMake package config for librtlsdr
++#
++# This file was missing from the 2.0.2 release tarball (it lives in cmake/
++# in the git repository).  It is referenced by the top-level CMakeLists.txt
++# via configure_file() + install(FILES ...).
++
++get_filename_component(rtlsdr_CMAKE_DIR "${CMAKE_CURRENT_LIST_FILE}" PATH)
++
++if(NOT TARGET rtlsdr::rtlsdr)
++  include("${rtlsdr_CMAKE_DIR}/rtlsdrTargets.cmake")
++endif()
++
++set(rtlsdr_LIBRARIES    rtlsdr::rtlsdr)
++set(rtlsdr_INCLUDE_DIRS "${_IMPORT_PREFIX}/include")
++set(rtlsdr_FOUND         TRUE)
