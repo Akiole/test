@@ -5,7 +5,7 @@
 #include <sys/un.h>
 #include <errno.h>
 #include <string.h>
-#include <sys/fcntl.h> // fcntl
+#include <fcntl.h> // fcntl
 #include <unistd.h> // close
 
 // TODO

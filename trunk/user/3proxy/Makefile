@@ -11,7 +11,8 @@ TARGET_LDFLAGS += -pthread
 
 define Build/Compile
 	$(MAKE) -j$(HOST_NCPU) -C $(PKG_BUILD_DIR) -f Makefile.Linux \
-		CC="$(TARGET_CC)" AR="$(TARGET_AR)" RANLIB="$(TARGET_RANLIB)" \
+		CC="$(TARGET_CC) -Wno-incompatible-pointer-types -Wno-implicit-function-declaration -Wno-int-conversion" \
+		AR="$(TARGET_AR)" RANLIB="$(TARGET_RANLIB)" \
 		CPPFLAGS="$(TARGET_CPPFLAGS)" \
 		LDFLAGS="$(TARGET_LDFLAGS)"
 endef

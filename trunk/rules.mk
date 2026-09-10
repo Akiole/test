@@ -28,11 +28,53 @@ TARGET_CFLAGS:=$(CFLAGS)
 TARGET_CXXFLAGS:=$(CXXFLAGS)
 TARGET_LDFLAGS:=$(LDFLAGS)
 
+# ---------------------------------------------------------------------------
+# GCC 14+ compatibility: old code (K&R prototypes, missing includes, loose
+# function pointers) used to compile with warnings only; GCC 14 promoted
+# several of these to errors.  Suppress them globally so individual packages
+# don't each need -Wno-* workarounds.
+# ---------------------------------------------------------------------------
+TARGET_CFLAGS += \
+	-Wno-implicit-function-declaration \
+	-Wno-implicit-int \
+	-Wno-incompatible-pointer-types \
+	-Wno-int-conversion
+TARGET_CXXFLAGS += \
+	-Wno-incompatible-pointer-types \
+	-Wno-int-conversion
+
+# ---------------------------------------------------------------------------
+# Common include paths and feature macros shared by most packages.
+# - include/shared: Padavan-internal headers (nvram, shared utils etc.)
+# - _LARGEFILE64_SOURCE / _FILE_OFFSET_BITS=64: 32-bit MIPS large-file
+#   support, needed by nfs-utils, samba36, transmission and friends.
+# ---------------------------------------------------------------------------
+TARGET_CFLAGS += \
+	-I$(STAGING_DIR)/include/shared \
+	-D_LARGEFILE64_SOURCE \
+	-D_FILE_OFFSET_BITS=64
+TARGET_CXXFLAGS += \
+	-I$(STAGING_DIR)/include/shared \
+	-D_LARGEFILE64_SOURCE \
+	-D_FILE_OFFSET_BITS=64
+TARGET_CPPFLAGS += \
+	-I$(STAGING_DIR)/include/shared \
+	-D_LARGEFILE64_SOURCE \
+	-D_FILE_OFFSET_BITS=64
+
 TARGET_LINKER?=bfd
 TARGET_LDFLAGS+= -fuse-ld=$(TARGET_LINKER)
 # --gc-sections discards unused sections; pair with -ffunction-sections/
 # -fdata-sections in the toolchain CFLAGS to shrink firmware binaries
 TARGET_LDFLAGS+= -Wl,--gc-sections
+# Staging dir holds third-party libs (nvram, shared, etc.) installed by
+# other packages; add it globally so individual packages don't each need
+# their own -L$(STAGING_DIR)/lib.
+TARGET_LDFLAGS+= -L$(STAGING_DIR)/lib
+# -rpath-link lets the linker resolve transitive dependencies (e.g.
+# libmbedcrypto.so -> libz.so.1) that live in staging but outside the
+# toolchain sysroot.  Without it, ld warns "libz.so.1 not found".
+TARGET_LDFLAGS+= -Wl,-rpath-link,$(STAGING_DIR)/lib
 
 TARGET_AR:=$(TARGET_CROSS)gcc-ar
 TARGET_RANLIB:=$(TARGET_CROSS)gcc-ranlib
@@ -87,9 +129,11 @@ endif
 # mixing the flag into ASFLAGS only adds noise.
 TARGET_ASFLAGS:=$(filter-out $(LTO_CFLAGS),$(TARGET_CFLAGS))
 
-ifneq ($(CONFIG_CCACHE),)
-  TARGET_CC:= ccache $(TARGET_CC)
-  TARGET_CXX:= ccache $(TARGET_CXX)
+ifeq ($(CONFIG_CCACHE),y)
+  # ccache is invoked via PATH wrappers (symlinks created by trunk/Makefile,
+  # prepended to PATH).  We only set CCACHE_* environment variables here —
+  # do NOT prefix TARGET_CC with `ccache`, that would double-wrap and conflict
+  # with the wrappers (ccache would find its own symlink first in PATH).
   CCACHE_DIR           := $(or $(CONFIG_CCACHE_DIR),$(TOPDIR))/.ccache
   CCACHE_BASEDIR       := $(TOPDIR)
   CCACHE_COMPILERCHECK := %compiler% -dumpmachine; %compiler% -dumpversion
@@ -111,7 +155,19 @@ TARGET_CONFIGURE_OPTS := \
   OBJDUMP="$(TARGET_CROSS)objdump" \
   SIZE="$(TARGET_CROSS)size"
 
-DISABLE_IPV6 := $(if $(CONFIG_FIRMWARE_ENABLE_IPV6),,--disable-ipv6)
+DISABLE_IPV6 := $(if $(filter y,$(CONFIG_FIRMWARE_ENABLE_IPV6)),,--disable-ipv6)
 
 # Build all libraries as shared (dynamic) by default
 LIBS_BUILD_SHARED:=y
+
+# ---------------------------------------------------------------------------
+# Post-install hook: fix libtool .la libdir paths
+# ---------------------------------------------------------------------------
+# Autotools packages configured with --prefix="" write libdir='/lib' into
+# their .la files.  At build time the libraries actually live in
+# $(STAGING_DIR)/lib, so libtool warns "library was moved" on every link.
+# Rewrite libdir to the real staging path after each package install.
+define FixLibtoolLaPaths
+	@find $(STAGING_DIR) -name '*.la' 2>/dev/null -exec $(SED) "s|^libdir='.*'|libdir='$(STAGING_DIR)/lib'|" {} + || true
+endef
+Hooks/Install/Post += FixLibtoolLaPaths

@@ -12,7 +12,7 @@ ROOTDIR = ..
 endif
 
 ifndef ROMFSDIR
-ROMFSDIR = $(ROOTDIR)/build/romfs
+ROMFSDIR = $(ROOTDIR)/romfs
 endif
 
 ifndef PROJECT_CONFIG
@@ -33,8 +33,6 @@ include $(ROOTDIR)/host-tools.mk
 # Global optimization: discard unused functions and data sections
 CFLAGS  += -ffunction-sections -fdata-sections
 LDFLAGS += -Wl,--gc-sections
-
-DESTDIR = $(STAGEDIR)
 
 # -----------------------------------------------------------------------------
 # External Config Variable Defaults
@@ -123,6 +121,9 @@ LIBS_INCLUDE_ZLIB          = n
 LIBS_INCLUDE_LIBTIRPC      = n
 LIBS_INCLUDE_NETTLE        = n
 LIBS_INCLUDE_GNUTLS        = n
+
+# libev is required by skipdbv2 (skipd), a core system service used by httpd/rc
+LIBS_INCLUDE_LIBEV         = y
 
 STORAGE_ENABLED = n
 
@@ -604,10 +605,10 @@ endif
 %_only:
 	@echo "\033[1;30;43m BUILD \033[0m \033[1;30;44m $(@:_only=) \033[0m"
 	$(MAKE) -C $(@:_only=)
-	@mkdir -p $(DESTDIR)
+	@mkdir -p $(STAGEDIR)
 	@echo "\033[1;30;42m $(@:_only=) \033[0m \033[1;30;44m Installing \033[0m"
 	@if $(MAKE) -C $(@:_only=) install; then \
-		touch $(DESTDIR)/.installed_$(@:_only=); \
+		touch $(STAGEDIR)/.installed_$(@:_only=); \
 	else \
 		echo "\033[1;30;41m $(@:_only=) \033[0m \033[1;30;41m install failed \033[0m"; \
 		exit 1; \
@@ -620,4 +621,4 @@ endif
 %_clean:
 	@echo "\033[1;30;42m CLEAN \033[0m \033[1;30;44m $(@:_clean=) \033[0m"
 	-$(MAKE) -C $(@:_clean=) clean
-	rm -f $(DESTDIR)/.installed_$(@:_clean=)
+	rm -f $(STAGEDIR)/.installed_$(@:_clean=)

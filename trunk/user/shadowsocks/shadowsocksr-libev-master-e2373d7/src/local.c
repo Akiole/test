@@ -687,7 +687,7 @@ server_recv_cb(EV_P_ ev_io *w, int revents)
 
                     ss_free(hostname);
                 } else {
-                    strncpy(host, ip, sizeof(ip));
+                    strncpy(host, ip, sizeof(host));
                 }
             }
 

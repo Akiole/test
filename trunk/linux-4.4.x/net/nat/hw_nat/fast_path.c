@@ -296,7 +296,7 @@ int32_t hnat_pptp_wan(struct sk_buff *skb)
 	    (skb_cloned(skb) && !skb_clone_writable(skb,0))){
 		struct sk_buff *new_skb = skb_realloc_headroom(skb, add_len);
 		if (!new_skb){
-			printk("realloc headroom failed!\n");	
+			pr_err("realloc headroom failed!\n");	
 			return 1;
 		}
 		kfree_skb(skb);
@@ -457,7 +457,7 @@ int32_t hnat_l2tp_wan(struct sk_buff *skb)
 	    (skb_cloned(skb) && !skb_clone_writable(skb,0))){
 	struct sk_buff *new_skb = skb_realloc_headroom(skb, add_len);
 	if (!new_skb){
-	    printk("realloc headroom failed!\n");	
+	    pr_err("realloc headroom failed!\n");	
 			return 1;
 		}
 		kfree_skb(skb);
@@ -490,8 +490,11 @@ int32_t hnat_l2tp_wan(struct sk_buff *skb)
 int32_t  hnat_pptp_l2tpinit(void)
 {
     WanInf = ra_dev_get_by_name(ifname);
+    if (!WanInf)
+        pr_err("%s: failed to get WAN interface %s\n", __func__, ifname);
     LanInf = ra_dev_get_by_name(lanifname);
-    //printk("WanInf name is %s!\n", WanInf->name);
+    if (!LanInf)
+        pr_err("%s: failed to get LAN interface %s\n", __func__, lanifname);
     return 0;
 }
 
@@ -587,7 +590,7 @@ int32_t send_L2TP_hash_pkt(struct sk_buff *pskb)
 	//dev_queue_xmit(skb);
 	skb->dev->netdev_ops->ndo_start_xmit(skb, skb->dev);
     }else{
-	printk("interface %s not found\n",ifname);
+	pr_err("interface %s not found\n",ifname);
 	return 1;
     }
     return 0;
@@ -679,7 +682,7 @@ int32_t send_hash_pkt(struct sk_buff *pskb)
 	//dev_queue_xmit(skb);
 	skb->dev->netdev_ops->ndo_start_xmit(skb, skb->dev);
     }else{
-	printk("interface %s not found\n",ifname);
+	pr_err("interface %s not found\n",ifname);
         kfree_skb(skb);
 	return 1;
     }

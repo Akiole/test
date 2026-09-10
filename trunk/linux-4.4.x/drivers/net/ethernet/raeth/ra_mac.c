@@ -17,8 +17,18 @@
 void enable_auto_negotiate(struct END_DEVICE *ei_local)
 {
 	u32 reg_value;
+	u32 phy_start, phy_end;
 
-	/* FIXME: we don't know how to deal with PHY end addr */
+	/*
+	 * ESW_PHY_POLLING register layout:
+	 *   [31]    - PHY auto polling enable
+	 *   [12:8]  - PHY end address (inclusive)
+	 *   [4:0]   - PHY start address
+	 *
+	 * The hardware polls PHYs from start to end address inclusive.
+	 * For a single PHY, start should equal end.
+	 * PHY addresses are 5-bit (0-31).
+	 */
 	reg_value = sys_reg_read(ESW_PHY_POLLING);
 	reg_value |= (1 << 31);
 	reg_value &= ~(0x1f);
@@ -26,15 +36,20 @@ void enable_auto_negotiate(struct END_DEVICE *ei_local)
 
 	if (ei_local->architecture & (GE2_RGMII_AN | GE2_SGMII_AN)) {
 		/* setup PHY address for auto polling (Start Addr). */
-		/*avoid end phy address = 0 */
-		reg_value |= ((mac_to_gigaphy_mode_addr2 - 1) & 0x1f);
+		phy_end = mac_to_gigaphy_mode_addr2 & 0x1f;
+		/* avoid start > end when phy_end is 0 */
+		phy_start = (phy_end > 0) ? (phy_end - 1) : phy_end;
+		reg_value |= phy_start;
 		/* setup PHY address for auto polling (End Addr). */
-		reg_value |= (mac_to_gigaphy_mode_addr2 << 8);
+		reg_value |= (phy_end << 8);
 	} else if (ei_local->architecture & (GE1_RGMII_AN | GE1_SGMII_AN | LEOPARD_EPHY)) {
 		/* setup PHY address for auto polling (Start Addr). */
-		reg_value |= (mac_to_gigaphy_mode_addr << 0);
+		phy_start = mac_to_gigaphy_mode_addr & 0x1f;
+		/* end = start + 1, but clamp to 31 to avoid wrap */
+		phy_end = (phy_start < 31) ? (phy_start + 1) : phy_start;
+		reg_value |= phy_start;
 		/* setup PHY address for auto polling (End Addr). */
-		reg_value |= ((mac_to_gigaphy_mode_addr + 1) << 8);
+		reg_value |= (phy_end << 8);
 	}
 
 	sys_reg_write(ESW_PHY_POLLING, reg_value);
@@ -75,22 +90,23 @@ void set_mac2_address(unsigned char p[6])
 	sys_reg_write(GDMA2_MAC_ADRL, reg_value);
 }
 
-static int getnext(const char *src, int separator, char *dest)
+static int getnext(const char *src, int separator, char *dest, size_t dest_size)
 {
 	char *c;
 	int len;
 
-	if (!src || !dest)
+	if (!src || !dest || dest_size == 0)
 		return -1;
 
 	c = strchr(src, separator);
 	if (!c) {
-		strcpy(dest, src);
+		strscpy(dest, src, dest_size);
 		return -1;
 	}
 	len = c - src;
-	strncpy(dest, src, len);
-	dest[len] = '\0';
+	if (len >= dest_size)
+		len = dest_size - 1;
+	strscpy(dest, src, len + 1);
 	return len + 1;
 }
 
@@ -104,7 +120,7 @@ int str_to_ip(unsigned int *ip, const char *str)
 	int ret;
 
 	for (i = 0; i < 3; ++i) {
-		len = getnext(ptr, '.', buf);
+		len = getnext(ptr, '.', buf, sizeof(buf));
 		if (len == -1)
 			return 1;	/* parse error */
 
@@ -149,6 +165,10 @@ void set_ge2_gmii(void)
 	unsigned int reg_value;
 
 	virt_addr = ioremap(ETHSYS_BASE, 0x20);
+	if (!virt_addr) {
+		pr_err("%s: failed to ioremap ETHSYS_BASE\n", __func__);
+		return;
+	}
 	reg_value = sys_reg_read(virt_addr + 0x14);
 	/*[15:14] =0 RGMII, [8] = 0 SGMII disable*/
 	reg_value = reg_value & (~0xc100);
@@ -163,6 +183,10 @@ void set_ge0_gmii(void)
 	unsigned int reg_value;
 
 	virt_addr = ioremap(ETHSYS_BASE, 0x20);
+	if (!virt_addr) {
+		pr_err("%s: failed to ioremap ETHSYS_BASE\n", __func__);
+		return;
+	}
 	reg_value = sys_reg_read(virt_addr + 0x14);
 	/*[15:14] =0 RGMII, [8] = 0 SGMII disable*/
 	reg_value = reg_value & (~0xc000);

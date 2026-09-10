@@ -25,7 +25,7 @@
 #include <time.h>
 #include <unistd.h>
 #include <ctype.h>
-#include <sys/signal.h>
+#include <signal.h>
 #include <sys/sysinfo.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>

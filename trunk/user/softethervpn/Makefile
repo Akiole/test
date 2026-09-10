@@ -17,7 +17,6 @@ endef
 HAMCORE_DIR := src/bin/BuiltHamcoreFiles/unix
 
 # MIPS16 interlinking for smaller binary on the target
-
 TARGET_CFLAGS += -minterlink-mips16
 
 # The upstream hand-written makefile only adds -I./src etc.; tell it where

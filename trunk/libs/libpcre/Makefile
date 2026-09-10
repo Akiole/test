@@ -18,7 +18,7 @@ CONFIGURE_ARGS += \
 	--with-match-limit-recursion=16000
 
 define update_pcre_config_prefix
-	$(SED) 's,^\(prefix\|exec_prefix\)=.*,\1=$(STAGING_DIR)/usr,g' $(STAGING_DIR)/bin/pcre-config
+	$(SED) 's,^prefix=.*,prefix=$(STAGING_DIR),;s,^exec_prefix=.*,exec_prefix=$(STAGING_DIR),' $(STAGING_DIR)/bin/pcre-config
 endef
 
 Hooks/Install/Post += update_pcre_config_prefix

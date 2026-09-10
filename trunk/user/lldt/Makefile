@@ -5,9 +5,7 @@ PKG_NAME:=lldt
 include $(INCLUDE_DIR)/package.mk
 
 TARGET_CFLAGS += \
-	$(if $(CONFIG_IPV6),-DUSE_IPV6,) \
-	-I$(STAGING_DIR)/include/shared
-TARGET_LDFLAGS += -L$(STAGING_DIR)/lib
+	$(if $(CONFIG_IPV6),-DUSE_IPV6,)
 
 $(eval $(call BuildPackage,$(PKG_NAME)))
 

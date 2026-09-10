@@ -6,6 +6,10 @@ SRC_DIR:=./$(PKG_NAME)-$(PKG_VERSION)
 
 include $(INCLUDE_DIR)/package.mk
 
+# lrzsz 0.12.20 uses K&R old-style function definitions; build with
+# gnu89 so its configure test program `main(){return(0);}` compiles.
+TARGET_CFLAGS += -std=gnu89
+
 CONFIGURE_ARGS += \
 	--disable-nls
 

@@ -10,7 +10,7 @@ include $(INCLUDE_DIR)/cmake.mk
 PKG_INSTALL:=1
 
 CMAKE_BINARY_SUBDIR:=build
-TARGET_CFLAGS += -D_LARGEFILE64_SOURCE -D_LFS64_LARGEFILE -Wno-implicit-fallthrough
+TARGET_CFLAGS += -D_LFS64_LARGEFILE -Wno-implicit-fallthrough
 TARGET_LDFLAGS += -lnghttp2
 
 CMAKE_OPTIONS += \

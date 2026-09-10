@@ -9,9 +9,6 @@ include $(INCLUDE_DIR)/package.mk
 # SQLite configure does not support --target
 CONFIGURE_ARGS := $(filter-out --target=%,$(CONFIGURE_ARGS))
 
-# sqlite >= 3.5x autoconf: fts3/4/5, rtree, session are opt-in (off by
-# default), JSON and threadsafe are on by default; only disable what we
-# explicitly do not want.
 CONFIGURE_ARGS += \
 	--disable-readline \
 	--disable-load-extension \

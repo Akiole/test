@@ -512,6 +512,12 @@ ntpc_updated_main(int argc, char *argv[])
 		logmessage("NTP Client", "System time changed, offset: %ss", offset);
 		sleep(5);
 		nvram_set_int("ntp_ready", 1);
+		/* Restart syslogd/klogd to use corrected timestamps */
+		stop_syslogd();
+		stop_klogd();
+		start_syslogd();
+		start_klogd();
+		logmessage("NTP Client", "syslogd restarted with correct time");
 	}
 
 	return 0;

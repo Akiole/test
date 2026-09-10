@@ -2378,6 +2378,10 @@ static int ei_clock_enable(struct END_DEVICE *ei_local)
 
 	if (ei_local->architecture & GE2_RAETH_SGMII) {
 		clk_virt_base = ioremap(0x102100C0, 0x10);
+		if (!clk_virt_base) {
+			dev_err(ei_local->dev, "failed to ioremap SGMII clock register\n");
+			return -ENOMEM;
+		}
 		reg_value = sys_reg_read(clk_virt_base);
 		reg_value = reg_value & (~0x8000);	/*[bit15] = 0 */
 		/*pdn_sgmii_re_1 1: Enable clock off */
@@ -2941,26 +2945,16 @@ void raeth_setup_dev_fptable(struct net_device *dev)
 void ei_ioc_setting(struct platform_device *pdev, struct END_DEVICE *ei_local)
 {
 	void __iomem *reg_virt;
-	/* unsigned int reg_val; */
 
 	if (ei_local->features & FE_HW_IOCOHERENT) {
 		pr_info("[Raether] HW IO coherent is enabled !\n");
 		/* enable S4 coherence function */
 		reg_virt = ioremap(0x10395000, 0x10);
+		if (!reg_virt) {
+			dev_err(&pdev->dev, "failed to ioremap IO coherent register\n");
+			return;
+		}
 		sys_reg_write(reg_virt, 0x00000003);
-
-		/* Enable ETHSYS io coherence path */
-		/*reg_virt = ioremap(HW_IOC_BASE, 0x10);*/
-		/*reg_virt += IOC_OFFSET;*/
-		/*reg_val = sys_reg_read(reg_virt);*/
-
-		/*if (ei_local->features & FE_QDMA_FQOS)*/
-		/*	reg_val |= IOC_ETH_PDMA;*/
-		/*else*/
-		/*	reg_val |= IOC_ETH_PDMA | IOC_ETH_QDMA;*/
-
-		/*sys_reg_write(reg_virt, reg_val);*/
-		/*reg_virt -= IOC_OFFSET;*/
 		iounmap(reg_virt);
 
 		arch_setup_dma_ops(&pdev->dev, 0, 0, NULL, TRUE);
@@ -3145,7 +3139,7 @@ void raeth_arch_setting(struct END_DEVICE *ei_local, struct platform_device *pde
 	}
 }
 
-void fe_tx_rx_dec(struct END_DEVICE *ei_local, struct platform_device *pdev)
+int fe_tx_rx_dec(struct END_DEVICE *ei_local, struct platform_device *pdev)
 {
 	u32 val;
 	u8 i;
@@ -3169,18 +3163,74 @@ void fe_tx_rx_dec(struct END_DEVICE *ei_local, struct platform_device *pdev)
 	num_rx_desc = val;
 	num_tx_max_process = num_tx_desc;
 
-	ei_local->free_skb = kmalloc_array(num_tx_desc, sizeof(struct sk_buff *), GFP_KERNEL);
+	ei_local->free_skb = kcalloc(num_tx_desc, sizeof(struct sk_buff *), GFP_KERNEL);
+	if (!ei_local->free_skb)
+		return -ENOMEM;
 
-	ei_local->free_txd_num = kmalloc_array(total_txq_num, sizeof(atomic_t), GFP_KERNEL);
-	ei_local->free_txd_head = kmalloc_array(total_txq_num, sizeof(unsigned int), GFP_KERNEL);
-	ei_local->free_txd_tail = kmalloc_array(total_txq_num, sizeof(unsigned int), GFP_KERNEL);
-	ei_local->txd_pool_info = kmalloc_array(num_tx_desc, sizeof(unsigned int), GFP_KERNEL);
-	ei_local->skb_free = kmalloc_array(num_tx_desc, sizeof(struct sk_buff *), GFP_KERNEL);
-	ei_local->rls_cnt = kmalloc_array(total_txq_num, sizeof(unsigned int), GFP_KERNEL);
-	for (i = 0; i < MAX_RX_RING_NUM; i++)
+	ei_local->free_txd_num = kcalloc(total_txq_num, sizeof(atomic_t), GFP_KERNEL);
+	if (!ei_local->free_txd_num)
+		goto err_free_skb;
+
+	ei_local->free_txd_head = kcalloc(total_txq_num, sizeof(unsigned int), GFP_KERNEL);
+	if (!ei_local->free_txd_head)
+		goto err_free_txd_num;
+
+	ei_local->free_txd_tail = kcalloc(total_txq_num, sizeof(unsigned int), GFP_KERNEL);
+	if (!ei_local->free_txd_tail)
+		goto err_free_txd_head;
+
+	ei_local->txd_pool_info = kcalloc(num_tx_desc, sizeof(unsigned int), GFP_KERNEL);
+	if (!ei_local->txd_pool_info)
+		goto err_free_txd_tail;
+
+	ei_local->skb_free = kcalloc(num_tx_desc, sizeof(struct sk_buff *), GFP_KERNEL);
+	if (!ei_local->skb_free)
+		goto err_free_txd_pool_info;
+
+	ei_local->rls_cnt = kcalloc(total_txq_num, sizeof(unsigned int), GFP_KERNEL);
+	if (!ei_local->rls_cnt)
+		goto err_free_skb_free;
+
+	for (i = 0; i < MAX_RX_RING_NUM; i++) {
 		ei_local->netrx_skb_data[i] =
-			kmalloc_array(num_rx_desc, sizeof(void *), GFP_KERNEL);
-	ei_local->netrx0_skb_data = kmalloc_array(num_rx_desc, sizeof(void *), GFP_KERNEL);
+			kcalloc(num_rx_desc, sizeof(void *), GFP_KERNEL);
+		if (!ei_local->netrx_skb_data[i])
+			goto err_free_netrx_skb_data;
+	}
+
+	ei_local->netrx0_skb_data = kcalloc(num_rx_desc, sizeof(void *), GFP_KERNEL);
+	if (!ei_local->netrx0_skb_data)
+		goto err_free_netrx_skb_data_all;
+
+	return 0;
+
+err_free_netrx_skb_data_all:
+	for (i = 0; i < MAX_RX_RING_NUM; i++)
+		kfree(ei_local->netrx_skb_data[i]);
+	goto err_free_skb_free;
+err_free_netrx_skb_data:
+	/* Free previously allocated rx rings.
+	 * Use while loop to avoid unsigned underflow issues
+	 * with the original for (i = i-1; i < MAX; i--) pattern.
+	 */
+	while (i > 0) {
+		i--;
+		kfree(ei_local->netrx_skb_data[i]);
+	}
+	kfree(ei_local->rls_cnt);
+err_free_skb_free:
+	kfree(ei_local->skb_free);
+err_free_txd_pool_info:
+	kfree(ei_local->txd_pool_info);
+err_free_txd_tail:
+	kfree(ei_local->free_txd_tail);
+err_free_txd_head:
+	kfree(ei_local->free_txd_head);
+err_free_txd_num:
+	kfree(ei_local->free_txd_num);
+err_free_skb:
+	kfree(ei_local->free_skb);
+	return -ENOMEM;
 }
 
 /* static struct wakeup_source eth_wake_lock; */
@@ -3210,7 +3260,11 @@ static int rather_probe(struct platform_device *pdev)
 	fe_architecture_config(ei_local);
 	fe_chip_name_config(ei_local, pdev);
 	raeth_arch_setting(ei_local, pdev);
-	fe_tx_rx_dec(ei_local, pdev);
+	ret = fe_tx_rx_dec(ei_local, pdev);
+	if (ret) {
+		dev_err(&pdev->dev, "failed to allocate TX/RX descriptor arrays\n");
+		goto err_free_dev;
+	}
 
 	ret = of_property_read_bool(pdev->dev.of_node, "dma-coherent");
 	if (ret)
@@ -3249,6 +3303,11 @@ static int rather_probe(struct platform_device *pdev)
 	}
 
 	ethdma_mac_base = ioremap(0x1b110000, 0x300);
+	if (!ethdma_mac_base) {
+		dev_err(&pdev->dev, "failed to ioremap ETH MAC base\n");
+		ret = -ENOMEM;
+		goto err_free_dev;
+	}
 
 	/* get clock ctrl */
 	if (ei_local->chip_name != MT7621_FE) {

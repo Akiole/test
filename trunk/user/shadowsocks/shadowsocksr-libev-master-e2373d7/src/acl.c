@@ -103,9 +103,9 @@ static int
 run_cmd(const char *cmd)
 {
     int ret = 0;
-    char cmdstring[256];
+    char cmdstring[512];
 
-    sprintf(cmdstring, "%s\n", cmd);
+    snprintf(cmdstring, sizeof(cmdstring), "%s\n", cmd);
     size_t len = strlen(cmdstring);
 
     if (shell_stdin != NULL) {
@@ -120,13 +120,13 @@ static int
 init_firewall()
 {
     int ret = 0;
-    char cli[256];
+    char cli[512];
     FILE *fp;
 
     if (getuid() != 0)
         return -1;
 
-    sprintf(cli, "firewall-cmd --version 2>&1");
+    snprintf(cli, sizeof(cli), "firewall-cmd --version 2>&1");
     fp = popen(cli, "r");
 
     if (fp == NULL)
@@ -139,7 +139,7 @@ init_firewall()
 	 * Note that checking `iptables --version` is insufficient:
          * eg, running within a child user namespace.
 	 */
-        sprintf(cli, "iptables -L 2>&1");
+        snprintf(cli, sizeof(cli), "iptables -L 2>&1");
         fp = popen(cli, "r");
         if (fp == NULL)
             return -1;
@@ -147,17 +147,17 @@ init_firewall()
             mode = IPTABLES_MODE;
     }
 
-    sprintf(chain_name, "SHADOWSOCKS_LIBEV_%d", getpid());
+    snprintf(chain_name, sizeof(chain_name), "SHADOWSOCKS_LIBEV_%d", getpid());
 
     if (mode == FIREWALLD_MODE) {
-        sprintf(cli, firewalld6_init_chain, chain_name, chain_name, chain_name);
+        snprintf(cli, sizeof(cli), firewalld6_init_chain, chain_name, chain_name, chain_name);
         ret |= system(cli);
-        sprintf(cli, firewalld_init_chain, chain_name, chain_name, chain_name);
+        snprintf(cli, sizeof(cli), firewalld_init_chain, chain_name, chain_name, chain_name);
         ret |= system(cli);
     } else if (mode == IPTABLES_MODE) {
-        sprintf(cli, ip6tables_init_chain, chain_name, chain_name, chain_name);
+        snprintf(cli, sizeof(cli), ip6tables_init_chain, chain_name, chain_name, chain_name);
         ret |= system(cli);
-        sprintf(cli, iptables_init_chain, chain_name, chain_name, chain_name);
+        snprintf(cli, sizeof(cli), iptables_init_chain, chain_name, chain_name, chain_name);
         ret |= system(cli);
     }
 
@@ -170,20 +170,20 @@ static int
 reset_firewall()
 {
     int ret = 0;
-    char cli[256];
+    char cli[512];
 
     if (getuid() != 0)
         return -1;
 
     if (mode == IPTABLES_MODE) {
-        sprintf(cli, ip6tables_remove_chain, chain_name, chain_name, chain_name);
+        snprintf(cli, sizeof(cli), ip6tables_remove_chain, chain_name, chain_name, chain_name);
         ret |= system(cli);
-        sprintf(cli, iptables_remove_chain, chain_name, chain_name, chain_name);
+        snprintf(cli, sizeof(cli), iptables_remove_chain, chain_name, chain_name, chain_name);
         ret |= system(cli);
     } else if (mode == FIREWALLD_MODE) {
-        sprintf(cli, firewalld6_remove_chain, chain_name, chain_name, chain_name);
+        snprintf(cli, sizeof(cli), firewalld6_remove_chain, chain_name, chain_name, chain_name);
         ret |= system(cli);
-        sprintf(cli, firewalld_remove_chain, chain_name, chain_name, chain_name);
+        snprintf(cli, sizeof(cli), firewalld_remove_chain, chain_name, chain_name, chain_name);
         ret |= system(cli);
     }
 
@@ -198,7 +198,7 @@ reset_firewall()
 static int
 set_firewall_rule(char *addr, int add)
 {
-    char cli[256];
+    char cli[512];
     struct cork_ip ip;
 
     if (getuid() != 0)
@@ -209,18 +209,18 @@ set_firewall_rule(char *addr, int add)
 
     if (add) {
         if (mode == IPTABLES_MODE)
-            sprintf(cli, ip.version == 4 ? iptables_add_rule : ip6tables_add_rule,
+            snprintf(cli, sizeof(cli), ip.version == 4 ? iptables_add_rule : ip6tables_add_rule,
                     chain_name, addr);
         else if (mode == FIREWALLD_MODE)
-            sprintf(cli, ip.version == 4 ? firewalld_add_rule : firewalld6_add_rule,
+            snprintf(cli, sizeof(cli), ip.version == 4 ? firewalld_add_rule : firewalld6_add_rule,
                     chain_name, addr);
         return run_cmd(cli);
     } else {
         if (mode == IPTABLES_MODE)
-            sprintf(cli, ip.version == 4 ? iptables_remove_rule : ip6tables_remove_rule,
+            snprintf(cli, sizeof(cli), ip.version == 4 ? iptables_remove_rule : ip6tables_remove_rule,
                     chain_name, addr);
         else if (mode == FIREWALLD_MODE)
-            sprintf(cli, ip.version == 4 ? firewalld_remove_rule : firewalld6_remove_rule,
+            snprintf(cli, sizeof(cli), ip.version == 4 ? firewalld_remove_rule : firewalld6_remove_rule,
                     chain_name, addr);
         return run_cmd(cli);
     }

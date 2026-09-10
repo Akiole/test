@@ -8,7 +8,8 @@ include $(INCLUDE_DIR)/package.mk
 
 MAKE_FLAGS += \
 	static \
-	KERNEL_INCLUDES=$(KERNEL_HEADERS_PATH)
+	KERNEL_INCLUDES=$(KERNEL_HEADERS_PATH) \
+	CFLAGS="$(TARGET_CFLAGS)"
 
 $(eval $(call BuildPackage,$(PKG_NAME)))
 

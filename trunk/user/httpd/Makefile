@@ -5,9 +5,7 @@ PKG_NAME:=httpd
 include $(INCLUDE_DIR)/package.mk
 
 TARGET_CFLAGS += \
-	-I$(STAGING_DIR)/include/shared \
 	$(if $(STORAGE_ENABLED),-I$(STAGING_DIR)/include/libdisk,)
-TARGET_LDFLAGS += -L$(STAGING_DIR)/lib
 
 # musl provides fopencookie natively; uClibc does not. Tell the compat
 # header to skip its definitions when building with musl.

@@ -87,7 +87,7 @@ void exec_kernel_doc(char **svec)
 	fflush(stdout);
 	switch(pid=fork()) {
 		case -1:
-			perror("vfork"+1);
+			perror("fork");
 			exit(1);
 		case  0:
 			rflen  = strlen(getenv("SRCTREE"));
@@ -152,9 +152,9 @@ struct symfile * filename_exist(char * filename)
  * Files are separated by tabs.
  */
 void adddep(char * file)		   { printf("\t%s", file); }
-void adddep2(char * file, char * line)     { line = line; adddep(file); }
-void noaction(char * line)		   { line = line; }
-void noaction2(char * file, char * line)   { file = file; line = line; }
+void adddep2(char * file, char * line)     { (void)line; adddep(file); }
+void noaction(char * line)		   { (void)line; }
+void noaction2(char * file, char * line)   { (void)file; (void)line; }
 
 /* Echo the line without further action */
 void printline(char * line)               { printf("%s", line); }

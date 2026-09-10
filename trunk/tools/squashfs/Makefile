@@ -11,20 +11,23 @@ include $(INCLUDE_DIR)/package.mk
 # macOS stat struct uses st_atimespec instead of st_atim
 DARWIN_CFLAGS := $(if $(filter Darwin,$(shell uname)),\
 	-Dst_atim=st_atimespec -Dst_mtim=st_mtimespec -Dst_ctim=st_ctimespec \
-	-I$(shell brew --prefix)/include -L$(shell brew --prefix)/lib,)
+	-I$(shell brew --prefix)/include,)
+DARWIN_LDFLAGS := $(if $(filter Darwin,$(shell uname)),\
+	-L$(shell brew --prefix)/lib,)
 
 define Build/Compile
-	@echo "==> Compiling $(PKG_NAME) (xz only)..."
+	@echo "==> Compiling $(PKG_NAME)..."
 	+$(MAKE) -C $(PKG_BUILD_DIR) \
 		EXTRA_CFLAGS="$(DARWIN_CFLAGS)" \
+		EXTRA_LDFLAGS="$(DARWIN_LDFLAGS)" \
 		COMP_DEFAULT=xz \
 		XZ_SUPPORT=1 \
-		GZIP_SUPPORT=0 \
+		GZIP_SUPPORT=1 \
 		LZO_SUPPORT=0 \
 		LZ4_SUPPORT=0 \
 		ZSTD_SUPPORT=0 \
-		XATTR_SUPPORT=0 \
-		XATTR_OS_SUPPORT=0
+		XATTR_SUPPORT=1 \
+		XATTR_OS_SUPPORT=1
 endef
 
 define Build/Install

@@ -260,7 +260,7 @@ int foe_mcast_entry_qid(uint16_t vlan_id, uint8_t *dst_mac, uint8_t mc_qos_qid)
 				//mcast_h->mc_qos_qid = mc_qos_qid & 0xf;
 				//mcast_h->mc_qos_qid54 = (mc_qos_qid & 0x30) >> 4;	
 			}else {
-				printk("Error qid = %d\n", mc_qos_qid);
+				pr_err("Error qid = %d\n", mc_qos_qid);
 				return 0;
 			}
 #else
@@ -331,7 +331,7 @@ int foe_mcast_entry_del(uint16_t vlan_id, uint8_t *dst_mac, uint8_t mc_px_en, ui
 #endif
 	return 0;
     }else {
-    	printk("foe_mcast_entry_del fail: entry_number = %d\n", entry_num);
+    	pr_err("foe_mcast_entry_del fail: entry_number = %d\n", entry_num);
 #if !defined (CONFIG_ARCH_MT7622) 
 			UP(mtbl_lock);
 #endif

@@ -571,9 +571,10 @@ int tx_ring_read(struct seq_file *seq, void *v)
 
 	tx_ring = kmalloc_array(num_tx_desc, sizeof(*tx_ring), GFP_KERNEL);
 
-	if (!tx_ring)
-		/*seq_puts(seq, " allocate temp tx_ring fail.\n"); */
+	if (!tx_ring) {
+		seq_puts(seq, " allocate temp tx_ring fail.\n");
 		return 0;
+	}
 
 	for (i = 0; i < num_tx_desc; i++)
 		tx_ring[i] = ei_local->tx_ring0[i];
@@ -621,9 +622,10 @@ int rx_ring_read(struct seq_file *seq, void *v)
 	int i = 0;
 
 	rx_ring = kmalloc_array(num_rx_desc, sizeof(*rx_ring), GFP_KERNEL);
-	if (!rx_ring)
-		/*seq_puts(seq, " allocate temp rx_ring fail.\n"); */
+	if (!rx_ring) {
+		seq_puts(seq, " allocate temp rx_ring fail.\n");
 		return 0;
+	}
 
 	for (i = 0; i < num_rx_desc; i++) {
 		memcpy(&rx_ring[i], &ei_local->rx_ring[0][i],
@@ -1421,7 +1423,7 @@ static ssize_t change_phyid(struct file *file,
 		struct net_device *cur_dev_p;
 		struct END_DEVICE *ei_local;
 		char if_name[64];
-		unsigned int phy_id;
+		long phy_id;
 
 		if (count > 32)
 			count = 32;
@@ -1432,11 +1434,12 @@ static ssize_t change_phyid(struct file *file,
 		/* determine interface name */
 		strncpy(if_name, DEV_NAME, sizeof(if_name) - 1);	/* "eth2" by default */
 		if (isalpha(buf[0])) {
-			val = sscanf(buf, "%4s %1d", if_name, &phy_id);
-			if (val == -1)
+			val = sscanf(buf, "%4s %ld", if_name, &phy_id);
+			if (val < 2)
 				return -EFAULT;
 		} else {
-			phy_id = kstrtol(buf, 10, NULL);
+			if (kstrtol(buf, 10, &phy_id))
+				return -EFAULT;
 		}
 		cur_dev_p = dev_get_by_name(&init_net, DEV_NAME);
 
@@ -1464,7 +1467,7 @@ static ssize_t change_gmac2_phyid(struct file *file,
 		struct net_device *cur_dev_p;
 		struct PSEUDO_ADAPTER *p_pseudo_ad;
 		char if_name[64];
-		unsigned int phy_id;
+		long phy_id;
 
 		if (count > 32)
 			count = 32;
@@ -1474,11 +1477,12 @@ static ssize_t change_gmac2_phyid(struct file *file,
 		/* determine interface name */
 		strncpy(if_name, DEV2_NAME, sizeof(if_name) - 1);	/* "eth3" by default */
 		if (isalpha(buf[0])) {
-			val = sscanf(buf, "%4s %1d", if_name, &phy_id);
-			if (val == -1)
+			val = sscanf(buf, "%4s %ld", if_name, &phy_id);
+			if (val < 2)
 				return -EFAULT;
 		} else {
-			phy_id = kstrtol(buf, 10, NULL);
+			if (kstrtol(buf, 10, &phy_id))
+				return -EFAULT;
 		}
 		cur_dev_p = dev_get_by_name(&init_net, DEV2_NAME);
 

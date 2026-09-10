@@ -9,6 +9,15 @@ config RA_HW_NAT
 	  the questions about Mediatek Ethernet devices. If you say Y,
 	  you will be asked for your specific card in the following questions.
 
+config RA_HW_NAT_DEBUG
+	bool "Ralink HW NAT Debug Messages"
+	depends on RA_HW_NAT
+	default n
+	help
+	  Enable verbose debug messages from the HW NAT driver.
+	  This can cause significant log flooding and performance
+	  degradation. Only enable for debugging purposes.
+
 config  RA_HW_NAT_LAN_VLANID
         int "VLAN ID of LAN Ports"
 	depends on RA_HW_NAT && !RA_HW_NAT_MANUAL_BIND

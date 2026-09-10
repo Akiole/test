@@ -71,66 +71,98 @@ long hw_nat_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 #if defined (CONFIG_HW_NAT_IPI)
  	int i,j;
 #endif
+	int ret = 0;
 	size = sizeof(struct hwnat_args) + sizeof(struct hwnat_tuple) * 1024 * 16;
 	switch (cmd) {
 	case HW_NAT_ADD_ENTRY:
 		opt2_k = kmalloc(sizeof(*opt2_k), GFP_KERNEL);
-		if (copy_from_user(opt2_k, opt2, sizeof(*opt2_k)))
-			pr_info("copy_from_user fail\n");
+		if (!opt2_k)
+			return -ENOMEM;
+		if (copy_from_user(opt2_k, opt2, sizeof(*opt2_k))) {
+			kfree(opt2_k);
+			return -EFAULT;
+		}
 		opt2_k->result = FoeAddEntry(opt2_k);
 		kfree(opt2_k);
 		break;
 	case HW_NAT_DEL_ENTRY:
-		pr_info("HW_NAT_DEL_ENTRY\n");
 		opt2_k = kmalloc(sizeof(*opt2_k), GFP_KERNEL);
-		if (copy_from_user(opt2_k, opt2, sizeof(*opt2_k)))
-			pr_info("copy_from_user fail\n");
+		if (!opt2_k)
+			return -ENOMEM;
+		if (copy_from_user(opt2_k, opt2, sizeof(*opt2_k))) {
+			kfree(opt2_k);
+			return -EFAULT;
+		}
 		opt2_k->result = FoeDelEntry(opt2_k);
 		kfree(opt2_k);
 		break;
 	case HW_NAT_GET_ALL_ENTRIES:
-
 		opt1 = kmalloc(size, GFP_KERNEL);
-		if (copy_from_user(opt1, opt, size))
-			pr_info("copy_from_user fail\n");
+		if (!opt1)
+			return -ENOMEM;
+		if (copy_from_user(opt1, opt, size)) {
+			kfree(opt1);
+			return -EFAULT;
+		}
 		opt1->result = foe_get_all_entries(opt1);
-		if (copy_to_user(opt, opt1, size))
-			pr_info("copy_to_user fail\n");
-
+		if (copy_to_user(opt, opt1, size)) {
+			kfree(opt1);
+			return -EFAULT;
+		}
 		kfree(opt1);
 		break;
 	case HW_NAT_BIND_ENTRY:
 		opt1 = kmalloc(sizeof(*opt1), GFP_KERNEL);
-		if (copy_from_user(opt1, opt, sizeof(struct hwnat_args)))
-			pr_debug("copy_from_user fail\n");
+		if (!opt1)
+			return -ENOMEM;
+		if (copy_from_user(opt1, opt, sizeof(struct hwnat_args))) {
+			kfree(opt1);
+			return -EFAULT;
+		}
 		opt1->result = foe_bind_entry(opt1);
 		kfree(opt1);
 		break;
 	case HW_NAT_UNBIND_ENTRY:
 		opt1 = kmalloc(sizeof(*opt1), GFP_KERNEL);
-		if (copy_from_user(opt1, opt, sizeof(struct hwnat_args)))
-			pr_debug("copy_from_user fail\n");
+		if (!opt1)
+			return -ENOMEM;
+		if (copy_from_user(opt1, opt, sizeof(struct hwnat_args))) {
+			kfree(opt1);
+			return -EFAULT;
+		}
 		opt1->result = foe_un_bind_entry(opt1);
 		kfree(opt1);
 		break;
 	case HW_NAT_DROP_ENTRY:
 		opt1 = kmalloc(sizeof(*opt1), GFP_KERNEL);
-		if (copy_from_user(opt1, opt, sizeof(struct hwnat_args)))
-			pr_debug("copy_from_user fail\n");
+		if (!opt1)
+			return -ENOMEM;
+		if (copy_from_user(opt1, opt, sizeof(struct hwnat_args))) {
+			kfree(opt1);
+			return -EFAULT;
+		}
 		opt1->result = foe_drop_entry(opt1);
 		kfree(opt1);
 		break;
 	case HW_NAT_INVALID_ENTRY:
 		opt1 = kmalloc(sizeof(*opt1), GFP_KERNEL);
-		if (copy_from_user(opt1, opt, sizeof(struct hwnat_args)))
-			pr_debug("copy_from_user fail\n");
+		if (!opt1)
+			return -ENOMEM;
+		if (copy_from_user(opt1, opt, sizeof(struct hwnat_args))) {
+			kfree(opt1);
+			return -EFAULT;
+		}
 		opt1->result = foe_del_entry_by_num(opt1->entry_num);
 		kfree(opt1);
 		break;
 	case HW_NAT_DUMP_ENTRY:
 		opt1 = kmalloc(size, GFP_KERNEL);
-		if (copy_from_user(opt1, opt, sizeof(struct hwnat_args)))
-			pr_debug("copy_from_user fail\n");
+		if (!opt1)
+			return -ENOMEM;
+		if (copy_from_user(opt1, opt, sizeof(struct hwnat_args))) {
+			kfree(opt1);
+			return -EFAULT;
+		}
 		foe_dump_entry(opt1->entry_num);
 		kfree(opt1);
 		break;
@@ -139,31 +171,49 @@ long hw_nat_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		break;
 	case HW_NAT_DEBUG:	/* For Debug */
 		opt1 = kmalloc(size, GFP_KERNEL);
-		if (copy_from_user(opt1, opt, sizeof(struct hwnat_args)))
-			pr_debug("copy_from_user fail\n");
+		if (!opt1)
+			return -ENOMEM;
+		if (copy_from_user(opt1, opt, sizeof(struct hwnat_args))) {
+			kfree(opt1);
+			return -EFAULT;
+		}
 		debug_level = opt1->debug;
 		kfree(opt1);
 		break;
 	case HW_NAT_GET_AC_CNT:
 		opt3_k = kmalloc(sizeof(*opt3_k), GFP_KERNEL);
-		if (copy_from_user(opt3_k, opt3, sizeof(*opt3_k)))
-			pr_debug("copy_from_user fail\n");
+		if (!opt3_k)
+			return -ENOMEM;
+		if (copy_from_user(opt3_k, opt3, sizeof(*opt3_k))) {
+			kfree(opt3_k);
+			return -EFAULT;
+		}
 		opt3_k->result = ppe_get_agcnt(opt3_k);
-		if (copy_to_user(opt3, opt3_k, sizeof(*opt3_k)))
-			pr_info("copy_to_user fail\n");
+		if (copy_to_user(opt3, opt3_k, sizeof(*opt3_k))) {
+			kfree(opt3_k);
+			return -EFAULT;
+		}
 		kfree(opt3_k);
 		break;
 	case HW_NAT_BIND_THRESHOLD:
 		opt4_k = kmalloc(sizeof(*opt4_k), GFP_KERNEL);
-		if (copy_from_user(opt4_k, opt4, sizeof(struct hwnat_config_args)))
-			pr_debug("copy_from_user fail\n");
+		if (!opt4_k)
+			return -ENOMEM;
+		if (copy_from_user(opt4_k, opt4, sizeof(struct hwnat_config_args))) {
+			kfree(opt4_k);
+			return -EFAULT;
+		}
 		opt4_k->result = ppe_set_bind_threshold(opt4_k->bind_threshold);
 		kfree(opt4_k);
 		break;
 	case HW_NAT_MAX_ENTRY_LMT:
 		opt4_k = kmalloc(sizeof(*opt4_k), GFP_KERNEL);
-		if (copy_from_user(opt4_k, opt4, sizeof(struct hwnat_config_args)))
-			pr_debug("copy_from_user fail\n");
+		if (!opt4_k)
+			return -ENOMEM;
+		if (copy_from_user(opt4_k, opt4, sizeof(struct hwnat_config_args))) {
+			kfree(opt4_k);
+			return -EFAULT;
+		}
 		opt4_k->result =
 		    ppe_set_max_entry_limit(opt4_k->foe_full_lmt,
 					    opt4_k->foe_half_lmt, opt4_k->foe_qut_lmt);
@@ -171,22 +221,34 @@ long hw_nat_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		break;
 	case HW_NAT_KA_INTERVAL:
 		opt4_k = kmalloc(sizeof(*opt4_k), GFP_KERNEL);
-		if (copy_from_user(opt4_k, opt4, sizeof(struct hwnat_config_args)))
-			pr_debug("copy_from_user fail\n");
-		opt4_k->result = ppe_set_ka_interval(opt4->foe_tcp_ka, opt4->foe_udp_ka);
+		if (!opt4_k)
+			return -ENOMEM;
+		if (copy_from_user(opt4_k, opt4, sizeof(struct hwnat_config_args))) {
+			kfree(opt4_k);
+			return -EFAULT;
+		}
+		opt4_k->result = ppe_set_ka_interval(opt4_k->foe_tcp_ka, opt4_k->foe_udp_ka);
 		kfree(opt4_k);
 		break;
 	case HW_NAT_UB_LIFETIME:
 		opt4_k = kmalloc(sizeof(*opt4_k), GFP_KERNEL);
-		if (copy_from_user(opt4_k, opt4, sizeof(struct hwnat_config_args)))
-			pr_debug("copy_from_user fail\n");
+		if (!opt4_k)
+			return -ENOMEM;
+		if (copy_from_user(opt4_k, opt4, sizeof(struct hwnat_config_args))) {
+			kfree(opt4_k);
+			return -EFAULT;
+		}
 		opt4_k->result = ppe_set_unbind_lifetime(opt4_k->foe_unb_dlta);
 		kfree(opt4_k);
 		break;
 	case HW_NAT_BIND_LIFETIME:
 		opt4_k = kmalloc(sizeof(*opt4_k), GFP_KERNEL);
-		if (copy_from_user(opt4_k, opt4, sizeof(struct hwnat_config_args)))
-			pr_debug("copy_from_user fail\n");
+		if (!opt4_k)
+			return -ENOMEM;
+		if (copy_from_user(opt4_k, opt4, sizeof(struct hwnat_config_args))) {
+			kfree(opt4_k);
+			return -EFAULT;
+		}
 		opt4_k->result =
 		    ppe_set_bind_lifetime(opt4_k->foe_tcp_dlta,
 					  opt4_k->foe_udp_dlta, opt4_k->foe_fin_dlta);
@@ -194,15 +256,23 @@ long hw_nat_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		break;
 	case HW_NAT_BIND_DIRECTION:
 		opt4_k = kmalloc(sizeof(*opt4_k), GFP_KERNEL);
-		if (copy_from_user(opt4_k, opt4, sizeof(struct hwnat_config_args)))
-			pr_debug("copy_from_user fail\n");
+		if (!opt4_k)
+			return -ENOMEM;
+		if (copy_from_user(opt4_k, opt4, sizeof(struct hwnat_config_args))) {
+			kfree(opt4_k);
+			return -EFAULT;
+		}
 		bind_dir = opt4_k->bind_dir;
 		kfree(opt4_k);
 		break;
 	case HW_NAT_VLAN_ID:
 		opt4_k = kmalloc(sizeof(*opt4_k), GFP_KERNEL);
-		if (copy_from_user(opt4_k, opt4, sizeof(struct hwnat_config_args)))
-			pr_debug("copy_from_user fail\n");
+		if (!opt4_k)
+			return -ENOMEM;
+		if (copy_from_user(opt4_k, opt4, sizeof(struct hwnat_config_args))) {
+			kfree(opt4_k);
+			return -EFAULT;
+		}
 		wan_vid = opt4_k->wan_vid;
 		lan_vid = opt4_k->lan_vid;
 		kfree(opt4_k);
@@ -210,18 +280,26 @@ long hw_nat_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 #if defined(CONFIG_PPE_MCAST)
 	case HW_NAT_MCAST_INS:
 		opt5_k = kmalloc(sizeof(*opt5_k), GFP_KERNEL);
-		if (copy_from_user(opt5_k, opt5, sizeof(struct hwnat_mcast_args)))
-			pr_debug("copy_from_user fail\n");
+		if (!opt5_k)
+			return -ENOMEM;
+		if (copy_from_user(opt5_k, opt5, sizeof(struct hwnat_mcast_args))) {
+			kfree(opt5_k);
+			return -EFAULT;
+		}
 		foe_mcast_entry_ins(opt5_k->mc_vid, opt5_k->dst_mac, opt5_k->mc_px_en,
 				    opt5_k->mc_px_qos_en, opt5_k->mc_qos_qid);
 		kfree(opt5_k);
 		break;
 	case HW_NAT_MCAST_DEL:
 		opt5_k = kmalloc(sizeof(*opt5_k), GFP_KERNEL);
-		if (copy_from_user(opt5_k, opt5, sizeof(struct hwnat_mcast_args)))
-			pr_debug("copy_from_user fail\n");
-		foe_mcast_entry_del(opt5->mc_vid, opt5->dst_mac, opt5->mc_px_en, opt5->mc_px_qos_en,
-				    opt5->mc_qos_qid);
+		if (!opt5_k)
+			return -ENOMEM;
+		if (copy_from_user(opt5_k, opt5, sizeof(struct hwnat_mcast_args))) {
+			kfree(opt5_k);
+			return -EFAULT;
+		}
+		foe_mcast_entry_del(opt5_k->mc_vid, opt5_k->dst_mac, opt5_k->mc_px_en,
+				    opt5_k->mc_px_qos_en, opt5_k->mc_qos_qid);
 		kfree(opt5_k);
 		break;
 	case HW_NAT_MCAST_DUMP:
@@ -232,66 +310,73 @@ long hw_nat_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 #if defined(CONFIG_PPE_MIB)
 	case HW_NAT_MIB_DUMP:
 		opt6_k = kmalloc(sizeof(*opt6_k), GFP_KERNEL);
-		if (copy_from_user(opt6_k, opt6, sizeof(struct hwnat_mib_args)))
-			pr_debug("copy_from_user fail\n");
+		if (!opt6_k)
+			return -ENOMEM;
+		if (copy_from_user(opt6_k, opt6, sizeof(struct hwnat_mib_args))) {
+			kfree(opt6_k);
+			return -EFAULT;
+		}
 		ppe_mib_dump(opt6_k->entry_num, &tx_pkt_cnt, &tx_byte_cnt);
 		kfree(opt6_k);
 		break;
 	case HW_NAT_MIB_DRAM_DUMP:
 		opt6_k = kmalloc(sizeof(*opt6_k), GFP_KERNEL);
-		if (copy_from_user(opt6_k, opt6, sizeof(struct hwnat_mib_args)))
-			pr_debug("copy_from_user fail\n");
+		if (!opt6_k)
+			return -ENOMEM;
+		if (copy_from_user(opt6_k, opt6, sizeof(struct hwnat_mib_args))) {
+			kfree(opt6_k);
+			return -EFAULT;
+		}
 		ppe_mib_dram_dump(opt6_k->entry_num);
 		kfree(opt6_k);
 		break;
 	case HW_NAT_MIB_GET:
 		opt2_k = kmalloc(sizeof(*opt2_k), GFP_KERNEL);
-		if (copy_from_user(opt2_k, opt2, sizeof(*opt2_k)))
-			pr_info("copy_from_user fail\n");
+		if (!opt2_k)
+			return -ENOMEM;
+		if (copy_from_user(opt2_k, opt2, sizeof(*opt2_k))) {
+			kfree(opt2_k);
+			return -EFAULT;
+		}
 		opt2_k->result = get_ppe_mib(opt2_k, &tx_pkt_cnt, &tx_byte_cnt, &rx_pkt_cnt, &rx_byte_cnt);
-		pr_info("!!!!, tx byte = %lu\n", tx_byte_cnt);
-		pr_info("!!!!, tx pkt = %lu\n", tx_pkt_cnt);
-		pr_info("!!!!, rx byte = %lu\n", rx_byte_cnt);
-		pr_info("!!!!, rx pkt = %lu\n", rx_pkt_cnt);
 		kfree(opt2_k);
-		break;		
+		break;
 #endif
 	case HW_NAT_TBL_CLEAR:
 		ppe_tbl_clear();
 		break;
 	case HW_NAT_IPI_CTRL_FROM_EXTIF:
-#if defined (CONFIG_HW_NAT_IPI)				
+#if defined (CONFIG_HW_NAT_IPI)
 		/* Dora */
 		opt8_k = kmalloc(sizeof(*opt8_k), GFP_KERNEL);
-		if (copy_from_user(opt8_k, opt8, sizeof(*opt8_k)))
-			pr_info("copy_from_user fail\n");
+		if (!opt8_k)
+			return -ENOMEM;
+		if (copy_from_user(opt8_k, opt8, sizeof(*opt8_k))) {
+			kfree(opt8_k);
+			return -EFAULT;
+		}
 		local_irq_disable();
-		if ((opt8->hnat_ipi_enable==1) && (hnat_ipi_config->enable_from_extif!=1))
+		if ((opt8_k->hnat_ipi_enable==1) && (hnat_ipi_config->enable_from_extif!=1))
 		{
 			hnat_ipi_config->enable_from_extif = opt8_k->hnat_ipi_enable;
 			HnatIPITimerSetup();
 		}
 		else
-			hnat_ipi_config->enable_from_extif = opt8_k->hnat_ipi_enable;	
+			hnat_ipi_config->enable_from_extif = opt8_k->hnat_ipi_enable;
 
 		hnat_ipi_config->queue_thresh_from_extif = opt8_k->queue_thresh;
 		hnat_ipi_config->drop_pkt_from_extif = opt8_k->drop_pkt;
 		hnat_ipi_config->ipi_cnt_mod_from_extif = opt8_k->ipi_cnt_mod;
 		local_irq_enable();
-		printk("*** [FromExtIf]hnat_ipi_enable=%d, queue_thresh=%d, drop_pkt=%d ***\n", \
-							hnat_ipi_config->enable_from_extif, 
-							hnat_ipi_config->queue_thresh_from_extif, 
-							hnat_ipi_config->drop_pkt_from_extif);
 		if (hnat_ipi_config->enable_from_extif == 1) {
 			hnat_ipi_s* phnat_ipi;
-			hnat_ipi_stat* phnat_ipi_status;		
-		//if (1) {
+			hnat_ipi_stat* phnat_ipi_status;
 			extern unsigned int ipidbg[NR_CPUS][10];
 			for (i=0; i<NR_CPUS; i++)
 			{
 				phnat_ipi = hnat_ipi_from_extif[i];
-				phnat_ipi_status = hnat_ipi_status[i];	
-#if defined (HNAT_IPI_DQ)				
+				phnat_ipi_status = hnat_ipi_status[i];
+#if defined (HNAT_IPI_DQ)
 				printk("skbQueue[%d].qlen=%d,%d, dropPktNum[%d]=%d, cpu_status[%d]=%d, smp_call_cnt[%d]=%d\n", i, \
 								phnat_ipi->skbInputQueue.qlen,phnat_ipi->skbProcessQueue.qlen, i, \
 								phnat_ipi_status->dropPktNum_from_extif,i,\
@@ -323,43 +408,42 @@ long hw_nat_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 			memset(ipidbg, 0, sizeof(ipidbg));
 		}
 		kfree(opt8_k);
-#endif		
-		
+#endif
+
 		break;
 	case HW_NAT_IPI_CTRL_FROM_PPEHIT:
 		/* Dora */
 #if defined (CONFIG_HW_NAT_IPI)
 		opt7_k = kmalloc(sizeof(*opt7_k), GFP_KERNEL);
-		if (copy_from_user(opt7_k, opt7, sizeof(*opt7_k)))
-			pr_info("copy_from_user fail\n");
+		if (!opt7_k)
+			return -ENOMEM;
+		if (copy_from_user(opt7_k, opt7, sizeof(*opt7_k))) {
+			kfree(opt7_k);
+			return -EFAULT;
+		}
 		local_irq_disable();
-		printk("*** [FromPPE]hnat_ipi_enable=%d, queue_thresh=%d, drop_pkt=%d ***\n", \
-          				hnat_ipi_config->enable_from_ppehit, \
-          				hnat_ipi_config->queue_thresh_from_ppehit, \
-          				hnat_ipi_config->drop_pkt_from_ppehit);
-		if ((opt7->hnat_ipi_enable==1) && (hnat_ipi_config->enable_from_ppehit!=1))
+		if ((opt7_k->hnat_ipi_enable==1) && (hnat_ipi_config->enable_from_ppehit!=1))
 		{
 			hnat_ipi_config->enable_from_ppehit = opt7_k->hnat_ipi_enable;
 			HnatIPITimerSetup();
 		}
 		else
 			hnat_ipi_config->enable_from_ppehit = opt7_k->hnat_ipi_enable;
-			
+
 		hnat_ipi_config->queue_thresh_from_ppehit = opt7_k->queue_thresh;
 		hnat_ipi_config->drop_pkt_from_ppehit = opt7_k->drop_pkt;
 		hnat_ipi_config->ipi_cnt_mod_from_ppehit = opt7_k->ipi_cnt_mod;
 		local_irq_enable();
-		
+
 		if (hnat_ipi_config->enable_from_ppehit == 1) {
 			hnat_ipi_s* phnat_ipi;
-			hnat_ipi_stat* phnat_ipi_status;		
-		//if (1) {
+			hnat_ipi_stat* phnat_ipi_status;
 			extern unsigned int ipidbg2[NR_CPUS][10];
 			for (i=0; i<NR_CPUS; i++)
 			{
 				phnat_ipi = hnat_ipi_from_ppehit[i];
-				phnat_ipi_status = hnat_ipi_status[i];	
-#if defined (HNAT_IPI_DQ)				
+				phnat_ipi_status = hnat_ipi_status[i];
+#if defined (HNAT_IPI_DQ)
 				printk("skbQueue[%d].qlen=%d,%d, dropPktNum[%d]=%d, cpu_status[%d]=%d, smp_call_cnt[%d]=%d\n", i, \
 								phnat_ipi->skbInputQueue.qlen,phnat_ipi->skbProcessQueue.qlen, i, \
 								phnat_ipi_status->dropPktNum_from_ppehit,i,\
@@ -391,16 +475,17 @@ long hw_nat_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 			memset(ipidbg2, 0, sizeof(ipidbg2));
 		}
 		kfree(opt7_k);
-#endif		
-		
+#endif
+
 		break;
 	case HW_NAT_DPORT:
 		dump_dport();
 		break;
 	default:
+		ret = -ENOTTY;
 		break;
 	}
-	return 0;
+	return ret;
 }
 
 const struct file_operations hw_nat_fops = {
@@ -430,9 +515,18 @@ void ppe_unreg_ioctl_handler(void)
 
 int reply_entry_idx(struct hwnat_tuple *opt, unsigned int entry_num)
 {
-	struct foe_entry *entry = &ppe_foe_base[entry_num];
+	struct foe_entry *entry;
 	struct foe_pri_key key;
 	int32_t hash_index;
+
+	/* Validate entry index to prevent array out-of-bounds access */
+	if (entry_num >= FOE_4TB_SIZ) {
+		pr_err("%s: invalid entry_num %u (max %u)\n",
+		       __func__, entry_num, FOE_4TB_SIZ);
+		return -1;
+	}
+
+	entry = &ppe_foe_base[entry_num];
 	
 	if(opt->pkt_type == IPV4_NAPT) {
 		key.ipv4_hnapt.sip=entry->ipv4_hnapt.new_dip;
@@ -468,7 +562,16 @@ int reply_entry_idx(struct hwnat_tuple *opt, unsigned int entry_num)
 #if defined(CONFIG_PPE_MIB)
 void ppe_mib_dram_dump(uint32_t entry_num)
 {
-	struct mib_entry *mib_entry = &ppe_mib_base[entry_num];
+	struct mib_entry *mib_entry;
+
+	/* Validate entry index to prevent array out-of-bounds access */
+	if (entry_num >= FOE_4TB_SIZ) {
+		pr_err("%s: invalid entry_num %u (max %u)\n",
+		       __func__, entry_num, FOE_4TB_SIZ);
+		return;
+	}
+
+	mib_entry = &ppe_mib_base[entry_num];
 
 	pr_info("***********DRAM PPE Entry = %d*********\n", entry_num);
 	pr_info("PpeMibBase = %p\n", ppe_mib_base);
@@ -487,6 +590,16 @@ void ppe_mib_dump(unsigned int entry_num, unsigned long *pkt_cnt, unsigned long 
 	unsigned int pkt_l = 0;
 
 	unsigned int long pkt_h = 0;
+
+	/* Validate entry index to prevent out-of-bounds hardware access */
+	if (entry_num >= FOE_4TB_SIZ) {
+		pr_err("%s: invalid entry_num %u (max %u)\n",
+		       __func__, entry_num, FOE_4TB_SIZ);
+		*pkt_cnt = 0;
+		*byte_cnt = 0;
+		return;
+	}
+
 	reg_write(MIB_SER_CR, entry_num | (1 << 16));
 	while (1) {
 		if (!((reg_read(MIB_SER_CR) & 0x10000) >> 16))
@@ -664,6 +777,9 @@ void dump_dport(void)
 {
 	int i;
 	for (i = 0; i < MAX_IF_NUM; i++) {
-		pr_info("dst_port[%d] = %s\n", i, dst_port[i]->name);
+		if (dst_port[i])
+			pr_info("dst_port[%d] = %s\n", i, dst_port[i]->name);
+		else
+			pr_info("dst_port[%d] = (null)\n", i);
 	}
 }

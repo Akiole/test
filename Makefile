@@ -19,7 +19,7 @@
 # === Project Layout ===
 TOPDIR          := $(CURDIR)
 SOURCE_DIR      := $(TOPDIR)/trunk
-TEMPLATE_DIR    := $(SOURCE_DIR)/vendors/configs/templates
+TEMPLATE_DIR    := $(SOURCE_DIR)/configs/templates
 CONFIG_FILE     := $(SOURCE_DIR)/.config
 
 include $(SOURCE_DIR)/host-tools.mk
@@ -45,13 +45,18 @@ TOOLCHAIN_URL ?= $(TOOLCHAIN_RELEASE_BASE)/$(TOOLCHAIN_TARBALL)
 # === Auto-discovered target products ===
 PRODUCTS        := $(notdir $(basename $(wildcard $(TEMPLATE_DIR)/*.config)))
 
-.PHONY: all build clean distclean deps toolchain toolchain-download toolchain-build toolchain-package $(PRODUCTS)
+# Toolchain verification is provided by host-tools.mk as VERIFY_TOOLCHAIN_FUNC
+# (parameterized: verify_tc <prefix> <triplet>).  Used by toolchain / toolchain-download.
+
+.PHONY: all build clean distclean deps toolchain-deps toolchain toolchain-download toolchain-build toolchain-package $(PRODUCTS)
 
 all: build
 
 # Install all build dependencies automatically via the system package manager.
 # macOS: Homebrew (brew).  Linux: apt (Debian/Ubuntu).
 # Run once before the first build:  make deps
+# This is the single source of truth for build dependencies — CI workflows
+# (build.yml, custom.yml) call `make deps` instead of maintaining duplicate lists.
 deps:
 	@echo "\033[1;36m===> 📦 Installing build dependencies...\033[0m"
 	@if [ "$(HOST_OS)" = "Darwin" ]; then \
@@ -59,9 +64,12 @@ deps:
 			echo "\033[1;31m===> ❌ Homebrew not found. Install from https://brew.sh\033[0m"; exit 1; \
 		fi; \
 		echo "==> Using Homebrew (macOS)"; \
-		brew install autoconf automake bash binutils bison ccache cmake coreutils curl diffutils \
-		            file findutils flex gawk gcc gettext git gnu-sed gnu-tar gpatch grep gperf \
-		            help2man libtool m4 make ncurses pkg-config python3 texinfo wget xz; \
+		export HOMEBREW_NO_REQUIRE_TAP_TRUST=1; \
+		brew untap aws/tap 2>/dev/null || true; \
+		brew install autoconf automake bash bc binutils bison ccache cmake coreutils curl diffutils \
+		            file findutils flex gawk gcc gettext git gmp gnu-sed gnu-tar gpatch grep gperf \
+		            help2man jq libmpc libtool lzo m4 make mpfr ncurses pkg-config python3 texinfo wget xz; \
+		pip3 install docutils 2>/dev/null || true; \
 		echo ""; \
 		echo "\033[1;32m===> ✅ macOS dependencies installed.\033[0m"; \
 	else \
@@ -70,24 +78,49 @@ deps:
 		fi; \
 		echo "==> Using apt (Debian/Ubuntu)"; \
 		sudo apt-get update && sudo apt-get install -y \
-			build-essential autoconf automake bison flex gawk gperf gettext help2man libtool \
-			texinfo libncurses-dev ccache cmake; \
+			autoconf automake autopoint bc build-essential bison ccache cmake cpio \
+			fakeroot flex gawk gettext gperf help2man jq kmod libltdl-dev liblzma-dev \
+			liblzo2-dev libmpc-dev libmpfr-dev libncurses-dev libgmp-dev libtool-bin \
+			pkg-config python3-docutils texinfo unzip xxd zlib1g-dev zip; \
 		echo ""; \
 		echo "\033[1;32m===> ✅ Linux dependencies installed.\033[0m"; \
+	fi
+
+# Install only the minimal dependencies required to build the cross toolchain
+# via crosstool-ng (no firmware-build extras like ccache/cmake/python3).
+# Used by CI toolchain workflow:  make toolchain-deps
+toolchain-deps:
+	@echo "\033[1;36m===> 📦 Installing toolchain build dependencies...\033[0m"
+	@if [ "$(HOST_OS)" = "Darwin" ]; then \
+		if ! command -v brew >/dev/null 2>&1; then \
+			echo "\033[1;31m===> ❌ Homebrew not found. Install from https://brew.sh\033[0m"; exit 1; \
+		fi; \
+		echo "==> Using Homebrew (macOS)"; \
+		export HOMEBREW_NO_REQUIRE_TAP_TRUST=1; \
+		brew untap aws/tap 2>/dev/null || true; \
+		brew install autoconf automake bash bc binutils bison coreutils curl diffutils findutils \
+		            flex gawk gcc gettext git gmp gnu-sed gnu-tar gpatch grep gperf help2man \
+		            libmpc libtool lzo m4 make mpfr ncurses pkg-config python3 texinfo unzip wget xz; \
+		echo ""; \
+		echo "\033[1;32m===> ✅ macOS toolchain dependencies installed.\033[0m"; \
+	else \
+		if ! command -v apt-get >/dev/null 2>&1; then \
+			echo "\033[1;31m===> ❌ apt-get not found. Unsupported Linux distro, install deps manually.\033[0m"; exit 1; \
+		fi; \
+		echo "==> Using apt (Debian/Ubuntu)"; \
+		sudo apt-get update && sudo apt-get install -y \
+			autoconf automake bc build-essential bison cpio curl flex gawk gettext git gperf \
+			help2man libltdl-dev libmpc-dev libmpfr-dev libgmp-dev libncurses-dev libtool-bin \
+			pkg-config python3 texinfo unzip wget xz-utils; \
+		echo ""; \
+		echo "\033[1;32m===> ✅ Linux toolchain dependencies installed.\033[0m"; \
 	fi
 
 # Toolchain: use local if present and complete, else download prebuilt, else build from source
 # Completeness check: gcc --version + key binaries (ld/as/ar/ranlib/strip/objcopy) + sysroot headers + crt1.o
 toolchain:
-	@verify_tc() { \
-		[ -x "$(TOOLCHAIN_CC)" ] && "$(TOOLCHAIN_CC)" --version >/dev/null 2>&1 || return 1; \
-		for t in ld as ar ranlib strip objcopy; do \
-			[ -x "$(TOOLCHAIN_PATH)/bin/$(TOOLCHAIN)-$$t" ] || return 1; \
-		done; \
-		[ -f "$(TOOLCHAIN_PATH)/$(TOOLCHAIN)/sysroot/usr/include/stdio.h" ] || return 1; \
-		[ -f "$(TOOLCHAIN_PATH)/$(TOOLCHAIN)/sysroot/usr/lib/crt1.o" ] || return 1; \
-	}; \
-	if verify_tc; then \
+	@$(VERIFY_TOOLCHAIN_FUNC) \
+	if verify_tc "$(TOOLCHAIN_PATH)" "$(TOOLCHAIN)"; then \
 		echo "\033[1;32m===> ✅ Toolchain ready (local, verified): $(TOOLCHAIN)\033[0m"; \
 	else \
 		echo "\033[1;36m===> 🔎 Toolchain not found or incomplete, acquiring $(TOOLCHAIN)...\033[0m"; \
@@ -97,15 +130,8 @@ toolchain:
 # Delegate download to toolchain/Makefile (single source of truth).
 # TOOLCHAIN_URL is passed through so top-level overrides propagate down.
 toolchain-download:
-	@verify_tc() { \
-		[ -x "$(TOOLCHAIN_CC)" ] && "$(TOOLCHAIN_CC)" --version >/dev/null 2>&1 || return 1; \
-		for t in ld as ar ranlib strip objcopy; do \
-			[ -x "$(TOOLCHAIN_PATH)/bin/$(TOOLCHAIN)-$$t" ] || return 1; \
-		done; \
-		[ -f "$(TOOLCHAIN_PATH)/$(TOOLCHAIN)/sysroot/usr/include/stdio.h" ] || return 1; \
-		[ -f "$(TOOLCHAIN_PATH)/$(TOOLCHAIN)/sysroot/usr/lib/crt1.o" ] || return 1; \
-	}; \
-	if verify_tc; then \
+	@$(VERIFY_TOOLCHAIN_FUNC) \
+	if verify_tc "$(TOOLCHAIN_PATH)" "$(TOOLCHAIN)"; then \
 		echo "\033[1;32m===> ✅ Toolchain already present (verified): $(TOOLCHAIN), skip download\033[0m"; \
 	else \
 		$(MAKE) -C "$(TOOLCHAIN_ROOT)" download \
@@ -138,7 +164,7 @@ build: toolchain
 		exit 1; \
 	fi
 	@echo "\033[1;32m===> 🛠️ Initiating firmware compilation ($(JOBS) jobs)...\033[0m"
-	@$(MAKE) -C $(SOURCE_DIR)
+	@$(MAKE) -C $(SOURCE_DIR) all
 
 # Device-specific firmware configuration and build
 # TOOLCHAIN resolution priority:
@@ -149,9 +175,9 @@ TOOLCHAIN_OVERRIDE := $(filter command line environment,$(origin TOOLCHAIN))
 $(PRODUCTS):
 	@if [ -n "$(TOOLCHAIN_OVERRIDE)" ]; then \
 		TC="$(TOOLCHAIN)"; \
-		LIBC=$$(echo "$$TC" | sed 's/^mipsel-linux-//'); \
+		LIBC=$$(echo "$$TC" | $(SED_READ) 's/^mipsel-linux-//'); \
 	else \
-		LIBC=$$(grep -m1 '^CONFIG_TOOLCHAIN_LIBC=' "$(TEMPLATE_DIR)/$@.config" 2>/dev/null | cut -d= -f2); \
+		LIBC=$$($(GREP) -m1 '^CONFIG_TOOLCHAIN_LIBC=' "$(TEMPLATE_DIR)/$@.config" 2>/dev/null | cut -d= -f2); \
 		LIBC=$${LIBC:-musl}; \
 		TC="mipsel-linux-$$LIBC"; \
 	fi; \

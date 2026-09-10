@@ -469,6 +469,18 @@ static void setup_cm_memory_region(struct resource *mem_resource)
 	}
 }
 
+/*
+ * MT7621 PCIe reset control.
+ *
+ * NOTE: The reset signal polarity is reversed between MT7621 E2 and
+ * non-E2 (E1) silicon due to a hardware design change:
+ *   - E2 (ECO version 1): reset_control_assert() = assert reset
+ *   - E1 (non-E2): reset_control_deassert() = assert reset
+ *
+ * This is intentional and must not be "fixed" without verifying on
+ * actual hardware. The reversed polarity is required for proper PCIe
+ * PHY reset on each silicon revision.
+ */
 static void mt7621_pci_reset_assert(
 	struct mt7621_pci_controller *mpc, u32 idx)
 {
@@ -539,7 +551,7 @@ static void mt7621_pcie_init(struct mt7621_pci_controller *mpc)
 				SYSC_REG_CLOCK_CONFIG1);
 			num_linked_up++;
 		} else {
-			pr_info("PCIe port %d link down\n", i);
+			pr_debug("PCIe port %d link down\n", i);
 			mt7621_pci_reset_assert(mpc, i);
 			rt_sysc_m32(BIT(SYSC_CLK1_PCI0_SHIFT + i), 0,
 				SYSC_REG_CLOCK_CONFIG1);
@@ -682,6 +694,10 @@ static int mt7621_pci_probe(struct platform_device *pdev)
 	mpc->pci_controller.mem_resource = &mt7621_pci_mem_res;
 	mpc->pci_controller.io_map_base =
 		(unsigned long) ioremap(PCIE_IO_PORT_BASE, PCIE_IO_PORT_SIZE);
+	if (!mpc->pci_controller.io_map_base) {
+		dev_err(&pdev->dev, "failed to ioremap PCIe IO port base\n");
+		return -ENOMEM;
+	}
 
 	set_io_port_base(mpc->pci_controller.io_map_base);
 
@@ -723,7 +739,7 @@ static int mt7621_pci_probe(struct platform_device *pdev)
 				return ret;
 			}
 		} else {
-			dev_notice(&pdev->dev,
+			dev_dbg(&pdev->dev,
 				"Failed to get gpio for PCIe%d\n", i);
 		}
 	}

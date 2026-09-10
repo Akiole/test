@@ -3,7 +3,7 @@
 #include <sys/un.h>
 #include <errno.h>
 #include <string.h>
-#include <sys/fcntl.h> // fcntl
+#include <fcntl.h> // fcntl
 #include <unistd.h> // close
 #include <sys/types.h>
 #include <sys/socket.h>

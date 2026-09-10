@@ -4,6 +4,10 @@
 /.ccache
 /build
 /download
+/romfs
+/images
+/merge
+/stage
 
 # =============================================================================
 # Compiled object files / libraries
@@ -26,6 +30,7 @@
 .config
 .depend
 .dirstamp
+
 autom4te.cache
 configure~
 config.h.in~
@@ -34,30 +39,3 @@ config.status
 config_done
 stamp-h1
 
-# =============================================================================
-# Patch backups / temp files
-# =============================================================================
-*.orig
-*.rej
-*.log
-*.tmp
-*.bak
-core
-core.*
-
-# =============================================================================
-# Kernel / device-tree build artifacts
-# =============================================================================
-*.dtb
-*.dtb.o
-*.dtb.S
-*.ko
-*.mod
-*.mod.c
-*.mod.o
-*.symvers
-Module.symvers
-modules.builtin
-modules.order
-.*.cmd
-.tmp_versions/

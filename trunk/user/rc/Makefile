@@ -6,9 +6,7 @@ include $(INCLUDE_DIR)/package.mk
 
 TARGET_CFLAGS += \
 	-I$(ROOTDIR)/user/shared/src \
-	-I$(STAGING_DIR)/include/shared \
 	$(if $(STORAGE_ENABLED),-I$(STAGING_DIR)/include/libdisk,)
-TARGET_LDFLAGS += -L$(STAGING_DIR)/lib
 
 $(eval $(call BuildPackage,$(PKG_NAME)))
 

@@ -425,7 +425,7 @@ int32_t HnatIPIForceCPU(struct sk_buff * skb)
 	struct foe_entry *entry = NULL;	
 #else				  	
 	//struct foe_entry *entry = &PpeFoeBase[FOE_ENTRY_NUM(skb)];	
-	struct foe_entry *entry = &ppe_foe_base[FOE_ENTRY_NUM(skb)];				
+	struct foe_entry *entry;
 #endif
 	unsigned int kickoff_ipi = 1;
 	int is_thecpu = 0;
@@ -435,6 +435,16 @@ int32_t HnatIPIForceCPU(struct sk_buff * skb)
           				hnat_ipi_config->enable_from_ppehit, \
           				hnat_ipi_config->queue_thresh_from_ppehit, \
           				hnat_ipi_config->drop_pkt_from_ppehit);
+
+	/* Validate FOE entry index to prevent array out-of-bounds access */
+	if (FOE_ENTRY_NUM(skb) >= FOE_4TB_SIZ) {
+		printk("%s: invalid FOE entry index %u\n", __func__, FOE_ENTRY_NUM(skb));
+		return 1;
+	}
+
+#if !defined (CONFIG_RAETH_QDMA)
+	entry = &ppe_foe_base[FOE_ENTRY_NUM(skb)];
+#endif
   	if (hnat_ipi_config->enable_from_ppehit ==1) {
       		/*unsigned long cur_jiffies = jiffies;*/ 
       		//unsigned long delta = 0;
@@ -644,61 +654,56 @@ void ipi_monitor_from_ppehit(unsigned long data)
 int HnatIPIInit(void)
 {
 		int i;
-	   //printk("========= %s(%d)[%s]: init HNAT IPI [%d CPUs](%d) =========\n\n", __func__, __LINE__,__TIME__,NR_CPUS,sizeof(hnat_ipi_s));
-	   printk("========= %s: init HNAT IPI [%d CPUs](%lu) =========\n\n", __func__, NR_CPUS,sizeof(hnat_ipi_s));
-	  //hnat_ipi_config = &hnat_ipi_config_ctx;
-//    hnat_ipi_from_extif[0] = kzalloc(sizeof(hnat_ipi_s)*NR_CPUS, GFP_ATOMIC);
- //   hnat_ipi_from_ppehit[0] = kzalloc(sizeof(hnat_ipi_s)*NR_CPUS, GFP_ATOMIC);
- //   hnat_ipi_status[0] = kzalloc(sizeof(hnat_ipi_stat)*NR_CPUS, GFP_ATOMIC);
-   
+	   pr_info("========= %s: init HNAT IPI [%d CPUs](%lu) =========\n\n", __func__, NR_CPUS,sizeof(hnat_ipi_s));
+
 	hnat_ipi_from_extif[0] = kzalloc((sizeof(hnat_ipi_s)*2+sizeof(hnat_ipi_stat))*NR_CPUS \
 				+ sizeof(hnat_ipi_config), GFP_ATOMIC);
-hnat_ipi_from_ppehit[0] = ((hnat_ipi_s*)hnat_ipi_from_extif[0]) + sizeof(hnat_ipi_s)*NR_CPUS;
-hnat_ipi_status[0] = ((hnat_ipi_stat*)hnat_ipi_from_ppehit[0]) + sizeof(hnat_ipi_s)*NR_CPUS;
-hnat_ipi_config = ((hnat_ipi_cfg*)hnat_ipi_status[0]) + sizeof(hnat_ipi_stat)*NR_CPUS; 
-    if ((hnat_ipi_from_extif[0]==NULL)||(hnat_ipi_from_ppehit[0]==NULL) || \
-    		(hnat_ipi_status[0]==NULL) || (hnat_ipi_config==NULL))
-    {
-    		if (hnat_ipi_from_extif[0])
-    			kfree(hnat_ipi_from_extif[0]);
-//    		if (hnat_ipi_from_ppehit[0])
-  //  			kfree(hnat_ipi_from_ppehit[0]);
-  //  		if (hnat_ipi_status[0])
-  //  			kfree(hnat_ipi_status[0]);
-    		printk("Hnat IPI allocation failed\n");
-    		return -1;
-    }
-    memset(hnat_ipi_config, 0 , sizeof(hnat_ipi_cfg));		
+	if (!hnat_ipi_from_extif[0]) {
+		pr_err("Hnat IPI allocation failed\n");
+		return -ENOMEM;
+	}
+
+	hnat_ipi_from_ppehit[0] = hnat_ipi_from_extif[0] + NR_CPUS;
+	hnat_ipi_status[0] = (hnat_ipi_stat *)(hnat_ipi_from_ppehit[0] + NR_CPUS);
+	hnat_ipi_config = (hnat_ipi_cfg *)(hnat_ipi_status[0] + NR_CPUS);
+
+    memset(hnat_ipi_config, 0 , sizeof(hnat_ipi_cfg));
     for (i=0; i<NR_CPUS; i++){
-    	hnat_ipi_from_extif[i] = hnat_ipi_from_extif[0]+1*i;
-    	hnat_ipi_from_ppehit[i] = hnat_ipi_from_ppehit[0]+1*i;
-    	hnat_ipi_status[i] = hnat_ipi_status[0]+1*i;
-    	//printk("hnat_ipi_from_extif[%d]=0x%x\n",i,hnat_ipi_from_extif[i]);
-    	//printk("hnat_ipi_from_ppehit[%d]=0x%x\n",i,hnat_ipi_from_ppehit[i]);
-    	//printk("hnat_ipi_status[%d]=0x%x\n",i,hnat_ipi_status[i]);
+    	hnat_ipi_from_extif[i] = hnat_ipi_from_extif[0]+i;
+    	hnat_ipi_from_ppehit[i] = hnat_ipi_from_ppehit[0]+i;
+    	hnat_ipi_status[i] = hnat_ipi_status[0]+i;
 
 #if (defined (HNAT_IPI_RXQUEUE) || defined (HNAT_IPI_DQ))
 			spin_lock_init(&hnat_ipi_from_extif[i]->ipilock);
 			spin_lock_init(&hnat_ipi_from_ppehit[i]->ipilock);
 #endif
 #if defined (HNAT_IPI_RXQUEUE)
-			hnat_ipi_from_extif[i]->RxQueue = (struct sk_buff**)kmalloc(sizeof(struct sk_buff)*1024, GFP_KERNEL);
+			hnat_ipi_from_extif[i]->RxQueue = kzalloc(sizeof(struct sk_buff *)*1024, GFP_KERNEL);
+			if (!hnat_ipi_from_extif[i]->RxQueue) {
+				pr_err("HNAT IPI: failed to alloc RxQueue for extif CPU%d\n", i);
+				goto err_free;
+			}
 			atomic_set(&hnat_ipi_from_extif[i]->RxQueueNum, 0);
 			hnat_ipi_from_extif[i]->RxQueueWIdx = 0;
 			hnat_ipi_from_extif[i]->RxQueueRIdx = 0;
-			  
-			hnat_ipi_from_ppehit[i]->RxQueue = (struct sk_buff**)kmalloc(sizeof(struct sk_buff)*1024, GFP_KERNEL);
+
+			hnat_ipi_from_ppehit[i]->RxQueue = kzalloc(sizeof(struct sk_buff *)*1024, GFP_KERNEL);
+			if (!hnat_ipi_from_ppehit[i]->RxQueue) {
+				pr_err("HNAT IPI: failed to alloc RxQueue for ppehit CPU%d\n", i);
+				kfree(hnat_ipi_from_extif[i]->RxQueue);
+				goto err_free;
+			}
 			atomic_set(&hnat_ipi_from_ppehit[i]->RxQueueNum, 0);
 			hnat_ipi_from_ppehit[i]->RxQueueWIdx = 0;
 			hnat_ipi_from_ppehit[i]->RxQueueRIdx = 0;
-	
+
 #elif defined (HNAT_IPI_DQ)
 			skb_queue_head_init(&hnat_ipi_from_extif[i]->skbInputQueue);
 			skb_queue_head_init(&hnat_ipi_from_extif[i]->skbProcessQueue);
-			
+
 			skb_queue_head_init(&hnat_ipi_from_ppehit[i]->skbInputQueue);
 			skb_queue_head_init(&hnat_ipi_from_ppehit[i]->skbProcessQueue);
-#else	
+#else
 			skb_queue_head_init(&hnat_ipi_from_extif[i]->skbIpiQueue);
 			skb_queue_head_init(&hnat_ipi_from_ppehit[i]->skbIpiQueue);
 #endif
@@ -706,7 +711,7 @@ hnat_ipi_config = ((hnat_ipi_cfg*)hnat_ipi_status[0]) + sizeof(hnat_ipi_stat)*NR
 			hnat_ipi_status[i]->dropPktNum_from_extif = 0;
 			hnat_ipi_status[i]->smp_call_cnt_from_extif = 0;
 			tasklet_init(&hnat_ipi_from_extif[i]->smp_func_call_tsk, smp_func_call_BH_handler_from_extif, 0);
-			
+
 			atomic_set(&hnat_ipi_status[i]->cpu_status_from_ppehit,0);
 			hnat_ipi_status[i]->dropPktNum_from_ppehit = 0;
 			hnat_ipi_status[i]->smp_call_cnt_from_ppehit = 0;
@@ -715,13 +720,28 @@ hnat_ipi_config = ((hnat_ipi_cfg*)hnat_ipi_status[0]) + sizeof(hnat_ipi_stat)*NR
 
     memset(ipidbg, 0, sizeof(ipidbg));
     memset(ipidbg2, 0, sizeof(ipidbg2));
- 
+
     ipi_monitor_timer_from_extif.function = NULL;
-		ipi_monitor_timer_from_ppehit.function = NULL;
-		
-    printk("========= %s(%d): init HNAT IPI =========\n\n", __func__, __LINE__);
+	ipi_monitor_timer_from_ppehit.function = NULL;
+
+    pr_info("========= %s(%d): init HNAT IPI =========\n\n", __func__, __LINE__);
 
 		return 0;
+
+err_free:
+	/* Free previously allocated RxQueues */
+	for (i = i - 1; i >= 0; i--) {
+#if defined (HNAT_IPI_RXQUEUE)
+		kfree(hnat_ipi_from_extif[i]->RxQueue);
+		kfree(hnat_ipi_from_ppehit[i]->RxQueue);
+#endif
+	}
+	kfree(hnat_ipi_from_extif[0]);
+	hnat_ipi_from_extif[0] = NULL;
+	hnat_ipi_from_ppehit[0] = NULL;
+	hnat_ipi_status[0] = NULL;
+	hnat_ipi_config = NULL;
+	return -ENOMEM;
 }
 
 int HnatIPIDeInit(void)

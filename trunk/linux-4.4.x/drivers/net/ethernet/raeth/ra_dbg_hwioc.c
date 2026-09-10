@@ -76,7 +76,14 @@ int ioc_pmu_cnt_config(int pmu_no, int interface, int event)
 	void *reg_pmu_cnt;
 	unsigned int pmu_sel;
 
+	if (pmu_no < 0 || pmu_no >= ARRAY_SIZE(reg_pmu_evn_phys))
+		return -EINVAL;
+
 	reg_pmu_cnt = ioremap(reg_pmu_evn_phys[pmu_no], 0x10);
+	if (!reg_pmu_cnt) {
+		pr_err("%s: failed to ioremap PMU%d\n", __func__, pmu_no);
+		return -ENOMEM;
+	}
 
 	/* Event Select Register
 	 * bit[31:8]	-> Reserved
@@ -102,6 +109,10 @@ int ioc_pmu_ctl_config(int enable, int ignore1, int ignore2)
 	void *reg_pmu_ctl;
 
 	reg_pmu_ctl = ioremap(MCSI_A_PMU_CTL_BASE, 0x10);
+	if (!reg_pmu_ctl) {
+		pr_err("%s: failed to ioremap PMU CTL\n", __func__);
+		return -ENOMEM;
+	}
 
 	/*Performance Monitor Control Register
 	 * bit[31:16]	-> Reserved
@@ -239,6 +250,15 @@ int ioc_pmu_read(struct seq_file *seq, void *v)
 	reg_virt_1 = ioremap(MCSI_A_PMU_EVN_SEL1, 0x10);
 	reg_virt_2 = ioremap(MCSI_A_PMU_EVN_SEL2, 0x10);
 	reg_virt_3 = ioremap(MCSI_A_PMU_EVN_SEL3, 0x10);
+
+	if (!reg_virt_0 || !reg_virt_1 || !reg_virt_2 || !reg_virt_3) {
+		pr_err("%s: failed to ioremap PMU registers\n", __func__);
+		if (reg_virt_0) iounmap(reg_virt_0);
+		if (reg_virt_1) iounmap(reg_virt_1);
+		if (reg_virt_2) iounmap(reg_virt_2);
+		if (reg_virt_3) iounmap(reg_virt_3);
+		return -ENOMEM;
+	}
 
 	seq_printf(seq, "MCSI_A_PMU_EVN_SEL0 = 0x%x\n",
 		   sys_reg_read(reg_virt_0));

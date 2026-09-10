@@ -1,14 +1,23 @@
 --- a/source3/configure
 +++ b/source3/configure
-@@ -13294,10 +13294,7 @@ if test x"$libreplace_cv_HAVE_GETADDRINF
- 	# see bug 5910, use our replacements if we detect
+@@ -5424,7 +5424,7 @@
+ CFLAGS=$savedCFLAGS
+ 
+ if test x"$GCC" != x"yes" ; then
+-
++	:
+ fi
+ 
+ if test x"$GCC" = x"yes" ; then
+@@ -14878,10 +14878,7 @@
  	# a broken system.
- 	if test "$cross_compiling" = yes; then :
--  { { $as_echo "$as_me:${as_lineno-$LINENO}: error: in \`$ac_pwd':" >&5
--$as_echo "$as_me: error: in \`$ac_pwd':" >&2;}
+ 	if test "$cross_compiling" = yes
+ then :
+-  { { printf '%s\n' "$as_me:${as_lineno-$LINENO}: error: in '$ac_pwd':" >&5
+-printf '%s\n' "$as_me: error: in '$ac_pwd':" >&2;}
 -as_fn_error $? "cannot run test program while cross compiling
--See \`config.log' for more details" "$LINENO" 5; }
-+		$as_echo "assuming valid getaddrinfo without bug 5910" >&2
- else
-   cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+-See 'config.log' for more details" "$LINENO" 5; }
++  printf '%s\n' "assuming valid getaddrinfo without bug 5910" >&2
+ else case e in #(
+   e) cat confdefs.h - <<_ACEOF >conftest.$ac_ext
  /* end confdefs.h.  */

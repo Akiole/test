@@ -12,6 +12,13 @@ CONFIGURE_PREFIX:=/
 define Build/Prepare
 	mkdir -p $(PKG_BUILD_DIR)
 	cp -fR $(CURDIR)/$(SRC_DIR)/. $(PKG_BUILD_DIR)/
+	# source3/configure is gitignored; regenerate it from configure.in so
+	# that patches/100-configure_fixes.patch (bug 5910 cross-compile fix)
+	# has a file to patch.
+	@if [ ! -f $(PKG_BUILD_DIR)/source3/configure ]; then \
+		echo "Regenerating source3/configure..."; \
+		(cd $(PKG_BUILD_DIR)/source3 && autoconf -Im4 -I../m4 -I../lib/replace); \
+	fi
 	$(Build/Patch)
 	# source3 Makefile references ../librpc/build_idl.sh and ../pidl/pidl;
 	# ensure these top-level dirs exist in the build dir (symlink if missing)
@@ -22,7 +29,7 @@ define Build/Prepare
 	done
 endef
 
-EXTRA_CPPFLAGS := -DNDEBUG -DSHMEM_SIZE=524288 -D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE=1 -D_LARGEFILE64_SOURCE=1 -D_LARGE_FILES=1
+EXTRA_CPPFLAGS := -DNDEBUG -DSHMEM_SIZE=524288 -D_LARGEFILE_SOURCE=1 -D_LARGE_FILES=1
 
 ifeq ($(CONFIG_FIRMWARE_INCLUDE_SMBD_SYSLOG),y)
 EXTRA_CFLAGS += -DMAX_DEBUG_LEVEL="0"

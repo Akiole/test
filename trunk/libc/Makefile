@@ -11,7 +11,7 @@ ROOTDIR = ..
 endif
 
 ifndef ROMFSDIR
-ROMFSDIR = $(ROOTDIR)/build/romfs
+ROMFSDIR = $(ROOTDIR)/romfs
 endif
 
 include $(PROJECT_CONFIG)

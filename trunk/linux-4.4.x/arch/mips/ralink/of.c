@@ -38,6 +38,7 @@ __iomem void *plat_of_remap_node(const char *node)
 {
 	struct resource res;
 	struct device_node *np;
+	void __iomem *base;
 
 	np = of_find_compatible_node(NULL, NULL, node);
 	if (!np)
@@ -51,7 +52,11 @@ __iomem void *plat_of_remap_node(const char *node)
 				res.name) < 0))
 		panic("Failed to request resources for %s", node);
 
-	return ioremap_nocache(res.start, resource_size(&res));
+	base = ioremap_nocache(res.start, resource_size(&res));
+	if (!base)
+		panic("Failed to remap %s node", node);
+
+	return base;
 }
 
 void __init device_tree_init(void)

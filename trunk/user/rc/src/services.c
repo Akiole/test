@@ -51,7 +51,8 @@ start_syslogd(void)
 		"-S",				/* smaller output */
 		"-D",				/* drop duplicates */
 		"-O", "/tmp/syslog.log",	/* syslog file */
-		NULL,				/* -L */
+		"-L",				/* log locally (workaround for busybox syslogd OPT_locallog bug) */
+		"-t",				/* strip client-generated timestamps (use current time for all logs) */
 		NULL, NULL,			/* -R host:port */
 		NULL
 	};
@@ -63,8 +64,9 @@ start_syslogd(void)
 		int log_port = nvram_safe_get_int("log_port", 514, 1, 65535);
 		snprintf(host_dst, sizeof(host_dst), "%s:%d", log_ipaddr, log_port);
 		syslogd_argv[7] = "-L";		/* local & remote */
-		syslogd_argv[8] = "-R";
-		syslogd_argv[9] = host_dst;
+		syslogd_argv[8] = "-t";		/* strip client timestamps */
+		syslogd_argv[9] = "-R";
+		syslogd_argv[10] = host_dst;
 	}
 
 	setenv_tz();
@@ -804,6 +806,7 @@ doSystem("/usr/sbin/skipd -d /etc/storage/db");
 #endif
 	system("/usr/bin/iappd.sh restart");
 	system("modprobe xt_TPROXY");
+	system("modprobe br_netfilter");
 	system("/usr/bin/iappd.sh test");
 	return 0;
 }

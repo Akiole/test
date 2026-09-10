@@ -1,4 +1,6 @@
 #!/bin/sh
+# Suppress errors for missing optional scripts (ss/adbyby/koolproxy etc.)
+exec 2>/dev/null
 mkdir -p /etc/ssl
 tar -xzf /etc_ro/certs.tgz -C /etc/ssl
 if [ ! -f "/etc/storage/koolproxy_rules_script.sh" ] ; then

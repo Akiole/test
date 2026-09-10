@@ -49,9 +49,18 @@ typedef struct _code {
  * If we reference them just once, this saves 150 bytes.
  * The pointers themselves are optimized out
  * (no size change on uclibc).
+ *
+ * The (CODE *) cast inside musl's macro discards the const qualifier
+ * from the compound literal, triggering -Wdiscarded-qualifiers at the
+ * point of use.  Suppress it locally — the cast originates in musl's
+ * <syslog.h>, not here, and the result is immediately bound to a
+ * const-qualified pointer.
  */
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdiscarded-qualifiers"
 static const CODE *const bb_prioritynames = prioritynames;
 static const CODE *const bb_facilitynames = facilitynames;
+#pragma GCC diagnostic pop
 
 
 #if ENABLE_SYSLOGD

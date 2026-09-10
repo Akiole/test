@@ -276,6 +276,7 @@ static void esw_show_bridge_partitions(u32 wan_bridge_mode)
 {
 	const char *wanl, *wanr;
 	char lans[8];
+	size_t lans_len;
 
 	wanl = "W|";
 	wanr = "";
@@ -283,38 +284,42 @@ static void esw_show_bridge_partitions(u32 wan_bridge_mode)
 	switch (wan_bridge_mode)
 	{
 	case SWAPI_WAN_BRIDGE_LAN1:
-		strcpy(lans, "WLLL");
+		strscpy(lans, "WLLL", sizeof(lans));
 		break;
 	case SWAPI_WAN_BRIDGE_LAN2:
-		strcpy(lans, "LWLL");
+		strscpy(lans, "LWLL", sizeof(lans));
 		break;
 	case SWAPI_WAN_BRIDGE_LAN3:
-		strcpy(lans, "LLWL");
+		strscpy(lans, "LLWL", sizeof(lans));
 		break;
 	case SWAPI_WAN_BRIDGE_LAN4:
-		strcpy(lans, "LLLW");
+		strscpy(lans, "LLLW", sizeof(lans));
 		break;
 	case SWAPI_WAN_BRIDGE_LAN3_LAN4:
-		strcpy(lans, "LLWW");
+		strscpy(lans, "LLWW", sizeof(lans));
 		break;
 	case SWAPI_WAN_BRIDGE_LAN1_LAN2:
-		strcpy(lans, "WWLL");
+		strscpy(lans, "WWLL", sizeof(lans));
 		break;
 	case SWAPI_WAN_BRIDGE_LAN1_LAN2_LAN3:
-		strcpy(lans, "WWWL");
+		strscpy(lans, "WWWL", sizeof(lans));
 		break;
 	case SWAPI_WAN_BRIDGE_DISABLE_WAN:
-		strcpy(lans, "LLLL");
+		strscpy(lans, "LLLL", sizeof(lans));
 		wanl = "L";
 		wanr = "";
 		break;
 	default:
-		strcpy(lans, "LLLL");
+		strscpy(lans, "LLLL", sizeof(lans));
 		break;
 	}
 
 #if defined (LAN_PORT_5)
-	strcat(lans, "L");
+	lans_len = strlen(lans);
+	if (lans_len < sizeof(lans) - 1) {
+		lans[lans_len] = 'L';
+		lans[lans_len + 1] = '\0';
+	}
 #endif
 
 	printk("%s - %s: %s%s%s\n", MTK_ESW_DEVNAME, "hw bridge", wanl, lans, wanr);
@@ -1678,7 +1683,7 @@ static void change_storm_control_broadcast(u32 control_rate_mbps)
 		if (control_rate_mbps > 0)
 			snprintf(rate_desc, sizeof(rate_desc), "%d mbps", control_rate_mbps);
 		else
-			strcpy(rate_desc, "off");
+			strscpy(rate_desc, "off", sizeof(rate_desc));
 		
 		printk("%s - set broadcast storm control rate as: %s\n", MTK_ESW_DEVNAME, rate_desc);
 		

@@ -16,8 +16,7 @@ CMAKE_OPTIONS += \
 	-DLIBUV_BUILD_BENCH=OFF
 
 TARGET_CFLAGS += \
-	-D_LARGEFILE_SOURCE \
-	-D_LARGEFILE64_SOURCE
+	-D_LARGEFILE_SOURCE
 
 define Build/Install
 	$(call Build/Install/Default)

@@ -20,7 +20,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <net/if_arp.h>
-#include <sys/signal.h>
+#include <signal.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <dirent.h>

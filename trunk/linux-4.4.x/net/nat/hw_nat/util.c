@@ -36,35 +36,6 @@ void MacReverse(uint8_t * Mac)
 	}
 }
 
-int GetNext(char *src, int separator, char *dest)
-{
-	char *c;
-	int len = 0;
-
-	if ((src == NULL) || (dest == NULL)) {
-		return -1;
-	}
-
-	c = strchr(src, separator);
-	if (c == NULL) {
-		strncpy(dest, src, len);
-		return -1;
-	}
-	len = c - src;
-	strncpy(dest, src, len);
-	dest[len] = '\0';
-	return len + 1;
-}
-
-static inline int atoi(char *s)
-{
-	int i = 0;
-	while (isdigit(*s)) {
-		i = i * 10 + *(s++) - '0';
-	}
-	return i;
-}
-
 /* Convert IP address from Hex to string */
 uint8_t *ip_to_str(IN uint32_t Ip)
 {
@@ -76,26 +47,8 @@ uint8_t *ip_to_str(IN uint32_t Ip)
 	c[1] = *(ptr + 1);
 	c[2] = *(ptr + 2);
 	c[3] = *(ptr + 3);
-	sprintf(Buf, "%d.%d.%d.%d", c[3], c[2], c[1], c[0]);
+	snprintf(Buf, sizeof(Buf), "%d.%d.%d.%d", c[3], c[2], c[1], c[0]);
 	return Buf;
-}
-
-unsigned int Str2Ip(IN char *str)
-{
-	int len;
-	char *ptr = str;
-	char buf[128];
-	unsigned char c[4];
-	int i;
-	for (i = 0; i < 3; ++i) {
-		if ((len = GetNext(ptr, '.', buf)) == -1) {
-			return 1;	/* parsing error */
-		}
-		c[i] = atoi(buf);
-		ptr += len;
-	}
-	c[3] = atoi(ptr);
-	return ((c[0] << 24) + (c[1] << 16) + (c[2] << 8) + c[3]);
 }
 
 /* calculate ip address range */

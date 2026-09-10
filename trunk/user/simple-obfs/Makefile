@@ -14,7 +14,6 @@ CONFIGURE_ARGS += \
 	--disable-documentation
 
 TARGET_CFLAGS += -I$(STAGING_DIR)/include -Wno-error=stringop-overread
-TARGET_LDFLAGS += -L$(STAGING_DIR)/lib
 
 CONFIGURE_VARS += \
 	LIBS="-lpthread -lm"

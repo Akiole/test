@@ -265,7 +265,15 @@ main (int argc, char **argv)
 					usage ();
 				memset(&tail_pre, 0, sizeof(tail_pre));
 				sscanf(argv[1], "%hhu.%hhu", &tail_pre.kernel.major, &tail_pre.kernel.minor);
-				sscanf(argv[2], "%hhu.%hhu%c", &tail_pre.fs.major, &tail_pre.fs.minor, &tail_pre.sub_fs);   
+				{
+					unsigned int fs_ver;
+					char sub;
+					if (sscanf(argv[2], "%u%c", &fs_ver, &sub) >= 1) {
+						tail_pre.fs.major = fs_ver >> 8;
+						tail_pre.fs.minor = fs_ver & 0xFF;
+						if (sub) tail_pre.sub_fs = sub;
+					}
+				}
 //				for(i=0; i<8; i++)
 //					sscanf(argv[i+3], "%d.%d", &tail_pre.hw[i].major, &tail_pre.hw[i].minor);
 //				argv+=10;
@@ -655,11 +663,11 @@ print_header (image_header_t *hdr)
 	printf ("Load Address: 0x%08X\n", ntohl(hdr->ih_load));
 	printf ("Entry Point:  0x%08X\n", ntohl(hdr->ih_ep));
 	printf ("Kernel Size:  0x%08X\n", ntohl(hdr->ih_ksz));
-	printf ("Kernel Ver.:  %d.%d\n", hdr->tail.kernel.major, hdr->tail.kernel.minor);
+	printf ("Kernel Ver:  %d.%d\n", hdr->tail.kernel.major, hdr->tail.kernel.minor);
 	if (!hdr->tail.sub_fs)
-	printf ("FS Ver.:      %d.%d\n", hdr->tail.fs.major, hdr->tail.fs.minor);
+	printf ("FS Ver:      %d\n", (hdr->tail.fs.major << 8) | hdr->tail.fs.minor);
 	else
-	printf ("FS Ver.:      %d.%d%c\n", hdr->tail.fs.major, hdr->tail.fs.minor, hdr->tail.sub_fs);
+	printf ("FS Ver:      %d%c\n", (hdr->tail.fs.major << 8) | hdr->tail.fs.minor, hdr->tail.sub_fs);
 //	printf ("Hardware Compatible List:\n");
 //	for(i=0; i<8; i++)
 //		printf("	%d: %d.%d\n", i+1, hdr->tail.hw[i].major, hdr->tail.hw[i].minor);	

@@ -6,10 +6,11 @@ SRC_DIR:=./$(PKG_NAME)-$(PKG_VERSION)
 
 include $(INCLUDE_DIR)/package.mk
 
-TARGET_CFLAGS += -fvisibility=hidden -D_LARGEFILE64_SOURCE -Drpc_uint=uint32_t
+TARGET_CFLAGS += -fvisibility=hidden -Drpc_uint=uint32_t
 
 # replace nfs-utils' aggressive -Werror=* AM_CFLAGS set (tirpc's newer
-# xdrproc_t prototypes trip them on rpcgen-generated code)
+# xdrproc_t prototypes trip them on rpcgen-generated code).  GCC 14
+# -Wno-incompatible-pointer-types is supplied globally via rules.mk.
 
 MAKE_FLAGS += AM_CFLAGS="-Drpc_uint=uint32_t"
 

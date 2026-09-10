@@ -30,6 +30,7 @@ CONFIGURE_ARGS += \
 	--with-ca-bundle=/etc/ssl/certs/ca-certificates.crt \
 	--with-zlib=$(STAGING_DIR) \
 	--with-openssl=$(STAGING_DIR)
+
 $(eval $(call BuildPackage,$(PKG_NAME)))
 
 romfs:

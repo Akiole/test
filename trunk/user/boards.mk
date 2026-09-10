@@ -4,7 +4,7 @@
 
 BOARD_NUM_USB_PORTS=0
 
-include $(ROOTDIR)/build/board.mk
+include $(ROOTDIR)/user/board.mk
 
 ##################################################################
 

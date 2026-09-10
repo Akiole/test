@@ -186,12 +186,24 @@ int foe_dump_cache_entry(void)
 
 void foe_dump_entry(uint32_t index)
 {
-	struct foe_entry *entry = &ppe_foe_base[index];
+	struct foe_entry *entry;
 #if defined(CONFIG_RA_HW_NAT_PACKET_SAMPLING)
-	struct ps_entry *ps_entry = &ppe_ps_base[index];
+	struct ps_entry *ps_entry;
 #endif
-	u32 *p = (uint32_t *)entry;
+	u32 *p;
 	u32 i = 0;
+
+	/* Validate entry index to prevent array out-of-bounds access */
+	if (index >= FOE_4TB_SIZ) {
+		NAT_PRINT("%s: invalid index %u (max %u)\n", __func__, index, FOE_4TB_SIZ);
+		return;
+	}
+
+	entry = &ppe_foe_base[index];
+#if defined(CONFIG_RA_HW_NAT_PACKET_SAMPLING)
+	ps_entry = &ppe_ps_base[index];
+#endif
+	p = (uint32_t *)entry;
 
 	NAT_PRINT("==========<Flow Table Entry=%d (%p)>===============\n", index, entry);
 	if (debug_level >= 2) {
@@ -472,6 +484,13 @@ int foe_bind_entry(struct hwnat_args *opt1)
 {
 	struct foe_entry *entry;
 
+	/* Validate entry index to prevent array out-of-bounds access */
+	if (opt1->entry_num >= FOE_4TB_SIZ) {
+		pr_err("%s: invalid entry_num %u (max %u)\n",
+		       __func__, opt1->entry_num, FOE_4TB_SIZ);
+		return HWNAT_ENTRY_NOT_FOUND;
+	}
+
 	entry = &ppe_foe_base[opt1->entry_num];
 
 	/* restore right information block1 */
@@ -484,6 +503,13 @@ int foe_bind_entry(struct hwnat_args *opt1)
 int foe_un_bind_entry(struct hwnat_args *opt)
 {
 	struct foe_entry *entry;
+
+	/* Validate entry index to prevent array out-of-bounds access */
+	if (opt->entry_num >= FOE_4TB_SIZ) {
+		pr_err("%s: invalid entry_num %u (max %u)\n",
+		       __func__, opt->entry_num, FOE_4TB_SIZ);
+		return HWNAT_ENTRY_NOT_FOUND;
+	}
 
 	entry = &ppe_foe_base[opt->entry_num];
 
@@ -498,6 +524,13 @@ int foe_un_bind_entry(struct hwnat_args *opt)
 int _foe_drop_entry(unsigned int entry_num)
 {
 	struct foe_entry *entry;
+
+	/* Validate entry index to prevent array out-of-bounds access */
+	if (entry_num >= FOE_4TB_SIZ) {
+		pr_err("%s: invalid entry_num %u (max %u)\n",
+		       __func__, entry_num, FOE_4TB_SIZ);
+		return HWNAT_ENTRY_NOT_FOUND;
+	}
 
 	entry = &ppe_foe_base[entry_num];
 
@@ -517,6 +550,13 @@ int foe_drop_entry(struct hwnat_args *opt)
 int foe_del_entry_by_num(uint32_t entry_num)
 {
 	struct foe_entry *entry;
+
+	/* Validate entry index to prevent array out-of-bounds access */
+	if (entry_num >= FOE_4TB_SIZ) {
+		pr_err("%s: invalid entry_num %u (max %u)\n",
+		       __func__, entry_num, FOE_4TB_SIZ);
+		return HWNAT_ENTRY_NOT_FOUND;
+	}
 
 	entry = &ppe_foe_base[entry_num];
 	memset(entry, 0, sizeof(struct foe_entry));
@@ -722,7 +762,7 @@ int set_done_bit_zero(struct foe_entry * foe_entry)
 	} else if (IS_IPV6_6RD(foe_entry)) {
 		foe_entry->ipv6_6rd.resv1 = 0;
 	} else {
-		printk("%s:get packet format something wrong\n", __func__);
+		pr_err("%s:get packet format something wrong\n", __func__);
 		return -1;
 	}
 #endif
@@ -747,7 +787,7 @@ int get_entry_done_bit(struct foe_entry * foe_entry)
 	} else if (IS_IPV6_6RD(foe_entry)) {
 		done_bit = foe_entry->ipv6_6rd.resv1;
 	} else {
-		printk("%s:get packet format something wrong\n", __func__);
+		pr_err("%s:get packet format something wrong\n", __func__);
 		return -1;
 	}
 #endif
@@ -806,10 +846,10 @@ int FoeAddEntry(struct hwnat_tuple *opt)
 	    	if (done_bit == 1) {
 	    		printk("mtk_entry_add number =%d\n", hash_index);
 	    	} else if (done_bit == 0){
-	    		printk("ppe table not ready\n");
+	    		pr_err("ppe table not ready\n");
 	    		return HWNAT_FAIL;
 	    	} else {
-	    		printk("%s: done_bit something wrong\n", __func__);
+	    		pr_err("%s: done_bit something wrong\n", __func__);
 	    		return HWNAT_FAIL;
 	    	}
 	    	hw_nat_semi_bind(entry, opt);
@@ -866,10 +906,10 @@ int FoeDelEntry(struct hwnat_tuple *opt)
 	    	if (done_bit == 1) {
 	    		set_done_bit_zero(entry);
 	    	} else if (done_bit == 0){
-	    		printk("%s : ppe table not ready\n", __func__);
+	    		pr_err("%s : ppe table not ready\n", __func__);
 	    		return HWNAT_FAIL;
 	    	} else {
-	    		printk("%s: done_bit something wrong\n", __func__);
+	    		pr_err("%s: done_bit something wrong\n", __func__);
 	    		set_done_bit_zero(entry);
 	    		return HWNAT_FAIL;
 	    	}
@@ -883,7 +923,7 @@ int FoeDelEntry(struct hwnat_tuple *opt)
 
 		return HWNAT_SUCCESS;
 	}
-	printk("HWNAT ENTRY NOT FOUND\n");
+	pr_err("HWNAT ENTRY NOT FOUND\n");
 	return HWNAT_ENTRY_NOT_FOUND;
 }
 EXPORT_SYMBOL(FoeDelEntry);

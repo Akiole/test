@@ -10,8 +10,7 @@ TARGET_CFLAGS += -I$(STAGING_DIR)/include/libusb-1.0
 
 define Build/Prepare
 	$(call Build/Prepare/Default)
-	# Download usb-modeswitch-data (not included in main source)
-	curl -sL https://www.draisberghof.de/usb_modeswitch/usb-modeswitch-data-20251207.tar.bz2 | tar xj -C $(PKG_BUILD_DIR) --strip-components=1
+	$(CP) $(CURDIR)/usb_modeswitch.d $(PKG_BUILD_DIR)/
 endef
 
 define Build/Compile

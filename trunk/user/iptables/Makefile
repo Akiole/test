@@ -23,8 +23,14 @@ CONFIGURE_ARGS += \
 $(eval $(call BuildPackage,$(PKG_NAME)))
 
 romfs:
-	$(INSTALL_DIR) $(ROMFSDIR)/usr/lib/xtables $(ROMFSDIR)/bin
-	$(INSTALL_BIN) $(PKG_BUILD_DIR)/iptables/xtables-legacy-multi $(ROMFSDIR)/bin/xtables-multi
+	$(INSTALL_DIR) $(ROMFSDIR)/usr/lib/xtables $(ROMFSDIR)/bin $(ROMFSDIR)/lib
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/iptables/.libs/xtables-legacy-multi $(ROMFSDIR)/bin/xtables-multi
+	# Install shared libraries
+	$(CP) $(PKG_BUILD_DIR)/libxtables/.libs/libxtables.so* $(ROMFSDIR)/lib/
+	$(CP) $(PKG_BUILD_DIR)/libiptc/.libs/libip4tc.so* $(ROMFSDIR)/lib/
+	$(CP) $(PKG_BUILD_DIR)/libiptc/.libs/libip6tc.so* $(ROMFSDIR)/lib/
+	# Install xtables plugins (built as shared modules in extensions/)
+	$(CP) $(PKG_BUILD_DIR)/extensions/*.so $(ROMFSDIR)/usr/lib/xtables/
 	for link in iptables iptables-restore iptables-save \
 		$(if $(CONFIG_IPV6),ip6tables ip6tables-restore ip6tables-save); do \
 			$(LN) xtables-multi $(ROMFSDIR)/bin/$$link; \

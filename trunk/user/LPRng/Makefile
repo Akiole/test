@@ -6,8 +6,8 @@ PKG_JOBS:=-j1
 
 include $(INCLUDE_DIR)/package.mk
 
-TARGET_CFLAGS += -I$(STAGING_DIR)/include/shared -Wno-cpp -fcommon
-TARGET_LDFLAGS += -L$(STAGING_DIR)/lib -lshared
+TARGET_CFLAGS += -Wno-cpp -fcommon
+TARGET_LDFLAGS += -lshared
 
 CONFIGURE_ARGS += \
 	--disable-ssl \

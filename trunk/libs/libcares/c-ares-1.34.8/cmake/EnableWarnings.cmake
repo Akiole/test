@@ -300,7 +300,11 @@ else ()
 		-Waggregate-return
 		-Wcast-align
 		-Wcast-qual
-		-Wconversion
+		# Padavan: disabled — c-ares passes ares_socket_t (int) to
+		# unsigned int parameters (poll nfds, fd_set sizes), triggering
+		# -Wconversion/-Wsign-conversion on every socket call.  The
+		# sign change is intentional and safe for valid descriptors.
+		# -Wconversion
 		-Wdeclaration-after-statement
 		-Wdouble-promotion
 		-Wfloat-equal
@@ -311,7 +315,9 @@ else ()
 		-Wmissing-braces
 		-Wmissing-declarations
 		-Wmissing-format-attribute
-		-Wmissing-include-dirs
+		# Padavan: disabled — fires on staging include dirs that are
+		# populated later in the build (stage/include/shared, build/include).
+		# -Wmissing-include-dirs
 		-Wmissing-prototypes
 		-Wnested-externs
 		-Wno-coverage-mismatch
@@ -321,11 +327,18 @@ else ()
 		-Wpointer-arith
 		-Wredundant-decls
 		-Wshadow
-		-Wsign-conversion
+		# Padavan: disabled — c-ares internally passes ares_socket_t
+		# (int) to unsigned int parameters (fd_set sizes, poll nfds),
+		# triggering -Wsign-conversion on every socket call.  The sign
+		# change is intentional and safe for valid socket descriptors.
+		# -Wsign-conversion
 		-Wstrict-overflow
 		-Wstrict-prototypes
 		-Wtrampolines
-		-Wundef
+		# Padavan: disabled — musl libc headers (stdio.h, stdlib.h) use
+		# #if __cplusplus / #define NULL guards that trigger -Wundef on
+		# every compilation unit.  These are system-header issues, not c-ares bugs.
+		# -Wundef
 		-Wunreachable-code
 		-Wunused
 		-Wvariadic-macros
@@ -378,7 +391,8 @@ else ()
 		list(APPEND _flags_CXX
 			-Wconversion
 			-Wfloat-equal
-			-Wsign-conversion
+			# Padavan: disabled — same reason as C flags above
+			# -Wsign-conversion
 		)
 	endif ()
 

@@ -15,21 +15,25 @@ include .config
 include versions.inc
 include host-tools.mk
 
+# Explicit default goal: host-tools.mk defines 'print-darwin-gnu-path'
+# before 'all', which would otherwise become the default target.
+.DEFAULT_GOAL := all
+
 # === Directory Layout ===
 ROOTDIR          := $(CURDIR)
 LINUXDIR         := $(CONFIG_LINUXDIR)
 LINUXINCDIR      := $(ROOTDIR)/$(LINUXDIR)/include
 SCRIPTSDIR       := $(ROOTDIR)/config/scripts
-ROMFSDIR         := $(ROOTDIR)/build/romfs
-STAGEDIR         := $(ROOTDIR)/build/stage
-IMAGEDIR         := $(ROOTDIR)/build/images
-MERGE_DIR        := $(ROOTDIR)/build/merge
+ROMFSDIR         := $(ROOTDIR)/romfs
+STAGEDIR         := $(ROOTDIR)/stage
+IMAGEDIR         := $(ROOTDIR)/images
+MERGE_DIR        := $(ROOTDIR)/merge
 MERGE_ROOTFS     := $(MERGE_DIR)/$(CONFIG_FIRMWARE_PRODUCT_ID)/rootfs
 LINUX_CONFIG     := $(ROOTDIR)/$(LINUXDIR)/.config
 
 # macOS host lacks <elf.h>; provide glibc-compatible one for kernel host tools
+# HOMEBREW_PREFIX is already defined by host-tools.mk (with /opt/homebrew fallback).
 ifdef IS_DARWIN
-HOMEBREW_PREFIX := $(shell brew --prefix 2>/dev/null)
 KERNEL_HOST_EXTRACFLAGS := HOST_EXTRACFLAGS="-I$(ROOTDIR)/tools/include/darwin -I$(HOMEBREW_PREFIX)/opt/gettext/include" HOSTLOADLIBES_conf="-L$(HOMEBREW_PREFIX)/opt/gettext/lib -lintl" HOSTLOADLIBES_mconf="-L$(HOMEBREW_PREFIX)/opt/gettext/lib -lintl"
 endif
 
@@ -78,11 +82,8 @@ else
 endif
 
 # === ccache Setup ===
-# On macOS use GNU sed/tar from Homebrew so package scripts behave as on Linux
-ifdef IS_DARWIN
-DARWIN_GNU_BIN := $(HOMEBREW_PREFIX)/opt/gnu-sed/libexec/gnubin:$(HOMEBREW_PREFIX)/opt/gnu-tar/libexec/gnubin:
-endif
-BASE_PATH := $(TOOLBIN_DIR):$(DARWIN_GNU_BIN)$(CONFIG_CROSS_COMPILER_PATH):$(PATH):$(TOOLS_DIR)
+# DARWIN_GNU_PATH from host-tools.mk provides all GNU tool dirs on macOS (single source of truth).
+BASE_PATH := $(TOOLBIN_DIR):$(if $(IS_DARWIN),$(DARWIN_GNU_PATH):,)$(CONFIG_CROSS_COMPILER_PATH):$(PATH):$(TOOLS_DIR)
 
 ifeq ($(CONFIG_CCACHE),y)
   CCACHE_BIN := $(or $(CONFIG_CCACHE_BIN),$(shell command -v ccache 2>/dev/null))
@@ -104,7 +105,7 @@ export PATH
 
 # === Exported Variables ===
 export \
-  VENDOR PRODUCT CONFIG_WITHOUT_KERNEL \
+  VENDOR PRODUCT CONFIG_WITHOUT_KERNEL CONFIG_CCACHE \
   CONFIG_CROSS_COMPILER_ROOT CONFIG_CROSS_COMPILER_PATH CONFIG_CROSS_COMPILE \
   CROSS_COMPILE CONFIG_CMAKE_TOOLCHAIN_FILE KERNEL_HEADERS_PATH \
   SSTRIP_TOOL LZMA_TOOL MKIMAGE_TOOL MKSQUASHFS_TOOL UNSQSHFS_TOOL \
@@ -198,7 +199,7 @@ ccache-wrappers:
 endif
 
 dep: config
-	@echo "\033[1;34m===> 🔍 Preparing kernel configuration for $(FIRMWARE_KERNEL_VER)-$(FIRMWARE_ROOTFS_VER)...\033[0m"
+	@echo "\033[1;34m===> 🔍 Preparing kernel configuration for $(FIRMWARE_KERNEL_VER).$(FIRMWARE_ROOTFS_VER)...\033[0m"
 	@$(MAKEARCH_KERNEL) $(KERNEL_HOST_EXTRACFLAGS) -C $(LINUXDIR) olddefconfig || { echo "\033[1;31m===> ❌ Kernel olddefconfig failed (error code: $$?)\033[0m"; exit 1; }
 	@$(MAKEARCH_KERNEL) $(KERNEL_HOST_EXTRACFLAGS) -C $(LINUXDIR) modules_prepare || { echo "\033[1;31m===> ❌ Kernel modules_prepare failed (error code: $$?)\033[0m"; exit 1; }
 	@echo "\033[1;32m===> ✅ Kernel configuration prepared\033[0m"
@@ -223,7 +224,7 @@ unpack_trx:
 
 # === Kernel Build ===
 linux:
-	@echo "\033[1;30;43m BUILD \033[0m \033[1;30;44m Linux kernel (version $(FIRMWARE_KERNEL_VER)-$(FIRMWARE_ROOTFS_VER))...\033[0m"
+	@echo "\033[1;30;43m BUILD \033[0m \033[1;30;44m Linux kernel version $(FIRMWARE_KERNEL_VER).$(FIRMWARE_ROOTFS_VER)...\033[0m"
 	@$(MAKEARCH_KERNEL) $(KERNEL_HOST_EXTRACFLAGS) $(JOBS) -C $(LINUXDIR) $(LINUXTARGET) || { echo "\033[1;31m===> ❌ Kernel build failed (error code: $$?)\033[0m"; exit 1; }
 	@[ -f $(LINUXDIR)/vmlinux ] && ln -f $(LINUXDIR)/vmlinux $(LINUXDIR)/linux || \
 		{ echo "\033[1;31m===> ❌ Failed to link vmlinux to linux\033[0m"; exit 1; }
@@ -231,8 +232,8 @@ linux:
 
 # === Kernel Modules ===
 modules:
-	@echo "\033[1;34m===> 🔨 Building kernel modules for $(FIRMWARE_KERNEL_VER)-$(FIRMWARE_ROOTFS_VER)...\033[0m"
-	@if grep -q 'CONFIG_MODULES=y' $(LINUX_CONFIG); then \
+	@echo "\033[1;34m===> 🔨 Building kernel modules for $(FIRMWARE_KERNEL_VER).$(FIRMWARE_ROOTFS_VER)...\033[0m"
+	@if $(GREP) -q 'CONFIG_MODULES=y' $(LINUX_CONFIG); then \
 		mkdir -p $(LINUXDIR)/modules; \
 		$(MAKEARCH_KERNEL) $(KERNEL_HOST_EXTRACFLAGS) $(JOBS) -C $(LINUXDIR) modules || \
 			{ echo "\033[1;31m===> ❌ Module build failed (error code: $$?)\033[0m"; exit 1; }; \
@@ -244,7 +245,7 @@ modules:
 modules_install:
 	@echo "\033[1;34m===> 📦 Installing kernel modules to $(ROMFSDIR)/lib/modules...\033[0m"
 	@mkdir -p $(ROMFSDIR)/lib/modules
-	@if grep -q 'CONFIG_MODULES=y' $(LINUX_CONFIG); then \
+	@if $(GREP) -q 'CONFIG_MODULES=y' $(LINUX_CONFIG); then \
 		$(MAKEARCH_KERNEL) -C $(LINUXDIR) INSTALL_MOD_PATH=$(ROMFSDIR) DEPMOD=$(DEPMOD) modules_install || \
 			{ echo "\033[1;31m===> ❌ Module installation failed (error code: $$?)\033[0m"; exit 1; }; \
 	else \
@@ -270,7 +271,7 @@ bin_copy:
 	@if [ ! -f "$(MERGE_DIR)/file_list" ]; then \
 		echo "\033[1;33m===> ℹ️ No binary file list found at $(MERGE_DIR)/file_list\033[0m"; \
 	else \
-		grep -v '^#' "$(MERGE_DIR)/file_list" | while read -r f; do \
+		$(GREP) -v '^#' "$(MERGE_DIR)/file_list" | while read -r f; do \
 			[ -z "$$f" ] && continue; \
 			if [ -f "$(MERGE_ROOTFS)/$$f" ]; then \
 				mkdir -p "$$(dirname "$(ROMFSDIR)/$$f")"; \
@@ -336,7 +337,7 @@ image: romfs
 		echo ""; \
 		echo "\033[1;32m✅ Build completed at: $$(date)\033[0m"; \
 		echo ""; \
-	} | tee -a $(IMAGEDIR)/image_build.log 2>/dev/null || true
+	}
 
 # === Sparse Checking ===
 sparse:
@@ -366,9 +367,6 @@ ifeq ($(CONFIG_CCACHE),y)
 	@echo "\033[1;33m===> 🧹 Removing ccache wrappers...\033[0m"
 	@rm -rf $(CCACHE_WRAPPER_DIR) || { echo "\033[1;31m===> ❌ Failed to remove $(CCACHE_WRAPPER_DIR) (error code: $$?)\033[0m"; exit 1; }
 endif
-	@if [ -t 0 ]; then \
-		read -p "Press Enter to continue or Ctrl+C to cancel..."; \
-	fi
 	@rm -rf $(ROOTDIR)/build/tmp
 	@rm -f .config config.arch
 	@echo "\033[1;32m===> ✅ Distclean completed\033[0m"

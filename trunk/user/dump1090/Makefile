@@ -8,7 +8,7 @@ SRC_DIR:=./$(PKG_NAME)-$(PKG_VERSION)
 
 include $(INCLUDE_DIR)/package.mk
 
-TARGET_LDFLAGS += -L$(STAGING_DIR)/lib -Wl,-rpath-link=$(STAGING_DIR)/lib
+TARGET_LDFLAGS += -Wl,-rpath-link=$(STAGING_DIR)/lib
 
 define Build/Compile
 	$(MAKE) -j$(HOST_NCPU) -C $(PKG_BUILD_DIR) \

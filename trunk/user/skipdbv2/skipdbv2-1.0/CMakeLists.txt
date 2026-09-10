@@ -1,6 +1,11 @@
 PROJECT(skipdbv2)
 CMAKE_MINIMUM_REQUIRED (VERSION 2.8)
-ADD_DEFINITIONS(-Os -g -Wstrict-prototypes -Wall  -falign-loops=16 -DBUILDING_SKIPDB_DLL)
+ADD_DEFINITIONS(-Os -g -Wstrict-prototypes -Wall -falign-loops=16 -DBUILDING_SKIPDB_DLL)
+# Padavan: suppress warnings that fire on every compilation unit:
+# -Wswitch: UArray.h type-dispatched switches intentionally omit non-applicable types
+# -Wformat: UArray_utf.c debug code has %f vs int mismatch
+# -Wstrict-aliasing: ev.h (libev) watcher init macros use type-punning
+ADD_DEFINITIONS(-Wno-switch -Wno-format -Wno-strict-aliasing)
 
 SET(EXECUTABLE_OUTPUT_PATH ${PROJECT_BINARY_DIR}/bin)
 SET(LIBRARY_OUTPUT_PATH ${PROJECT_BINARY_DIR}/lib)

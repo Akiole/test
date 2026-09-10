@@ -10,17 +10,20 @@ on:
         required: true
         type: choice
         options:
+          - 360-T6GS
           - 360-T6M
           - 360-T6M-PB
           - B70
           - BELL-A040WQ
           - C-Life-XG1
+          - CMCC-A9
           - CR660x
           - DIR-878
           - DIR-882
           - EA7500
-          - G-AX1800
-          - G-AX1800-B
+          - EW1800GX-Pro
+          - FCJ-GAX1800B
+          - FCJ-GAX1800W
           - GHL
           - HAR-20S2U1
           - JCG-836PRO
@@ -37,11 +40,12 @@ on:
           - K2P-NANO
           - K2P-USB
           - KOMI-A8
+          - MAIPU-MPAX18
           - MI-4
           - MI-R3G
+          - MI-R3P
           - MI-R3P-PB
           - MI-R3P-SPI
-          - MI-R3P
           - MI-R4A
           - MR2600
           - MSG1500
@@ -51,6 +55,7 @@ on:
           - NETGEAR-R7450
           - NEWIFI
           - NEWIFI3
+          - NX18Plus
           - QM-B1
           - R2100
           - RM2100
@@ -58,10 +63,10 @@ on:
           - SIM-AX1800T
           - TX1801
           - WDR8620
-          - WRL18M4GD
           - WE410443-TC
           - WIA3300-10
           - WR1200JS
+          - WRL18M4GD
           - XY-C1
           - ZTE-E8820S
           - ZTE-E8820V2
@@ -121,12 +126,13 @@ on:
 env:
   FIRMWARE_AUTHOR: TurBoTse
   TOOLCHAIN: ${{ inputs.toolchain }}
-  CONFIGFILE: trunk/vendors/configs/templates/${{ inputs.target }}.config
+  CONFIGFILE: trunk/.config
 
 jobs:
   build:
     name: Build ${{ inputs.target }}-${{ inputs.toolchain }} @ ${{ inputs.host }}
     runs-on: ${{ inputs.host }}
+    timeout-minutes: 180
     permissions:
       contents: write
       actions: write
@@ -155,32 +161,21 @@ jobs:
           go-version: '1.27.x'
           cache: false
 
-      - name: Install dependencies (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            unzip libtool-bin cmake gperf gawk flex bison xxd fakeroot kmod cpio bc zip \
-            python3-docutils gettext automake autopoint texinfo build-essential help2man \
-            zlib1g-dev libgmp3-dev libmpc-dev libmpfr-dev libncurses5-dev libltdl-dev \
-            liblzma-dev liblzo2-dev autoconf jq
-          echo "BUILD_DATE=$(TZ='Asia/Shanghai' date +%Y%m%d)" >> "$GITHUB_ENV"
+      # Single source of truth: delegates to the Makefile `deps` target so
+      # CI and local installs stay in sync.
+      - name: Install dependencies
+        run: make deps
 
-      - name: Install dependencies (macOS)
+      # Prepend Homebrew GNU paths so build scripts see GNU sed/tar/grep/find/etc.
+      # The PATH list comes from trunk/host-tools.mk (DARWIN_GNU_PATH) — no duplicate maintenance.
+      - name: Setup GNU PATH (macOS)
         if: runner.os == 'macOS'
-        env:
-          HOMEBREW_NO_REQUIRE_TAP_TRUST: 1
         run: |
-          export HOMEBREW_NO_REQUIRE_TAP_TRUST=1
-          brew untap aws/tap 2>/dev/null || true
-          brew install bash gawk gnu-sed gnu-tar gpatch make autoconf automake libtool flex bison \
-            help2man texinfo gettext binutils gcc m4 cmake gperf pkg-config jq \
-            gmp libmpc mpfr ncurses wget xz lzo bc coreutils diffutils findutils grep
-          pip3 install docutils 2>/dev/null || true
-          BREW_PREFIX=$(brew --prefix)
-          GNU_PATH="${BREW_PREFIX}/opt/coreutils/libexec/gnubin:${BREW_PREFIX}/opt/grep/libexec/gnubin:${BREW_PREFIX}/opt/findutils/libexec/gnubin:${BREW_PREFIX}/opt/gnu-sed/libexec/gnubin:${BREW_PREFIX}/opt/gnu-tar/libexec/gnubin:${BREW_PREFIX}/opt/gpatch/libexec/gnubin:${BREW_PREFIX}/opt/make/libexec/gnubin:${BREW_PREFIX}/opt/diffutils/bin:${BREW_PREFIX}/opt/m4/bin:${BREW_PREFIX}/opt/flex/bin:${BREW_PREFIX}/opt/bison/bin:${BREW_PREFIX}/opt/gawk/libexec/gnubin:${BREW_PREFIX}/opt/gawk/bin:${BREW_PREFIX}/bin"
+          GNU_PATH=$(make -f trunk/host-tools.mk -p 2>/dev/null | sed -n 's/^DARWIN_GNU_PATH := //p' | head -1)
           echo "PATH=${GNU_PATH}:$PATH" >> "$GITHUB_ENV"
-          echo "BUILD_DATE=$(TZ='Asia/Shanghai' date +%Y%m%d)" >> "$GITHUB_ENV"
+
+      - name: Set build date
+        run: echo "BUILD_DATE=$(TZ='Asia/Shanghai' date +%Y%m%d)" >> "$GITHUB_ENV"
 
       - name: Validate Input JSON
         run: |
@@ -209,7 +204,24 @@ jobs:
 
       - name: Apply Configurations
         run: |
-          chmod +x trunk/custom/scripts/*.sh || true
+          # Generate .config from template (replicates top-level Makefile product target)
+          # so we never mutate the tracked template file in the repo.
+          cp -f "trunk/configs/templates/${{ inputs.target }}.config" "$CONFIGFILE"
+          OS_LOWER=$(uname -s | tr '[:upper:]' '[:lower:]')
+          ARCH=$(uname -m)
+          TC_URL="https://github.com/TurBoTse/padavan/releases/download/toolchain/${{ inputs.toolchain }}-${OS_LOWER}-${ARCH}.tar.xz"
+          printf '\n%s\n%s\n%s\n%s\n%s\n' \
+              "CONFIG_CROSS_COMPILE=${{ inputs.toolchain }}" \
+              "CONFIG_CROSS_COMPILER_ROOT=$PWD/toolchain/${{ inputs.toolchain }}" \
+              "TOOLCHAIN_URL=$TC_URL" \
+              "CONFIG_CCACHE=y" \
+              "CONFIG_CCACHE_DIR=$PWD/trunk" \
+              >> "$CONFIGFILE"
+
+          for script in setip.sh setaccount.sh setwifi.sh; do
+            [ -f "trunk/custom/scripts/$script" ] || { echo "❌ Missing script: trunk/custom/scripts/$script"; exit 1; }
+          done
+          chmod +x trunk/custom/scripts/*.sh
           bash trunk/custom/scripts/setip.sh "$LANIP" trunk/user/shared/src/defaults.h trunk/user/www/dict/CN.dict
           bash trunk/custom/scripts/setaccount.sh "$SIGNACCOUNT" "$SIGNPASSWORD" trunk/user/shared/src/defaults.h
           bash trunk/custom/scripts/setwifi.sh "$WIFI2GSSID" "$WIFI2GPSK" "$WIFI5GSSID" "$WIFI5GPSK" trunk/user/shared/src/defaults.h
@@ -242,7 +254,7 @@ jobs:
 
       - name: Build Firmware
         run: |
-          make ${{ inputs.target }} TOOLCHAIN=${{ inputs.toolchain }}
+          make build TOOLCHAIN=${{ inputs.toolchain }}
 
           # Extract toolchain versions for filename + release body
           TC_BIN="toolchain/${{ inputs.toolchain }}/bin/${{ inputs.toolchain }}"
@@ -266,7 +278,7 @@ jobs:
           base="${base}-${BUILD_DATE}"
           i=1
           shopt -s nullglob
-          for f in trunk/build/images/*.trx; do
+          for f in trunk/images/*.trx; do
             suffix=""
             [ $i -gt 1 ] && suffix="-$i"
             mv "$f" "trunk/output/${base}${suffix}.trx"
@@ -322,7 +334,7 @@ jobs:
             - **Custom**: ${{ inputs.customization }}
           artifacts: trunk/output/*.trx
           allowUpdates: true
-          replaceArtifacts: true
+          replacesArtifacts: true
           omitNameDuringUpdate: true
           makeLatest: true
 
@@ -337,7 +349,7 @@ jobs:
             });
             // Keep latest 3 releases, delete the rest; never delete toolchain release
             const sorted = releases
-              .filter(r => r.tag_name !== 'toolchain')
+              .filter(r => r.tag_name !== 'toolchain' && !(r.name || '').toLowerCase().includes('toolchain'))
               .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
             const toDelete = sorted.slice(3);
             for (const rel of toDelete) {

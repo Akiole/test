@@ -10,7 +10,8 @@ include $(INCLUDE_DIR)/package.mk
 ifneq ($(IS_DARWIN),)
 CONFIGURE_VARS += \
 	YACC="/opt/homebrew/opt/bison/bin/bison -y" \
-	BISON="/opt/homebrew/opt/bison/bin/bison"
+	BISON="/opt/homebrew/opt/bison/bin/bison" \
+	PYTHON="/usr/bin/python3"
 endif
 
 CONFIGURE_ARGS += \

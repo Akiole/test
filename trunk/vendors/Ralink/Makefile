@@ -6,17 +6,17 @@
 # === Metadata ===
 IMAGE_AUTHOR    = TurBoTse
 IMAGE_DATE      ?= $(shell TZ=Asia/Shanghai date +%Y%m%d)
-IMAGE_NAME      = $(CONFIG_FIRMWARE_PRODUCT_ID)-$(FIRMWARE_KERNEL_VER)-$(CONFIG_CROSS_COMPILE)-$(IMAGE_DATE).trx
+IMAGE_NAME      = $(CONFIG_FIRMWARE_PRODUCT_ID)-$(FIRMWARE_KERNEL_VER).$(FIRMWARE_ROOTFS_VER)-$(CONFIG_CROSS_COMPILE)-$(IMAGE_DATE).trx
 IMAGE           = $(IMAGEDIR)/$(IMAGE_NAME)
 
 # === Paths ===
 KERNELZ         = $(IMAGEDIR)/zImage
 RAMDISK         = $(IMAGEDIR)/ramdisk
-BOARD_DIR       = $(ROOTDIR)/vendors/configs/boards/$(CONFIG_FIRMWARE_PRODUCT_ID)
+BOARD_DIR       = $(ROOTDIR)/configs/boards/$(CONFIG_FIRMWARE_PRODUCT_ID)
 SINGLESKU_DIR   = $(ROOTDIR)/vendors/Ralink
 
 # === Compression / Alignment ===
-COMP            = $(if $(CONFIG_KERNEL_NO_COMPRESS),none,lzma)
+COMP            = $(if $(filter y,$(CONFIG_KERNEL_NO_COMPRESS)),none,lzma)
 # NAND: 128KB erase block; NOR: 16-byte
 PART_ALIGN      = $(if $(filter y,$(CONFIG_MTD_NAND_MTK) $(CONFIG_MTD_NAND_RALINK)),131072,16)
 
@@ -33,7 +33,7 @@ ENTRY_CMD = $(CROSS_COMPILE)readelf -h $(ROOTDIR)/$(LINUXDIR)/vmlinux 2>/dev/nul
 endif
 
 # === SquashFS Options (overridable) ===
-MKSQUASHFS_OPTS ?= -all-root -no-exports -noappend -nopad -no-xattrs -b 1M -comp xz -Xdict-size 100%
+MKSQUASHFS_OPTS ?= -all-root -no-exports -noappend -nopad -noI -no-xattrs -b 1M -comp xz -Xdict-size 100%
 
 # === ROMFS Skeleton ===
 ROMFS_DIRS = \
@@ -72,7 +72,7 @@ romfs.post::
 	@rm -f $(RAMDISK) $(KERNELZ).*
 	@$(MKSQUASHFS_TOOL) $(ROMFSDIR) $(RAMDISK) $(MKSQUASHFS_OPTS)
 
-image: romfs.post
+image:
 	@echo "[*] Building firmware image..."
 ifeq ($(CONFIG_WITHOUT_KERNEL),y)
 	@echo "[*] Using external kernel image..."

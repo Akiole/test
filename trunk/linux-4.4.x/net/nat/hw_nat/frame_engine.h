@@ -57,7 +57,9 @@ extern struct net_device                *dev_raether;
 #define OUT
 #define INOUT
 
+#ifdef CONFIG_RA_HW_NAT_DEBUG
 #define NAT_DEBUG
+#endif
 
 #ifdef NAT_DEBUG
 #define NAT_PRINT(fmt, args...) printk(fmt, ## args)

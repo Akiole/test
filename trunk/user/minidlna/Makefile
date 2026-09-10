@@ -8,7 +8,6 @@ PKG_FIXUP:=autoreconf
 include $(INCLUDE_DIR)/package.mk
 
 TARGET_CFLAGS += -I$(STAGING_DIR)/include -Wno-cpp
-TARGET_LDFLAGS += -L$(STAGING_DIR)/lib
 
 CONFIGURE_ARGS += \
 	--disable-nls \

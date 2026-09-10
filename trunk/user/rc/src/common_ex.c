@@ -313,16 +313,16 @@ get_eeprom_params(void)
 		productid[12] = 0;
 		
 		if(valid_subver(buffer[27]))
-			sprintf(fwver_sub, "%d.%d.%d.%d%c", buffer[0], buffer[1], buffer[2], buffer[3], buffer[27]);
+			sprintf(fwver_sub, "%d.%d.%d%c", buffer[0], buffer[1], (buffer[2] << 8) | buffer[3], buffer[27]);
 		else
-			sprintf(fwver_sub, "%d.%d.%d.%d", buffer[0], buffer[1], buffer[2], buffer[3]);
+			sprintf(fwver_sub, "%d.%d.%d", buffer[0], buffer[1], (buffer[2] << 8) | buffer[3]);
 		
-		sprintf(fwver, "%d.%d.%d.%d", buffer[0], buffer[1], buffer[2], buffer[3]);
+		sprintf(fwver, "%d.%d.%d", buffer[0], buffer[1], (buffer[2] << 8) | buffer[3]);
 	}
 
 #if defined(FWBLDSTR)
 	if (strlen(FWBLDSTR) > 0 && strlen(FWBLDSTR) <= 4) {
-		strcat(fwver_sub, "-");
+		strcat(fwver_sub, "_");
 		strcat(fwver_sub, FWBLDSTR);
 	}
 #endif

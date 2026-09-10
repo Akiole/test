@@ -2912,6 +2912,11 @@ static void setup_internal_gsw(void)
 	u32 xtal_mode;
 	u32 i;
 
+	if (!gpio_base_virt) {
+		pr_err("%s: failed to ioremap ETH_GPIO_BASE\n", __func__);
+		return;
+	}
+
 	if (ei_local->architecture &
 	    (GE1_TRGMII_FORCE_2000 | GE1_TRGMII_FORCE_2600))
 		reg_bit_one(RALINK_SYSCTL_BASE + 0x2c, 11, 1);
@@ -3239,6 +3244,10 @@ int init_rtl8367s(void)
 		/* release switch reset */
 		/* set GPIO54 as GPIO mode */
 		virt_addr = ioremap(GPIO_MODE2, 0x10);
+		if (!virt_addr) {
+			pr_err("%s: failed to ioremap GPIO_MODE2\n", __func__);
+			return -ENOMEM;
+		}
 		reg_value = sys_reg_read(virt_addr);
 		reg_value &= 0xfff0ffff;
 		reg_value |= (1 << 16);	/* 1: GPIO16 (IO) */
@@ -3247,6 +3256,10 @@ int init_rtl8367s(void)
 
 		/* set GPIO54 as output mode */
 		virt_addr = ioremap(GPIO_DIR1, 0x10);
+		if (!virt_addr) {
+			pr_err("%s: failed to ioremap GPIO_DIR1\n", __func__);
+			return -ENOMEM;
+		}
 		reg_value = sys_reg_read(virt_addr);
 		reg_value |= (1 << 22);	/* output */
 		sys_reg_write(virt_addr, reg_value);
@@ -3254,6 +3267,10 @@ int init_rtl8367s(void)
 
 		/* set GPIO54 as output 1 */
 		virt_addr = ioremap(GPIO_DOUT1, 0x10);
+		if (!virt_addr) {
+			pr_err("%s: failed to ioremap GPIO_DOUT1\n", __func__);
+			return -ENOMEM;
+		}
 		reg_value = sys_reg_read(virt_addr);
 		reg_value |= (1 << 22);	/* output 1 */
 		sys_reg_write(virt_addr, reg_value);
@@ -3359,7 +3376,16 @@ void set_sgmii_force_link(int port_num, int speed)
 	unsigned int reg_value;
 	unsigned int sgmii_reg_phya, sgmii_reg;
 
+	if (port_num != 1 && port_num != 2) {
+		pr_err("%s: invalid port_num %d\n", __func__, port_num);
+		return;
+	}
+
 	virt_addr = ioremap(ETHSYS_BASE, 0x20);
+	if (!virt_addr) {
+		pr_err("%s: failed to ioremap ETHSYS_BASE\n", __func__);
+		return;
+	}
 	reg_value = sys_reg_read(virt_addr + 0x14);
 
 	if (port_num == 1) {
@@ -3367,8 +3393,7 @@ void set_sgmii_force_link(int port_num, int speed)
 		sgmii_reg_phya = SGMII_REG_PHYA_BASE0;
 		sgmii_reg = SGMII_REG_BASE0;
 		set_ge1_force_1000();
-	}
-	if (port_num == 2) {
+	} else {
 		reg_value |= SGMII_CONFIG_1;
 		sgmii_reg_phya = SGMII_REG_PHYA_BASE1;
 		sgmii_reg = SGMII_REG_BASE1;
@@ -3381,12 +3406,20 @@ void set_sgmii_force_link(int port_num, int speed)
 
 	/* Set SGMII GEN2 speed(2.5G) */
 	virt_addr = ioremap(sgmii_reg_phya, 0x100);
+	if (!virt_addr) {
+		pr_err("%s: failed to ioremap SGMII PHYA\n", __func__);
+		return;
+	}
 	reg_value = sys_reg_read(virt_addr + 0x28);
 	reg_value |= speed << 2;
 	sys_reg_write(virt_addr + 0x28, reg_value);
 	iounmap(virt_addr);
 
 	virt_addr = ioremap(sgmii_reg, 0x100);
+	if (!virt_addr) {
+		pr_err("%s: failed to ioremap SGMII\n", __func__);
+		return;
+	}
 	/* disable SGMII AN */
 	reg_value = sys_reg_read(virt_addr);
 	reg_value &= ~(1 << 12);
@@ -3408,15 +3441,23 @@ void set_sgmii_an(int port_num)
 	unsigned int reg_value;
 	unsigned int sgmii_reg, sgmii_reg_phya;
 
+	if (port_num != 1 && port_num != 2) {
+		pr_err("%s: invalid port_num %d\n", __func__, port_num);
+		return;
+	}
+
 	virt_addr = ioremap(ETHSYS_BASE, 0x20);
+	if (!virt_addr) {
+		pr_err("%s: failed to ioremap ETHSYS_BASE\n", __func__);
+		return;
+	}
 	reg_value = sys_reg_read(virt_addr + 0x14);
 
 	if (port_num == 1) {
 		reg_value |= SGMII_CONFIG_0;
 		sgmii_reg_phya = SGMII_REG_PHYA_BASE0;
 		sgmii_reg = SGMII_REG_BASE0;
-	}
-	if (port_num == 2) {
+	} else {
 		reg_value |= SGMII_CONFIG_1;
 		sgmii_reg_phya = SGMII_REG_PHYA_BASE1;
 		sgmii_reg = SGMII_REG_BASE1;
@@ -3427,10 +3468,18 @@ void set_sgmii_an(int port_num)
 
 	/* set auto polling */
 	virt_addr = ioremap(ETHSYS_MAC_BASE, 0x300);
+	if (!virt_addr) {
+		pr_err("%s: failed to ioremap ETHSYS_MAC_BASE\n", __func__);
+		return;
+	}
 	sys_reg_write(virt_addr + (0x100 * port_num), 0x21056300);
 	iounmap(virt_addr);
 
 	virt_addr = ioremap(sgmii_reg, 0x100);
+	if (!virt_addr) {
+		pr_err("%s: failed to ioremap SGMII\n", __func__);
+		return;
+	}
 	/* set link timer */
 	sys_reg_write(virt_addr + 0x18, 0x186a0);
 	/* disable remote fault */
@@ -3580,6 +3629,10 @@ void leopard_gmii_config(u8 enable)
 	/*bit[1]: gphy connect GMAC0 or GMAC2 1:GMAC0. 0:GMAC2*/
 	/*bit[0]: Co-QPHY path selection 0:U3path, 1:SGMII*/
 	infra_base_virt = ioremap(INFRA_BASE, 0x10);
+	if (!infra_base_virt) {
+		pr_err("%s: failed to ioremap INFRA_BASE\n", __func__);
+		return;
+	}
 	reg_value = sys_reg_read(infra_base_virt);
 	if (enable) {
 		reg_value = reg_value | 0x02;
@@ -3601,6 +3654,11 @@ void leopard_gmii_config(u8 enable)
 	}
 	/*10000710	GEPHY_CTRL0[9:6] = 0 */
 	gpio_base_virt = ioremap(GPIO_GO_BASE, 0x10);
+	if (!gpio_base_virt) {
+		pr_err("%s: failed to ioremap GPIO_GO_BASE\n", __func__);
+		iounmap(infra_base_virt);
+		return;
+	}
 	reg_value = sys_reg_read(gpio_base_virt);
 	/*reg_value = reg_value & ~(0xfffff3cf);*/
 	reg_value = 0x10000820;
@@ -3762,14 +3820,22 @@ void fe_sw_init(void)
 
 		if (ei_local->architecture & MT7622_EPHY) {
 			gpio_base_virt = ioremap(GPIO_GO_BASE, 0x100);
-			sys_reg_write(gpio_base_virt + 0xF0, 0xE0FFFFFF);
-			iounmap(gpio_base_virt);
+			if (!gpio_base_virt) {
+				pr_err("%s: failed to ioremap GPIO_GO_BASE\n", __func__);
+			} else {
+				sys_reg_write(gpio_base_virt + 0xF0, 0xE0FFFFFF);
+				iounmap(gpio_base_virt);
+			}
 			gpio_base_virt = ioremap(GPIO_MODE_BASE, 0x100);
-			reg_value = sys_reg_read(gpio_base_virt + 0x90);
-			reg_value &= 0x0000ffff;
-			reg_value |= 0x22220000;
-			sys_reg_write(gpio_base_virt + 0x90, reg_value);
-			iounmap(gpio_base_virt);
+			if (!gpio_base_virt) {
+				pr_err("%s: failed to ioremap GPIO_MODE_BASE\n", __func__);
+			} else {
+				reg_value = sys_reg_read(gpio_base_virt + 0x90);
+				reg_value &= 0x0000ffff;
+				reg_value |= 0x22220000;
+				sys_reg_write(gpio_base_virt + 0x90, reg_value);
+				iounmap(gpio_base_virt);
+			}
 			sys_reg_write(ETHDMASYS_ETH_SW_BASE + 0x84, 0);
 			sys_reg_write(ETHDMASYS_ETH_SW_BASE + 0x90, 0x10007f7f);
 			sys_reg_write(ETHDMASYS_ETH_SW_BASE + 0xc8, 0x05503f38);
@@ -3793,9 +3859,14 @@ void fe_sw_init(void)
 	/* clear SGMII setting */
 	if ((ei_local->chip_name == LEOPARD_FE) || (ei_local->chip_name == MT7622_FE)) {
 		ethsys_base_virt = ioremap(ETHSYS_BASE, 0x20);
-		reg_value = sys_reg_read(ethsys_base_virt + 0x14);
-		reg_value &= ~(3 << 8);
-		sys_reg_write(ethsys_base_virt + 0x14, reg_value);
+		if (!ethsys_base_virt) {
+			pr_err("%s: failed to ioremap ETHSYS_BASE\n", __func__);
+		} else {
+			reg_value = sys_reg_read(ethsys_base_virt + 0x14);
+			reg_value &= ~(3 << 8);
+			sys_reg_write(ethsys_base_virt + 0x14, reg_value);
+			iounmap(ethsys_base_virt);
+		}
 	}
 
 	if (ei_local->architecture & GE1_SGMII_FORCE_2500) {
@@ -3810,10 +3881,14 @@ void fe_sw_init(void)
 			/*bit[1]: gphy connect GMAC0 or GMAC2 1:GMAC0. 0:GMAC2*/
 			/*bit[0]: Co-QPHY path selection 0:U3path, 1:SGMII*/
 			infra_base_virt = ioremap(INFRA_BASE, 0x10);
-			reg_value = sys_reg_read(infra_base_virt);
-			reg_value = reg_value | 0x01;
-			sys_reg_write(infra_base_virt, reg_value);
-			iounmap(infra_base_virt);
+			if (!infra_base_virt) {
+				pr_err("%s: failed to ioremap INFRA_BASE\n", __func__);
+			} else {
+				reg_value = sys_reg_read(infra_base_virt);
+				reg_value = reg_value | 0x01;
+				sys_reg_write(infra_base_virt, reg_value);
+				iounmap(infra_base_virt);
+			}
 		}
 	}
 
@@ -3851,20 +3926,28 @@ void fe_sw_init(void)
 
 		/* set agpio to 5-port ephy */
 		gpio_base_virt = ioremap(GPIO_GO_BASE, 0x100);
-		reg_value = sys_reg_read(gpio_base_virt + 0xF0);
-		reg_value &= 0xE0FFFFFF;
-		sys_reg_write(gpio_base_virt + 0xF0, reg_value);
-		iounmap(gpio_base_virt);
+		if (!gpio_base_virt) {
+			pr_err("%s: failed to ioremap GPIO_GO_BASE (step1)\n", __func__);
+		} else {
+			reg_value = sys_reg_read(gpio_base_virt + 0xF0);
+			reg_value &= 0xE0FFFFFF;
+			sys_reg_write(gpio_base_virt + 0xF0, reg_value);
+			iounmap(gpio_base_virt);
+		}
 
 		/* set ephy to 5-port gpio mode */
 		mt7622_esw_5port_gpio();
 
 		/* set agpio to 0-port ephy */
 		gpio_base_virt = ioremap(GPIO_GO_BASE, 0x100);
-		reg_value = sys_reg_read(gpio_base_virt + 0xF0);
-		reg_value |= BITS(24, 28);
-		sys_reg_write(gpio_base_virt + 0xF0, reg_value);
-		iounmap(gpio_base_virt);
+		if (!gpio_base_virt) {
+			pr_err("%s: failed to ioremap GPIO_GO_BASE (step2)\n", __func__);
+		} else {
+			reg_value = sys_reg_read(gpio_base_virt + 0xF0);
+			reg_value |= BITS(24, 28);
+			sys_reg_write(gpio_base_virt + 0xF0, reg_value);
+			iounmap(gpio_base_virt);
+		}
 
 		/* switch back to gmac1 */
 		sys_reg_write(ETHDMASYS_ETH_MAC_BASE + 0xC, 0x0);
@@ -3875,13 +3958,17 @@ void fe_sw_init(void)
 	if (ei_local->chip_name == MT7622_FE) {
 		if (ei_local->features & FE_GE2_SUPPORT) {
 			gpio_base_virt = ioremap(GPIO_GO_BASE + 0x100, 0x100);
-			reg_value = sys_reg_read(gpio_base_virt + 0x70);
-			reg_value = reg_value | (1 << 30);
-			sys_reg_write(gpio_base_virt + 0x70, reg_value);
-			reg_value = sys_reg_read(gpio_base_virt + 0x8c);
-			reg_value = reg_value | (1 << 24);
-			sys_reg_write(gpio_base_virt + 0x8c, reg_value);
-			iounmap(gpio_base_virt);
+			if (!gpio_base_virt) {
+				pr_err("%s: failed to ioremap GPIO_GO_BASE+0x100\n", __func__);
+			} else {
+				reg_value = sys_reg_read(gpio_base_virt + 0x70);
+				reg_value = reg_value | (1 << 30);
+				sys_reg_write(gpio_base_virt + 0x70, reg_value);
+				reg_value = sys_reg_read(gpio_base_virt + 0x8c);
+				reg_value = reg_value | (1 << 24);
+				sys_reg_write(gpio_base_virt + 0x8c, reg_value);
+				iounmap(gpio_base_virt);
+			}
 		}
 	}
 }
@@ -3915,31 +4002,43 @@ void fe_sw_deinit(struct END_DEVICE *ei_local)
 
 		/* set agpio to 0-port ephy */
 		gpio_base_virt = ioremap(GPIO_GO_BASE, 0x100);
-		reg_value = sys_reg_read(gpio_base_virt + 0xF0);
-		reg_value |= BITS(24, 28);
-		sys_reg_write(gpio_base_virt + 0xF0, reg_value);
-		iounmap(gpio_base_virt);
+		if (!gpio_base_virt) {
+			pr_err("%s: failed to ioremap GPIO_GO_BASE\n", __func__);
+		} else {
+			reg_value = sys_reg_read(gpio_base_virt + 0xF0);
+			reg_value |= BITS(24, 28);
+			sys_reg_write(gpio_base_virt + 0xF0, reg_value);
+			iounmap(gpio_base_virt);
+		}
 	} else if (ei_local->architecture & LEOPARD_EPHY) {
 		mt7622_esw_5port_gpio();
 		/*10000710	GEPHY_CTRL0[9:6] = 1 */
 		gpio_base_virt = ioremap(GPIO_GO_BASE, 0x10);
-		reg_value = sys_reg_read(gpio_base_virt);
-		reg_value = reg_value | 0x3c0;
-		sys_reg_write(gpio_base_virt, reg_value);
-		iounmap(gpio_base_virt);
+		if (!gpio_base_virt) {
+			pr_err("%s: failed to ioremap GPIO_GO_BASE (LEOPARD)\n", __func__);
+		} else {
+			reg_value = sys_reg_read(gpio_base_virt);
+			reg_value = reg_value | 0x3c0;
+			sys_reg_write(gpio_base_virt, reg_value);
+			iounmap(gpio_base_virt);
+		}
 
 		gpio_base_virt = ioremap(GPIO_MODE_BASE, 0x100);
-		/*10217310	GPIO_MODE1 [31:16] = 0x0*/
-		reg_value = sys_reg_read(gpio_base_virt + 0x10);
-		reg_value &= 0x0000ffff;
-		reg_value = reg_value & (~0xffff0000);
-		sys_reg_write(gpio_base_virt + 0x10, reg_value);
+		if (!gpio_base_virt) {
+			pr_err("%s: failed to ioremap GPIO_MODE_BASE\n", __func__);
+		} else {
+			/*10217310	GPIO_MODE1 [31:16] = 0x0*/
+			reg_value = sys_reg_read(gpio_base_virt + 0x10);
+			reg_value &= 0x0000ffff;
+			reg_value = reg_value & (~0xffff0000);
+			sys_reg_write(gpio_base_virt + 0x10, reg_value);
 
-		/*10217320	GPIO_MODE2(gpio17/18/21/22/23)*/
-		reg_value = sys_reg_read(gpio_base_virt + 0x20);
-		reg_value = reg_value & (~0xfff00fff);
-		sys_reg_write(gpio_base_virt + 0x20, reg_value);
-		iounmap(gpio_base_virt);
+			/*10217320	GPIO_MODE2(gpio17/18/21/22/23)*/
+			reg_value = sys_reg_read(gpio_base_virt + 0x20);
+			reg_value = reg_value & (~0xfff00fff);
+			sys_reg_write(gpio_base_virt + 0x20, reg_value);
+			iounmap(gpio_base_virt);
+		}
 	}
 }
 
@@ -3949,11 +4048,16 @@ EXPORT_SYMBOL(esw_link_status_hook);
 static void esw_link_status_changed(int port_no, void *dev_id)
 {
 	unsigned int reg_val;
+	void (*hook)(u32, int);
 
 	mii_mgr_read(31, (0x3008 + (port_no * 0x100)), &reg_val);
 
-	if (esw_link_status_hook)
-		esw_link_status_hook(port_no, reg_val & 0x1);
+	/* Use local copy to avoid TOCTOU race with concurrent
+	 * registration/unregistration of the hook from process context
+	 */
+	hook = READ_ONCE(esw_link_status_hook);
+	if (hook)
+		hook(port_no, reg_val & 0x1);
 }
 
 irqreturn_t gsw_interrupt(int irq, void *resv)

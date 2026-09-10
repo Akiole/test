@@ -12,7 +12,7 @@ ROOTDIR = ..
 endif
 
 ifndef ROMFSDIR
-ROMFSDIR = $(ROOTDIR)/build/romfs
+ROMFSDIR = $(ROOTDIR)/romfs
 endif
 
 # Used by vendors/config/mips/config.arch to conditionally set stage path CFLAGS/LDFLAGS
@@ -256,6 +256,7 @@ dir_y += networkmap
 dir_y += httpd
 dir_y += www
 dir_y += rc
+dir_y += skipdbv2
 
 # Dial-up & Authentication
 dir_y += pppd
@@ -353,7 +354,6 @@ dir_y += dnsproxy
 dir_y += ipt2socks
 dir_y += lua51
 dir_y += resolveip
-dir_y += skipdbv2
 endif
 
 # Wing

@@ -56,6 +56,11 @@ case "$1" in
             start
             ;;
 
+        test)
+            # no-op: called during startup after restart
+            exit 0
+            ;;
+
         *)
-            echo $"Usage: $0 {start|stop|restart}"
+            echo "Usage: $0 {start|stop|restart}"
 esac

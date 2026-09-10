@@ -59,31 +59,12 @@ TOOLCHAIN_URL      ?= $(TOOLCHAIN_RELEASE_BASE)/$(TOOLCHAIN_TARBALL)
 QUEUE_H_LOCAL := $(TOPDIR)/../trunk/tools/include/queue.h
 
 ifeq ($(IS_DARWIN),Darwin)
-HOMEBREW_PREFIX := $(shell brew --prefix 2>/dev/null || echo /opt/homebrew)
-
-# All GNU tools via Homebrew: avoid BSD/GNU incompatibilities in crosstool-NG build scripts.
-# gnubin dirs provide unprefixed names (sed, tar, grep, find, patch, install, ...).
-CT_BREW_PATH := \
-	$(HOMEBREW_PREFIX)/opt/coreutils/libexec/gnubin:\
-	$(HOMEBREW_PREFIX)/opt/grep/libexec/gnubin:\
-	$(HOMEBREW_PREFIX)/opt/findutils/libexec/gnubin:\
-	$(HOMEBREW_PREFIX)/opt/gnu-sed/libexec/gnubin:\
-	$(HOMEBREW_PREFIX)/opt/gnu-tar/libexec/gnubin:\
-	$(HOMEBREW_PREFIX)/opt/gpatch/libexec/gnubin:\
-	$(HOMEBREW_PREFIX)/opt/make/libexec/gnubin:\
-	$(HOMEBREW_PREFIX)/opt/diffutils/bin:\
-	$(HOMEBREW_PREFIX)/opt/m4/bin:\
-	$(HOMEBREW_PREFIX)/opt/flex/bin:\
-	$(HOMEBREW_PREFIX)/opt/bison/bin:\
-	$(HOMEBREW_PREFIX)/opt/gawk/libexec/gnubin:\
-	$(HOMEBREW_PREFIX)/opt/gawk/bin
-
-SED   := $(HOMEBREW_PREFIX)/opt/gnu-sed/libexec/gnubin/sed
-TAR   := $(HOMEBREW_PREFIX)/opt/gnu-tar/libexec/gnubin/tar
-PATCH := $(HOMEBREW_PREFIX)/opt/gpatch/libexec/gnubin/patch
-NPROC := $(shell sysctl -n hw.ncpu 2>/dev/null || echo 4)
-# Use gmake for crosstool-ng sub-builds (GNU make required; /usr/bin/make is BSD make)
-CT_MAKE := gmake
+# Reuse HOMEBREW_PREFIX / DARWIN_GNU_PATH / SED / TAR / PATCH from host-tools.mk
+# (single source of truth — do not redefine them here).
+CT_BREW_PATH := $(DARWIN_GNU_PATH)
+NPROC := $(HOST_NCPU)
+# host-tools.mk already overrides $(MAKE) to gmake on Darwin.
+CT_MAKE := $(MAKE)
 
 # Force a valid macOS deployment target.  On newer macOS (darwin27+),
 # crosstool-NG derives -mmacosx-version-min=18.0 from uname -r, but the
@@ -102,18 +83,19 @@ MACOSX_DEPLOYMENT_TARGET := 14.0
 # Falls back to the highest installed version if the matching one isn't found.
 TOOLCHAIN_GCC_MAJOR := $(shell $(SED_READ) -n 's/^CT_GCC_V_\([0-9]*\)=y/\1/p' "$(SAMPLE_DIR)/crosstool.config" 2>/dev/null | head -1)
 GNU_GCC_VER := $(shell if [ -n "$(TOOLCHAIN_GCC_MAJOR)" ] && [ -x "$(HOMEBREW_PREFIX)/bin/gcc-$(TOOLCHAIN_GCC_MAJOR)" ]; then echo "$(TOOLCHAIN_GCC_MAJOR)"; else ls "$(HOMEBREW_PREFIX)"/bin/gcc-* 2>/dev/null | grep -oE '[0-9]+$$' | sort -rn | head -1; fi)
+ifeq ($(GNU_GCC_VER),)
+$(error No GNU GCC found via Homebrew. Install with: brew install gcc)
+endif
 HOST_CC := $(HOMEBREW_PREFIX)/bin/gcc-$(GNU_GCC_VER)
 HOST_CXX := $(HOMEBREW_PREFIX)/bin/g++-$(GNU_GCC_VER)
 else
-SED := sed
-TAR := tar
-NPROC := $(shell nproc 2>/dev/null || echo 4)
-CT_MAKE := make
+NPROC := $(HOST_NCPU)
+CT_MAKE := $(MAKE)
 HOST_CC := gcc
 HOST_CXX := g++
 endif
 
-.PHONY: all build download package install-queue-h clean distclean
+.PHONY: all build download package install-queue-h toolchain-info clean distclean
 
 all: build
 
@@ -172,10 +154,6 @@ build:
 		echo "==> using local tarballs dir: $(CT_LOCAL_TARBALLS_DIR)"; \
 		echo "CT_LOCAL_TARBALLS_DIR=\"$(CT_LOCAL_TARBALLS_DIR)\"" >> .config; \
 	fi; \
-	if [ -n "$(IS_DARWIN)" ]; then \
-		echo "==> macOS: disabling GDB (avoids invalid r_symbolnum ld errors)"; \
-		$(SED) -i 's/^CT_DEBUG_GDB=y/# CT_DEBUG_GDB is not set/; s/^CT_GDB_CROSS=y/# CT_GDB_CROSS is not set/; s/^CT_GDB_GDBSERVER=y/# CT_GDB_GDBSERVER is not set/' .config; \
-	fi; \
 	echo "==> building toolchain (this may take a while)"; \
 	./ct-ng build; \
 	echo "==> toolchain built at $(CT_PREFIX)"
@@ -194,6 +172,40 @@ package:
 	 cd "$$pkg_dir" && $(TAR) -cJf "$(TOPDIR)/$(TOOLCHAIN_TARBALL)" --exclude=build.log.bz2 --exclude=ccache-wrappers "$$pkg_name"
 	@echo "==> toolchain packaged: $(TOPDIR)/$(TOOLCHAIN_TARBALL)"
 
+# Print toolchain component versions in key=value format (for CI release notes).
+# Reads from the generated crosstool-NG .config after a successful build.
+# Usage: make -C toolchain toolchain-info CT_TARGET=mipsel-linux-musl
+toolchain-info:
+	@CT_CONFIG="$(CT_DIR)/.config"; \
+	if [ ! -f "$$CT_CONFIG" ]; then \
+		echo "Error: .config not found at $$CT_CONFIG (run 'make build' first)"; exit 1; \
+	fi; \
+	extract_ver() { \
+		$(GREP) -oE "$$1" "$$CT_CONFIG" 2>/dev/null | head -1 | \
+			$(SED_READ) -E 's/.*_V_([0-9_]+)=y/\1/;s/_/./g'; \
+	}; \
+	GCC_VER=$$(extract_ver 'CT_GCC_V_[0-9_]+=y'); \
+	BINUTILS_VER=$$(extract_ver 'CT_BINUTILS_V_[0-9_]+=y'); \
+	LINUX_VER=$$(extract_ver 'CT_LINUX_V_[0-9_]+=y'); \
+	GDB_VER=$$(extract_ver 'CT_GDB_V_[0-9_]+=y'); \
+	if $(GREP) -q 'CT_LIBC_MUSL=y' "$$CT_CONFIG"; then \
+		LIBC="musl"; LIBC_VER=$$(extract_ver 'CT_MUSL_V_[0-9_]+=y'); \
+	elif $(GREP) -q 'CT_LIBC_UCLIBC_NG=y' "$$CT_CONFIG"; then \
+		LIBC="uClibc-ng"; LIBC_VER=$$(extract_ver 'CT_UCLIBC_NG_V_[0-9_]+=y'); \
+	fi; \
+	echo "CT_TARGET=$(CT_TARGET)"; \
+	echo "CT_VERSION=$(CT_VERSION)"; \
+	echo "HOST_OS=$(HOST_OS)"; \
+	echo "HOST_ARCH=$(HOST_ARCH)"; \
+	echo "TOOLCHAIN_PLATFORM=$(TOOLCHAIN_PLATFORM)"; \
+	echo "TOOLCHAIN_TARBALL=$(TOOLCHAIN_TARBALL)"; \
+	echo "GCC_VER=$${GCC_VER:-N/A}"; \
+	echo "BINUTILS_VER=$${BINUTILS_VER:-N/A}"; \
+	echo "LINUX_VER=$${LINUX_VER:-N/A}"; \
+	echo "LIBC=$${LIBC:-N/A}"; \
+	echo "LIBC_VER=$${LIBC_VER:-N/A}"; \
+	echo "GDB_VER=$${GDB_VER:-N/A}"
+
 # musl does not ship sys/queue.h (BSD extension); some packages
 # (e.g. libwebsockets) depend on it. Install from trunk/tools/include.
 install-queue-h:
@@ -208,16 +220,8 @@ install-queue-h:
 	fi
 
 download:
-	@verify_toolchain() { \
-		[ -x "$(CT_PREFIX)/bin/$(CT_TARGET)-gcc" ] || return 1; \
-		"$(CT_PREFIX)/bin/$(CT_TARGET)-gcc" --version >/dev/null 2>&1 || return 1; \
-		for t in ld as ar ranlib strip objcopy; do \
-			[ -x "$(CT_PREFIX)/bin/$(CT_TARGET)-$$t" ] || return 1; \
-		done; \
-		[ -f "$(CT_PREFIX)/$(CT_TARGET)/sysroot/usr/include/stdio.h" ] || return 1; \
-		[ -f "$(CT_PREFIX)/$(CT_TARGET)/sysroot/usr/lib/crt1.o" ] || return 1; \
-	}; \
-	if verify_toolchain; then \
+	@$(VERIFY_TOOLCHAIN_FUNC) \
+	if verify_tc "$(CT_PREFIX)" "$(CT_TARGET)"; then \
 		echo "==> toolchain already present (verified): $(CT_PREFIX)"; \
 	else \
 		if [ -f "$(TOPDIR)/$(TOOLCHAIN_TARBALL)" ]; then \
@@ -234,7 +238,7 @@ download:
 			rm -f "$(CT_PREFIX).tar.xz" || \
 			{ echo "Error: Failed to download/extract prebuilt toolchain"; rm -rf "$(CT_PREFIX)" "$(CT_PREFIX).tar.xz"; exit 1; }; \
 		fi; \
-		verify_toolchain || \
+		verify_tc "$(CT_PREFIX)" "$(CT_TARGET)" || \
 		{ echo "Error: Toolchain incomplete after extract/download"; rm -rf "$(CT_PREFIX)"; rm -f "$(TOPDIR)/$(TOOLCHAIN_TARBALL)"; exit 1; }; \
 	fi
 	@$(MAKE) install-queue-h

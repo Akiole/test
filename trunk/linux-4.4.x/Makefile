@@ -257,11 +257,6 @@ SUBARCH := $(shell uname -m | sed -e s/i.86/x86/ -e s/x86_64/x86/ \
 ARCH		?= $(SUBARCH)
 CROSS_COMPILE	?= $(CONFIG_CROSS_COMPILE:"%"=%)
 
-CC_PATH := $(shell command -v $(CROSS_COMPILE)gcc 2>/dev/null)
-ifneq ($(CC_PATH),)
-  $(info $(shell printf "\033[1;32m===> ⚙️ Using cross-compiler: $(CC_PATH)\033[0m"))
-endif
-
 # Architecture as present in compile.h
 UTS_MACHINE 	:= $(ARCH)
 SRCARCH 	:= $(ARCH)
@@ -1125,13 +1120,9 @@ define filechk_utsrelease.h
 	(echo \#define UTS_RELEASE \"$(KERNELRELEASE)\";)
 endef
 
-# NOTE: sublevel is deliberately clamped to 255 in LINUX_VERSION_CODE:
-# the macro only has 8 bits for sublevel, and 4.4.302 would wrap around to
-# an encoded "4.5.46", breaking LINUX_VERSION_CODE checks in vendor drivers
-# (e.g. fs/exfat selecting the 4.5+ .get_link API).
 define filechk_version.h
 	(echo \#define LINUX_VERSION_CODE $(shell                         \
-	expr $(VERSION) \* 65536 + 0$(PATCHLEVEL) \* 256 + 255); \
+	expr $(VERSION) \* 65536 + 0$(PATCHLEVEL) \* 256 + 0$(SUBLEVEL)); \
 	echo '#define KERNEL_VERSION(a,b,c) (((a) << 16) + ((b) << 8) + (c))';)
 endef
 

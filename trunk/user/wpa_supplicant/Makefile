@@ -8,7 +8,6 @@ include $(INCLUDE_DIR)/package.mk
 
 TARGET_CFLAGS += -I$(STAGING_DIR)/include/libnl3
 TARGET_CFLAGS += -Wno-cpp
-TARGET_LDFLAGS += -L$(STAGING_DIR)/lib
 CONFIGS :=
 ifeq ($(CONFIG_FIRMWARE_INCLUDE_EAP_PEAP),y)
 CONFIGS += \

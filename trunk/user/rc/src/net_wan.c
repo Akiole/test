@@ -712,7 +712,7 @@ launch_wanx(char *man_ifname, int unit, int wait_dhcpc, int use_zcip)
 
 	/* add a bit delay for AP-Client ready */
 	if (is_man_wisp(man_ifname))
-		wait_apcli_connected(man_ifname, 3);
+		wait_apcli_connected(man_ifname, 10);
 
 	if (use_zcip || !is_valid_ipv4(man_addr)) {
 		/* PPPoE connection not needed WAN physical address first, skip wait DHCP lease */
@@ -972,7 +972,7 @@ start_wan(void)
 			
 			/* add a bit delay for AP-Client ready */
 			if (is_man_wisp(wan_ifname))
-				wait_apcli_connected(wan_ifname, 3);
+				wait_apcli_connected(wan_ifname, 10);
 			
 			/* Assign static IP address to i/f */
 			if (wan_proto == IPV4_WAN_PROTO_IPOE_STATIC) {
@@ -2610,7 +2610,7 @@ int start_udhcpc_wan(char *wan_ifname, int unit, int wait_lease)
 	if (is_man_wisp(wan_ifname) || is_usbnet_interface(wan_ifname))
 		dhcp_argv[7] = "-t6";
 
-	if (wait_lease)
+	if (wait_lease || is_man_wisp(wan_ifname))
 		dhcp_argv[index++] = "-b";	/* Background if lease is not obtained (timeout 4*4 sec) */
 	else
 		dhcp_argv[index++] = "-d";	/* Background after run (new patch for udhcpc) */

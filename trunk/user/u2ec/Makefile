@@ -4,8 +4,6 @@ PKG_NAME:=u2ec
 
 include $(INCLUDE_DIR)/package.mk
 
-TARGET_CFLAGS += -I$(STAGING_DIR)/include/shared
-TARGET_LDFLAGS += -L$(STAGING_DIR)/lib
 
 $(eval $(call BuildPackage,$(PKG_NAME)))
 

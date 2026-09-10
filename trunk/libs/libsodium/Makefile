@@ -6,6 +6,12 @@ SRC_DIR:=./$(PKG_NAME)-$(PKG_VERSION)
 
 include $(INCLUDE_DIR)/package.mk
 
+# configure probes thread_local before _Thread_local; on the mipsel-uclibc
+# cross toolchain the probe passes but the real build flags make
+# 'thread_local' an unknown type.  Force the C11 keyword _Thread_local,
+# which GCC supports natively without any header.
+CONFIGURE_VARS += ac_cv_tls=_Thread_local
+
 CONFIGURE_ARGS += \
 	--disable-static \
 	--enable-shared \

@@ -23,9 +23,11 @@ endef
 define Build/Configure
 	@echo "Configuring shadowsocks-libev..."
 	(cd $(PKG_BUILD_DIR); \
+		$(CONFIGURE_VARS) \
 		ac_cv_prog_PCRE_CONFIG="$(STAGING_DIR)/bin/pcre-config" \
 		./configure \
 			--prefix=/usr \
+			--with-pcre=$(STAGING_DIR) \
 			--disable-documentation \
 			--disable-ssp \
 			--disable-assert \
@@ -36,11 +38,11 @@ define Build/Configure
 		echo "Configuring shadowsocksr-libev..."; \
 		(cd $(SSR_BUILD_DIR); \
 			aclocal -I m4; autoreconf -fi; automake -a --copy; \
+			$(CONFIGURE_VARS) \
 			ac_cv_prog_PCRE_CONFIG="$(STAGING_DIR)/bin/pcre-config" \
-			AR="$(TARGET_CROSS)gcc-ar" \
-			RANLIB="$(TARGET_CROSS)gcc-ranlib" \
 			./configure \
 				--prefix=/usr \
+				--with-pcre=$(STAGING_DIR) \
 				--disable-documentation \
 				--disable-ssp \
 				--disable-assert \

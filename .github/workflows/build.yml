@@ -15,6 +15,7 @@ jobs:
   build:
     name: Build ${{ matrix.target }} (${{ matrix.toolchain }}) @ ${{ matrix.host }}
     runs-on: ${{ matrix.host }}
+    timeout-minutes: 180
     permissions:
       contents: write
       actions: write
@@ -49,32 +50,21 @@ jobs:
           go-version: '1.27.x'
           cache: false
 
-      - name: Install dependencies (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            unzip libtool-bin cmake gperf gawk flex bison xxd fakeroot kmod cpio bc zip \
-            python3-docutils gettext automake autopoint texinfo build-essential help2man \
-            zlib1g-dev libgmp3-dev libmpc-dev libmpfr-dev libncurses5-dev libltdl-dev \
-            liblzma-dev liblzo2-dev autoconf
-          echo "BUILD_DATE=$(TZ='Asia/Shanghai' date +%Y%m%d)" >> "$GITHUB_ENV"
+      # Single source of truth: delegates to the Makefile `deps` target so
+      # CI and local installs stay in sync.
+      - name: Install dependencies
+        run: make deps
 
-      - name: Install dependencies (macOS)
+      # Prepend Homebrew GNU paths so build scripts see GNU sed/tar/grep/find/etc.
+      # The PATH list comes from trunk/host-tools.mk (DARWIN_GNU_PATH) — no duplicate maintenance.
+      - name: Setup GNU PATH (macOS)
         if: runner.os == 'macOS'
-        env:
-          HOMEBREW_NO_REQUIRE_TAP_TRUST: 1
         run: |
-          export HOMEBREW_NO_REQUIRE_TAP_TRUST=1
-          brew untap aws/tap 2>/dev/null || true
-          brew install bash gawk gnu-sed gnu-tar gpatch make autoconf automake libtool flex bison \
-            help2man texinfo gettext binutils gcc m4 cmake gperf pkg-config \
-            gmp libmpc mpfr ncurses wget xz lzo bc coreutils diffutils findutils grep
-          pip3 install docutils 2>/dev/null || true
-          BREW_PREFIX=$(brew --prefix)
-          GNU_PATH="${BREW_PREFIX}/opt/coreutils/libexec/gnubin:${BREW_PREFIX}/opt/grep/libexec/gnubin:${BREW_PREFIX}/opt/findutils/libexec/gnubin:${BREW_PREFIX}/opt/gnu-sed/libexec/gnubin:${BREW_PREFIX}/opt/gnu-tar/libexec/gnubin:${BREW_PREFIX}/opt/gpatch/libexec/gnubin:${BREW_PREFIX}/opt/make/libexec/gnubin:${BREW_PREFIX}/opt/diffutils/bin:${BREW_PREFIX}/opt/m4/bin:${BREW_PREFIX}/opt/flex/bin:${BREW_PREFIX}/opt/bison/bin:${BREW_PREFIX}/opt/gawk/libexec/gnubin:${BREW_PREFIX}/opt/gawk/bin:${BREW_PREFIX}/bin"
+          GNU_PATH=$(make -f trunk/host-tools.mk -p 2>/dev/null | sed -n 's/^DARWIN_GNU_PATH := //p' | head -1)
           echo "PATH=${GNU_PATH}:$PATH" >> "$GITHUB_ENV"
-          echo "BUILD_DATE=$(TZ='Asia/Shanghai' date +%Y%m%d)" >> "$GITHUB_ENV"
+
+      - name: Set build date
+        run: echo "BUILD_DATE=$(TZ='Asia/Shanghai' date +%Y%m%d)" >> "$GITHUB_ENV"
 
       - name: Build Firmware
         run: |
@@ -98,7 +88,7 @@ jobs:
       - uses: actions/upload-artifact@main
         with:
           name: ${{ matrix.target }}-${{ matrix.toolchain }}-${{ matrix.host }}-${{ env.BUILD_DATE }}
-          path: trunk/build/images/*.trx
+          path: trunk/images/*.trx
 
       - uses: ncipollo/release-action@main
         with:
@@ -115,9 +105,9 @@ jobs:
             - **C Library**: ${{ env.LIBC }}
             - **Go**: ${{ env.GO_VER }}
             - **Commit**: ${{ github.sha }}
-          artifacts: trunk/build/images/*.trx
+          artifacts: trunk/images/*.trx
           allowUpdates: true
-          replaceArtifacts: true
+          replacesArtifacts: true
           omitNameDuringUpdate: true
           makeLatest: false
           prerelease: true

@@ -73,6 +73,5 @@ void foe_to_org_iphdr(IN struct foe_entry *entry, OUT struct iphdr *iph);
 void PpeIpv6PktRebuild(struct sk_buff *skb, struct foe_entry *foe_entry);
 void PpeIpv4PktRebuild(struct sk_buff *skb, struct iphdr *iph,
 		       struct foe_entry *foe_entry);
-unsigned int Str2Ip(IN char *str);
 void hwnat_memcpy(void *dest, void *src, u32 n);
 #endif

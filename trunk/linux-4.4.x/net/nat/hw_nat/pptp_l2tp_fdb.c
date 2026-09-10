@@ -75,16 +75,16 @@ struct pptp_l2tp_fdb_entry *pptp_l2tp_fdb_create(struct hlist_head *head,
     struct pptp_l2tp_fdb_entry *fdb = NULL;
 
     fdb = kzalloc(sizeof(struct pptp_l2tp_fdb_entry), GFP_ATOMIC);
-    if (debug_level >= 1) {
-	printk("get a fdb space at %p\n", (void*)fdb);
-    }
     if (fdb) {
+	printk("get a fdb space at %p\n", (void *)fdb);
 	//memcpy(fdb->addr, addr, ETH_ALEN);
 	hlist_add_head_rcu(&fdb->hlist, head);
 	fdb->addr = addr;
 	fdb->src_ip = src_ip;
 	fdb->hash_index = foe_hash;
 	fdb->protocol = protocol;
+    } else {
+	pr_err("%s: failed to allocate fdb entry\n", __func__);
     }
     return fdb;
 }

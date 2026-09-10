@@ -57,10 +57,8 @@ MODULE_PARM_DESC(wan_vid, "VLAN ID for WAN traffic");
 struct timer_list hwnat_clear_entry_timer;
 static void hwnat_clear_entry(unsigned long data)
 {
-	//printk("HW_NAT work normally\n");
+	(void)data;
 	reg_modify_bits(PPE_FOE_CFG, FWD_CPU_BUILD_ENTRY, 4, 2);
-	//del_timer_sync(&hwnat_clear_entry_timer);
-
 }
 void foe_clear_entry(struct neighbour *neigh);
 #if defined(CONFIG_RAETH_QDMA) && defined(CONFIG_PPE_MCAST)
@@ -103,10 +101,6 @@ int DPORT_GMAC2;
 
 /* #define DSCP_REMARK_TEST */
 /* #define PREBIND_TEST */
-#define DD \
-{\
-pr_info("%s %d\n", __func__, __LINE__); \
-}
 
 #define HWSFQUP 3
 #define HWSFQDL 1
@@ -161,50 +155,8 @@ unsigned char *FOE_INFO_START_ADDR(struct sk_buff *skb)
 	else if (IS_MAGIC_TAG_PROTECT_VALID_CB(skb))
 		return FOE_INFO_START_ADDR_CB(skb);
 
-	pr_info("!!!FOE_INFO_START_ADDR Error!!!!\n");
+	pr_err("!!!FOE_INFO_START_ADDR Error!!!!\n");
 	return FOE_INFO_START_ADDR_HEAD(skb);
-}
-
-void FOE_INFO_DUMP(struct sk_buff *skb)
-{
-	pr_info("FOE_INFO_START_ADDR(skb) =%p\n", FOE_INFO_START_ADDR(skb));
-	pr_info("FOE_TAG_PROTECT(skb) =%x\n", FOE_TAG_PROTECT(skb));
-	pr_info("FOE_ENTRY_NUM(skb) =%x\n", FOE_ENTRY_NUM(skb));
-	pr_info("FOE_ALG(skb) =%x\n", FOE_ALG(skb));
-	pr_info("FOE_AI(skb) =%x\n", FOE_AI(skb));
-	pr_info("FOE_SP(skb) =%x\n", FOE_SP(skb));
-	pr_info("FOE_MAGIC_TAG(skb) =%x\n", FOE_MAGIC_TAG(skb));
-#if defined(CONFIG_ARCH_MT7622_WIFI_HW_NAT)
-	pr_info("FOE_WDMA_ID(skb) =%x\n", FOE_WDMA_ID(skb));
-	pr_info("FOE_RX_ID(skb) =%x\n", FOE_RX_ID(skb));
-	pr_info("FOE_WC_ID(skb) =%x\n", FOE_WC_ID(skb));
-	pr_info("FOE_FOE_BSS_IDIF(skb) =%x\n", FOE_BSS_ID(skb));
-#endif
-#if defined(CONFIG_RA_HW_NAT_PPTP_L2TP)
-	pr_info("FOE_SOURCE(skb) =%x\n", FOE_SOURCE(skb));
-	pr_info("FOE_SOURCE(skb) =%x\n", FOE_SOURCE(skb));
-#endif
-}
-
-void FOE_INFO_DUMP_TAIL(struct sk_buff *skb)
-{
-	pr_info("FOE_INFO_START_ADDR_TAIL(skb) =%p\n", FOE_INFO_START_ADDR_TAIL(skb));
-	pr_info("FOE_TAG_PROTECT_TAIL(skb) =%x\n", FOE_TAG_PROTECT_TAIL(skb));
-	pr_info("FOE_ENTRY_NUM_TAIL(skb) =%x\n", FOE_ENTRY_NUM_TAIL(skb));
-	pr_info("FOE_ALG_TAIL(skb) =%x\n", FOE_ALG_TAIL(skb));
-	pr_info("FOE_AI_TAIL(skb) =%x\n", FOE_AI_TAIL(skb));
-	pr_info("FOE_SP_TAIL(skb) =%x\n", FOE_SP_TAIL(skb));
-	pr_info("FOE_MAGIC_TAG_TAIL(skb) =%x\n", FOE_MAGIC_TAG_TAIL(skb));
-#if defined(CONFIG_ARCH_MT7622_WIFI_HW_NAT)
-	pr_info("FOE_WDMA_ID_TAIL(skb) =%x\n", FOE_WDMA_ID_TAIL(skb));
-	pr_info("FOE_RX_ID_TAIL(skb) =%x\n", FOE_RX_ID_TAIL(skb));
-	pr_info("FOE_WC_ID_TAIL(skb) =%x\n", FOE_WC_ID_TAIL(skb));
-	pr_info("FOE_FOE_BSS_IDIF_TAIL(skb) =%x\n", FOE_BSS_ID_TAIL(skb));
-#endif
-#if defined(CONFIG_RA_HW_NAT_PPTP_L2TP)
-	pr_info("FOE_SOURCE_TAIL(skb) =%x\n", FOE_SOURCE_TAIL(skb));
-	pr_info("FOE_SOURCE_TAIL(skb) =%x\n", FOE_SOURCE_TAIL(skb));
-#endif
 }
 
 int hwnat_info_region;
@@ -491,7 +443,7 @@ defined(CONFIG_ARCH_MT7622) || (CONFIG_ARCH_MT7623)
 #endif
 	}
 
-	sprintf(buf, "CPU Reason Error - %X\n", FOE_AI(skb));
+	snprintf(buf, sizeof(buf), "CPU Reason Error - %X\n", FOE_AI(skb));
 	return buf;
 }
 
@@ -516,7 +468,7 @@ uint32_t foe_dump_pkt_tx(struct sk_buff *skb)
 
 uint32_t foe_dump_pkt(struct sk_buff *skb)
 {
-	struct foe_entry *entry = &ppe_foe_base[FOE_ENTRY_NUM(skb)];
+	struct foe_entry *entry;
 
 	NAT_PRINT("\nRx===<FOE_Entry=%d>=====\n", FOE_ENTRY_NUM(skb));
 	NAT_PRINT("RcvIF=%s\n", skb->dev->name);
@@ -528,6 +480,15 @@ uint32_t foe_dump_pkt(struct sk_buff *skb)
 	/* some special alert occurred, so entry_num is useless (just skip it) */
 	if (FOE_ENTRY_NUM(skb) == 0x3fff)
 		return 1;
+
+	/* Validate FOE entry index to prevent array out-of-bounds access */
+	if (FOE_ENTRY_NUM(skb) >= FOE_4TB_SIZ) {
+		NAT_PRINT("Invalid FOE entry index %d (max %d)\n",
+			  FOE_ENTRY_NUM(skb), FOE_4TB_SIZ);
+		return 1;
+	}
+
+	entry = &ppe_foe_base[FOE_ENTRY_NUM(skb)];
 
 	/* PPE: IPv4 packet=IPV4_HNAT IPv6 packet=IPV6_ROUTE */
 	if (IS_IPV4_GRP(entry)) {
@@ -1173,7 +1134,7 @@ int hitbind_force_mcast_to_wifi_handler(struct sk_buff *skb)
 
 int32_t ppe_rx_handler(struct sk_buff *skb)
 {
-	struct foe_entry *entry = &ppe_foe_base[FOE_ENTRY_NUM(skb)];
+	struct foe_entry *entry;
 	struct ethhdr *eth = (struct ethhdr *)(skb->data - ETH_HLEN);
 #if defined(CONFIG_RAETH_QDMA)
 	struct vlan_ethhdr *veth;
@@ -1185,6 +1146,15 @@ int32_t ppe_rx_handler(struct sk_buff *skb)
 #endif
 	if (debug_level >= 7)
 		foe_dump_pkt(skb);
+
+	/* Validate FOE entry index to prevent array out-of-bounds access */
+	if (FOE_ENTRY_NUM(skb) >= FOE_4TB_SIZ) {
+		printk("%s: invalid FOE entry index %u (max %u)\n",
+			 __func__, FOE_ENTRY_NUM(skb), FOE_4TB_SIZ);
+		return 1;
+	}
+
+	entry = &ppe_foe_base[FOE_ENTRY_NUM(skb)];
 
 /*FP to-lan on/off*/
 #if defined(CONFIG_RA_HW_NAT_PPTP_L2TP)
@@ -2841,13 +2811,13 @@ int get_done_bit(struct sk_buff *skb, struct foe_entry * entry)
 	} else if (IS_IPV6_6RD(entry)) {
 		done_bit = entry->ipv6_6rd.resv1;
 	} else {
-		printk("get packet format something wrong\n");
+		pr_err("get packet format something wrong\n");
 		return 0;
 	}
 #endif
 #endif
 	if ((done_bit != 0) && (done_bit !=1)){
-		printk("done bit something wrong, done_bit = %d\n", done_bit);
+		pr_err("done bit something wrong, done_bit = %d\n", done_bit);
 		done_bit = 0;
 	}
 	//printk("index = %d, done_bit=%d\n", FOE_ENTRY_NUM(skb), done_bit);
@@ -2870,7 +2840,7 @@ void set_ppe_table_done(struct foe_entry * entry)
 	} else if (IS_IPV6_6RD(entry)) {
 		entry->ipv6_6rd.resv1 = 1;
 	} else {
-		printk("set packet format something wrong\n");
+		pr_err("set packet format something wrong\n");
 	}
 #endif
 #endif
@@ -2899,7 +2869,7 @@ int32_t ppe_tx_handler(struct sk_buff *skb, int gmac_no)
 #endif
 	which_region = tx_decide_which_region(skb);
 	if (which_region == ALL_INFO_ERROR) {
-		pr_info_ratelimited("ppe_tx_handler : ALL_INFO_ERROR\n");
+		pr_debug("ppe_tx_handler : ALL_INFO_ERROR\n");
 		return 1;
 	}
 
@@ -3099,6 +3069,8 @@ int32_t ppe_tx_handler(struct sk_buff *skb, int gmac_no)
 		}
 #if defined(CONFIG_RAETH_QDMA) && defined(CONFIG_PPE_MCAST)
 		if (ppe_parse_result.is_mcast) {
+			if (skb->mark > 63)
+				skb->mark = 0;
 			foe_mcast_entry_qid(ppe_parse_result.vlan1,
 					    ppe_parse_result.dmac,
 					    M2Q_table[skb->mark]);
