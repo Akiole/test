@@ -1527,8 +1527,7 @@ ej_initial_account(int eid, webs_t wp, int argc, char **argv)
 					websWrite(wp, "</script>\n");
 					return -1;
 				}
-				sprintf(command, "rm -f %s/.__*", follow_partition->mount_point);
-				command[len] = 0;
+				snprintf(command, len + 1, "rm -f %s/.__*", follow_partition->mount_point);
 
 				result = system(command);
 				free(command);

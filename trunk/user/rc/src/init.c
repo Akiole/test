@@ -420,11 +420,25 @@ init_sysctl(void)
 
 	fput_int("/proc/sys/net/core/rmem_max", KERNEL_NET_CORE_RMEM);
 	fput_int("/proc/sys/net/core/wmem_max", KERNEL_NET_CORE_WMEM);
+	fput_int("/proc/sys/net/core/rmem_default", 212992);
+	fput_int("/proc/sys/net/core/wmem_default", 212992);
+	fput_int("/proc/sys/net/core/netdev_max_backlog", 2000);
+	fput_int("/proc/sys/net/core/somaxconn", 1024);
+
+	/* Enable BBR congestion control if available (fallback to cubic) */
+	fput_string("/proc/sys/net/ipv4/tcp_congestion_control", "bbr");
+
+	fput_string("/proc/sys/net/ipv4/tcp_rmem", "4096 131072 6291456");
+	fput_string("/proc/sys/net/ipv4/tcp_wmem", "4096 16384 4194304");
+	fput_int("/proc/sys/net/ipv4/tcp_fastopen", 3);
 
 	set_interface_conf_int("ipv4", "all", "rp_filter", 0); // new logic for new kernels
 
 	fput_int("/proc/sys/vm/min_free_kbytes", KERNEL_MIN_FREE_KBYTES);
 	fput_int("/proc/sys/vm/overcommit_memory", 0);
+	fput_int("/proc/sys/vm/swappiness", 10);
+	fput_int("/proc/sys/vm/dirty_ratio", 20);
+	fput_int("/proc/sys/vm/dirty_background_ratio", 10);
 
 	set_tcp_tweaks();
 

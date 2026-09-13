@@ -157,6 +157,10 @@ sys_script(char *name)
 #else
 	char s_addr[INET_ADDRSTRLEN];
 #endif
+	/* Validate name to prevent command injection: only allow [a-zA-Z0-9_.-] */
+	if (name == NULL || name[0] == '\0' ||
+	    strspn(name, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-") != strlen(name))
+		return;
 	snprintf(scmd, sizeof(scmd), "/tmp/%s", name);
 
 	if (strcmp(name,"syscmd.sh")==0)
@@ -375,7 +379,7 @@ websScan(const char *query)
 #define SCAN_MAX_VALUE_LEN 256
 	unsigned int i, flag, i_len;
 	const char *v1, *v2, *v3, *sp;
-	char groupid[64];
+	char groupid[256];
 	char value[SCAN_MAX_VALUE_LEN];
 
 	i = 0;
@@ -2050,7 +2054,7 @@ applydb_cgi(webs_t wp, char *urlPrefix, char *webDir, int arg,
 		sprintf(post_db_buf, "%s", post_buf_backup+1);
 		unescape(post_db_buf);
 		//logmessage("HTTPD", "url: %s,%s", post_db_buf, name);
-		strcpy(post_json_buf, post_db_buf);
+		// post_db_buf aliases post_json_buf; self-strcpy removed (UB)
 		result = strtok( post_json_buf, "&" );
 		i =0;
 	while( result != NULL )
@@ -2090,7 +2094,7 @@ applydb_cgi(webs_t wp, char *urlPrefix, char *webDir, int arg,
 	unescape(post_db_buf);
 	//logmessage("HTTPD", "name: %s post: %s", name, post_json_buf);
 	//logmessage("HTTPD", "name: %s post: %s", name, post_db_buf);
-	strcpy(post_json_buf, post_db_buf);
+	// post_db_buf aliases post_json_buf; self-strcpy removed (UB)
 	result = strtok( post_json_buf, "&" );
 	i =0;
 	while( result != NULL )
@@ -3390,7 +3394,7 @@ static int ej_system_status_hook(int eid, webs_t wp, int argc, char **argv)
 			      "idle: 0x%llx, iowait: 0x%llx, irq: 0x%llx, sirq: 0x%llx, total: 0x%llx}, "
 			"wifi2: {state: %d, guest: %d}, "
 			"wifi5: {state: %d, guest: %d}, "
-			"logmt: %ld }",
+			"logmt: %lld }",
 			LOAD_INT(info.loads[0]), LOAD_FRAC(info.loads[0]),
 			LOAD_INT(info.loads[1]), LOAD_FRAC(info.loads[1]),
 			LOAD_INT(info.loads[2]), LOAD_FRAC(info.loads[2]),
@@ -3400,7 +3404,7 @@ static int ej_system_status_hook(int eid, webs_t wp, int argc, char **argv)
 			cpu.busy, cpu.user, cpu.nice, cpu.system, cpu.idle, cpu.iowait, cpu.irq, cpu.sirq, cpu.total,
 			wifi2.radio, wifi2.ap_guest,
 			wifi5.radio, wifi5.ap_guest,
-			log.st_mtime
+			(long long)log.st_mtime
 		);
 
 	return 0;
@@ -3864,7 +3868,7 @@ nvram_add_group_table(webs_t wp, char *serviceId, struct variable *v, int count)
     	if (fieldCount==0)
     	   sprintf(bufs, "%s", buf);
     	else
-    	   snprintf(bufs, sizeof(bufs), "%s%s", bufs, buf);
+    	   strncat(bufs, buf, sizeof(bufs) - strlen(bufs) - 1);
     	
     	fieldCount++;
     }
@@ -4006,13 +4010,13 @@ static void do_html_post_and_get(const char *url, FILE *stream, int len, char *b
 
 	if (query && strlen(query) > 0){
 		if (strlen(post_buf) > 0)
-			sprintf(post_buf_backup, "?%s&%s", post_buf, query);
+			snprintf(post_buf_backup, sizeof(post_buf_backup), "?%s&%s", post_buf, query);
 		else
-			sprintf(post_buf_backup, "?%s", query);
-		sprintf(post_buf, "%s", post_buf_backup+1);
+			snprintf(post_buf_backup, sizeof(post_buf_backup), "?%s", query);
+		snprintf(post_buf, sizeof(post_buf), "%s", post_buf_backup+1);
 	}
 	else if (strlen(post_buf) > 0)
-		sprintf(post_buf_backup, "?%s", post_buf);
+		snprintf(post_buf_backup, sizeof(post_buf_backup), "?%s", post_buf);
 	//websScan(post_buf_backup);
 	init_cgi(post_buf);
 }

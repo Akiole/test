@@ -761,20 +761,26 @@ void
 set_nf_conntrack(void)
 {
 	int i_nf_val;
+	int i_nf_def;
 
 #if (BOARD_RAM_SIZE < 32)
 	int i_nf_lim = 4096;
+	i_nf_def = 4096;
 #elif (BOARD_RAM_SIZE < 64)
 	int i_nf_lim = 16384;
+	i_nf_def = 8192;
 #elif (BOARD_RAM_SIZE < 128)
 	int i_nf_lim = 65536;
+	i_nf_def = 16384;
 #elif (BOARD_RAM_SIZE < 256)
 	int i_nf_lim = 262144;
+	i_nf_def = 65536;
 #else
 	int i_nf_lim = 327680;
+	i_nf_def = 65536;
 #endif
 
-	i_nf_val = nvram_safe_get_int("nf_max_conn", 16384, 4096, i_nf_lim);
+	i_nf_val = nvram_safe_get_int("nf_max_conn", i_nf_def, 4096, i_nf_lim);
 	fput_int("/proc/sys/net/nf_conntrack_max", i_nf_val);
 }
 
@@ -830,6 +836,15 @@ set_tcp_tweaks(void)
 
 	sprintf(tmp, "/proc/sys/net/%s/%s", "ipv4", "tcp_rfc1337");
 	fput_int(tmp, 1);		//def: 1
+
+	sprintf(tmp, "/proc/sys/net/%s/%s", "ipv4", "tcp_mtu_probing");
+	fput_int(tmp, 1);		//def: 0, enable PLPMTUD
+
+	sprintf(tmp, "/proc/sys/net/%s/%s", "ipv4", "tcp_no_metrics_save");
+	fput_int(tmp, 1);		//def: 0
+
+	sprintf(tmp, "/proc/sys/net/%s/%s", "core", "netdev_max_backlog");
+	fput_int(tmp, 2000);		//def: 1000
 }
 
 void

@@ -108,33 +108,33 @@ if [ "$ap" = "1" ] || [ "$1" = "scan" ] ; then
 		ap_ch_ac="$(awk -v a="$aplist_n" -v b="Ch" 'BEGIN{print index(a,b)}')"
 		ap_ch_b="$(echo "$aplist_n" | grep -Eo "Ch *" | sed -n '1p')"
 		ap_ch_bc="$(echo """$ap_ch_b" | wc -c)"
-		ap_ch_bc=`expr $ap_ch_bc - 1`
-		ap_ch_c=`expr $ap_ch_ac + $ap_ch_bc - 1`
+		ap_ch_bc=$(( ${ap_ch_bc:-0} - 1 ))
+		ap_ch_c=$(( ${ap_ch_ac:-0} + ${ap_ch_bc:-0} - 1 ))
 		ap_ssid_ac="$(awk -v a="$aplist_n" -v b="SSID" 'BEGIN{print index(a,b)}')"
 		ap_ssid_b="$(echo "$aplist_n" | grep -Eo "SSID *" | sed -n '1p')"
 		ap_ssid_bc="$(echo """$ap_ssid_b" | wc -c)"
-		ap_ssid_bc=`expr $ap_ssid_bc - 1`
-		ap_ssid_c=`expr $ap_ssid_ac + $ap_ssid_bc - 1`
+		ap_ssid_bc=$(( ${ap_ssid_bc:-0} - 1 ))
+		ap_ssid_c=$(( ${ap_ssid_ac:-0} + ${ap_ssid_bc:-0} - 1 ))
 		ap_bssid_ac="$(awk -v a="$aplist_n" -v b="BSSID" 'BEGIN{print index(a,b)}')"
 		ap_bssid_b="$(echo "$aplist_n" | grep -Eo "BSSID *" | sed -n '1p')"
 		ap_bssid_bc="$(echo """$ap_bssid_b" | wc -c)"
-		ap_bssid_bc=`expr $ap_bssid_bc - 1`
-		ap_bssid_c=`expr $ap_bssid_ac + $ap_bssid_bc - 1`
+		ap_bssid_bc=$(( ${ap_bssid_bc:-0} - 1 ))
+		ap_bssid_c=$(( ${ap_bssid_ac:-0} + ${ap_bssid_bc:-0} - 1 ))
 		ap_security_ac="$(awk -v a="$aplist_n" -v b="Security" 'BEGIN{print index(a,b)}')"
 		ap_security_b="$(echo "$aplist_n" | grep -Eo "Security *" | sed -n '1p')"
 		ap_security_bc="$(echo """$ap_security_b" | wc -c)"
-		ap_security_bc=`expr $ap_security_bc - 1`
-		ap_security_c=`expr $ap_security_ac + $ap_security_bc - 1`
+		ap_security_bc=$(( ${ap_security_bc:-0} - 1 ))
+		ap_security_c=$(( ${ap_security_ac:-0} + ${ap_security_bc:-0} - 1 ))
 		ap_signal_ac="$(awk -v a="$aplist_n" -v b="Signal" 'BEGIN{print index(a,b)}')"
 		ap_signal_b="Signal(%)"
 		ap_signal_bc="$(echo """$ap_signal_b" | wc -c)"
-		ap_signal_bc=`expr $ap_signal_bc - 1`
-		ap_signal_c=`expr $ap_signal_ac + $ap_signal_bc - 1`
+		ap_signal_bc=$(( ${ap_signal_bc:-0} - 1 ))
+		ap_signal_c=$(( ${ap_signal_ac:-0} + ${ap_signal_bc:-0} - 1 ))
 		ap_wmode_ac="$(awk -v a="$aplist_n" -v b="W-Mode" 'BEGIN{print index(a,b)}')"
 		ap_wmode_b="$(echo "$aplist_n" | grep -Eo "W-Mode *" | sed -n '1p')"
 		ap_wmode_bc="$(echo """$ap_wmode_b" | wc -c)"
-		ap_wmode_bc=`expr $ap_wmode_bc - 1`
-		ap_wmode_c=`expr $ap_wmode_ac + $ap_wmode_bc - 1`
+		ap_wmode_bc=$(( ${ap_wmode_bc:-0} - 1 ))
+		ap_wmode_c=$(( ${ap_wmode_ac:-0} + ${ap_wmode_bc:-0} - 1 ))
 		Ch="$(echo "$site_survey" | cut -b "$ap_ch_ac-$ap_ch_c")"
 		SSID="$(echo "$site_survey" | cut -b "$ap_ssid_ac-$ap_ssid_c")"
 		BSSID="$(echo "$site_survey" | cut -b "$ap_bssid_ac-$ap_bssid_c")"

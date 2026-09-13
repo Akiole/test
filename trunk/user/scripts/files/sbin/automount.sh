@@ -20,11 +20,10 @@ existed=`cat /proc/partitions | grep $1 | wc -l`
 
 dev_full="/dev/$1"
 
-# check filesystem type
-ID_FS_TYPE=""
-ID_FS_UUID=""
-ID_FS_LABEL=""
-eval `/sbin/blkid -s "TYPE" -s "UUID" -s "LABEL" -o udev $dev_full`
+# check filesystem type (use separate -o value calls to avoid eval command injection)
+ID_FS_TYPE=$(/sbin/blkid -s TYPE -o value "$dev_full" 2>/dev/null)
+ID_FS_UUID=$(/sbin/blkid -s UUID -o value "$dev_full" 2>/dev/null)
+ID_FS_LABEL=$(/sbin/blkid -s LABEL -o value "$dev_full" 2>/dev/null)
 
 if [ "$ID_FS_TYPE" == "swap" ] ; then
 	[ ! -x /sbin/swapon ] && exit 1

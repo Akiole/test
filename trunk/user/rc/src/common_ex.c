@@ -322,7 +322,7 @@ get_eeprom_params(void)
 
 #if defined(FWBLDSTR)
 	if (strlen(FWBLDSTR) > 0 && strlen(FWBLDSTR) <= 4) {
-		strcat(fwver_sub, "_");
+		strcat(fwver_sub, "-");
 		strcat(fwver_sub, FWBLDSTR);
 	}
 #endif
@@ -658,7 +658,7 @@ oom_score_adjust(pid_t pid, int oom_score_adj)
 void mount_rwfs_partition(void)
 {
 	int mtd_rwfs;
-	char dev_ubi[16];
+	char dev_ubi[32];
 	const char *mp_rwfs = MP_MTD_RWFS;
 
 	if (nvram_get_int("mtd_rwfs_mount") == 0)
@@ -705,7 +705,7 @@ void umount_rwfs_partition(void)
 void start_rwfs_optware(void)
 {
 	int mtd_rwfs;
-	char dev_ubi[16];
+	char dev_ubi[32];
 	const char *mp_rwfs = MP_MTD_RWFS;
 
 	if (!check_if_dir_exist(mp_rwfs))
