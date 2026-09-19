@@ -41,32 +41,32 @@ do
 	fi
 done
 
-if [ $(nvram get pppoemwan_enable) = 1 ] ; then
+if [ "$(nvram get pppoemwan_enable)" = "1" ] ; then
 sleep 20
 fi
 
-if [ $(nvram get sqm_enable) = 1 ] ; then
+if [ "$(nvram get sqm_enable)" = "1" ] ; then
 sleep 10
 logger -t "自动启动" "正在启动 SQM QOS..."
 /usr/lib/sqm/run.sh
 fi
 
-if [ $(nvram get adbyby_enable) = 1 ] ; then
+if [ "$(nvram get adbyby_enable)" = "1" ] ; then
 logger -t "自动启动" "正在启动 Adbyby plus..."
 /usr/bin/adbyby.sh start
 fi
 
-if [ $(nvram get adg_enable) = 1 ] ; then
+if [ "$(nvram get adg_enable)" = "1" ] ; then
 logger -t "自动启动" "正在启动 adguardhome..."
 /usr/bin/adguardhome.sh start
 fi
 
-if [ $(nvram get ss_enable) = 1 ] ; then
+if [ "$(nvram get ss_enable)" = "1" ] ; then
 logger -t "自动启动" "正在启动科学上网..."
 /usr/bin/shadowsocks.sh start
 fi
 
-if [ $(nvram get sdns_enable) = 1 ] ; then
+if [ "$(nvram get sdns_enable)" = "1" ] ; then
    if [ -f "$smartdns_conf" ] ; then
        sed -i '/去广告/d' $smartdns_conf
        sed -i '/adbyby/d' $smartdns_conf
@@ -79,32 +79,32 @@ logger -t "自动启动" "正在启动 SmartDNS..."
 /usr/bin/smartdns.sh start
 fi
 
-if [ $(nvram get aliddns_enable) = 1 ] ; then
+if [ "$(nvram get aliddns_enable)" = "1" ] ; then
 logger -t "自动启动" "正在启动阿里 ddns..."
 /usr/bin/aliddns.sh start
 fi
 
-if [ $(nvram get ddnsto_enable) = 1 ] ; then
+if [ "$(nvram get ddnsto_enable)" = "1" ] ; then
 logger -t "自动启动" "正在启动 ddnsto..."
 /usr/bin/ddnsto.sh start
 fi
 
-if [ $(nvram get aliyundrive_enable) = 1 ] ; then
+if [ "$(nvram get aliyundrive_enable)" = "1" ] ; then
 logger -t "自动启动" "正在启动阿里云盘..."
 /usr/bin/aliyundrive-webdav.sh start
 fi
 
-if [ $(nvram get zerotier_enable) = 1 ] ; then
+if [ "$(nvram get zerotier_enable)" = "1" ] ; then
 logger -t "自动启动" "正在启动 zerotier..."
 /usr/bin/zerotier.sh start
 fi
 
-if [ $(nvram get wireguard_enable) = 1 ] ; then
+if [ "$(nvram get wireguard_enable)" = "1" ] ; then
 logger -t "自动启动" "正在启动 wireguard..."
 /usr/bin/wireguard.sh start
 fi
 
-if [ $(nvram get frpc_enable) = 1 ] ; then
+if [ "$(nvram get frpc_enable)" = "1" ] ; then
 logger -t "自动启动" "正在启动 frp client..."
 /usr/bin/frp.sh start
 fi

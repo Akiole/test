@@ -57,18 +57,20 @@ echo 600 > /proc/sys/net/netfilter/nf_conntrack_generic_timeout
 
 # CPU IRQ
 set_rps_rfs() {
-    echo f >/proc/irq/11/smp_affinity
-    echo f >/proc/irq/12/smp_affinity
-    for device in $(ls /sys/class/net); do
+    [ -f /proc/irq/11/smp_affinity ] && echo f >/proc/irq/11/smp_affinity
+    [ -f /proc/irq/12/smp_affinity ] && echo f >/proc/irq/12/smp_affinity
+    for device in eth2 eth3 gre0 gretap0 lo rax0 ra0 sit0; do
+        [ -d /sys/class/net/$device/queues/rx-0 ] || continue
         echo f >/sys/class/net/$device/queues/rx-0/rps_cpus
         echo 32768 >/sys/class/net/$device/queues/rx-0/rps_flow_cnt
     done
     echo 32768 >/proc/sys/net/core/rps_sock_flow_entries
 }
 get_rps_rfs() {
-    cat /proc/irq/11/smp_affinity
-    cat /proc/irq/12/smp_affinity
-    for device in $(ls /sys/class/net); do
+    [ -f /proc/irq/11/smp_affinity ] && cat /proc/irq/11/smp_affinity
+    [ -f /proc/irq/12/smp_affinity ] && cat /proc/irq/12/smp_affinity
+    for device in eth2 eth3 gre0 gretap0 lo rax0 ra0 sit0; do
+        [ -d /sys/class/net/$device/queues/rx-0 ] || continue
         printf "%-10s %-5s %-10s\n" "$device" "$(cat /sys/class/net/$device/queues/rx-0/rps_cpus 2>/dev/null)" "$(cat /sys/class/net/$device/queues/rx-0/rps_flow_cnt 2>/dev/null)"
     done
     cat /proc/sys/net/core/rps_sock_flow_entries

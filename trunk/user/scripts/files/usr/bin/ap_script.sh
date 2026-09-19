@@ -48,7 +48,7 @@ EOF
 
 rt_mode_x=`nvram get rt_mode_x`
 wl_mode_x=`nvram get wl_mode_x`
-if [ $rt_mode_x -gt 2 ] || [ $wl_mode_x -gt 2 ]; then
+if [ "${rt_mode_x:-0}" -gt 2 ] || [ "${wl_mode_x:-0}" -gt 2 ]; then
 cat /tmp/ap2g5g.txt | grep -v '^#'  | grep -v "^$" > /tmp/ap2g5g
 fi
 killall sh_apauto.sh
@@ -61,15 +61,15 @@ while [ -s /tmp/ap2g5g ]; do
 # [2023-1-11] check if ap_script.sh / sh_ezscript.sh exists
 ap_script_num=$(ps | grep -E "[a]p_script.sh" | wc -l)
 sh_ezscript_num=$(ps | grep -E "[s]h_ezscript.sh" | wc -l)
-if [[ $ap_script_num == "0" && $ap_script_num == "0" ]]; then
+if [ "$ap_script_num" = "0" ]; then
   #logger -t "【移除apc.lock】" "没有找到中继检查进程"
   rm -f /tmp/apc.lock
 fi
 
 radio2_apcli=`nvram get radio2_apcli`
-[ -z $radio2_apcli ] && radio2_apcli="apcli0"
+[ -z "$radio2_apcli" ] && radio2_apcli="apcli0"
 radio5_apcli=`nvram get radio5_apcli`
-[ -z $radio5_apcli ] && radio5_apcli="apclii0"
+[ -z "$radio5_apcli" ] && radio5_apcli="apclii0"
   ap_check=`nvram get ap_check`
   if [[ "$ap_check" == 1 ]] && [ ! -f /tmp/apc.lock ] ; then
   #【1】 当中继信号断开时启动自动搜寻
@@ -80,7 +80,7 @@ radio5_apcli=`nvram get radio5_apcli`
   [ "$a2" = "" -a "$a5" = "" ] && ap=1 || ap=0
   if [ "$ap" = "1" ] ; then
     logger -t "【AP 中继】" "连接中断，启动自动搜寻"
-    [ $sh_ezscript_num == "0" ] && /etc/storage/sh_ezscript.sh connAPSite_scan &
+    [ "$sh_ezscript_num" = "0" ] && /etc/storage/sh_ezscript.sh connAPSite_scan &
     sleep 10
   fi
   fi
@@ -101,7 +101,7 @@ radio5_apcli=`nvram get radio5_apcli`
     
     logger -t "【连接 AP】" "$ap_time_check 秒后,自动搜寻 ap ,直到连上最优先信号 $rtwlt_sta_ssid_1 "
     sleep $ap_time_check
-    [ $sh_ezscript_num == "0" ] && /etc/storage/sh_ezscript.sh connAPSite_scan &
+    [ "$sh_ezscript_num" = "0" ] && /etc/storage/sh_ezscript.sh connAPSite_scan &
 
     sleep 10
     fi
@@ -115,7 +115,7 @@ radio5_apcli=`nvram get radio5_apcli`
     echo "online"
     else
     echo "Internet互联网断线后自动搜寻"
-    [ $sh_ezscript_num == "0" ] && /etc/storage/sh_ezscript.sh connAPSite_scan &
+    [ "$sh_ezscript_num" = "0" ] && /etc/storage/sh_ezscript.sh connAPSite_scan &
     sleep 10
     fi
   fi
