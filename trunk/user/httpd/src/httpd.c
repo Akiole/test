@@ -115,6 +115,8 @@ static uaddr login_ip;			// the logined ip
 static char login_mac[18] = {0};	// the logined mac
 static char auth_basic_data[MAX_AUTH_LEN];
 
+extern void unescape(char *s);
+
 #if defined (USE_IPV6)
 static const struct in6_addr in6in4addr_loopback = {{{0x00, 0x00, 0x00, 0x00,
                                                       0x00, 0x00, 0x00, 0x00,
@@ -829,6 +831,62 @@ set_preferred_lang(char *cur)
 	return 0;
 }
 
+
+static void
+handle_login_post(FILE *conn_fp, const conn_item_t *item, int clen)
+{
+	char post_buf[1024];
+	char *username = NULL, *password = NULL;
+	char *p, *name, *value;
+	char user_pass[256];
+	int read_len, remaining;
+	uaddr conn_ip;
+
+	memset(post_buf, 0, sizeof(post_buf));
+	read_len = MIN(clen, (int)sizeof(post_buf) - 1);
+	if (read_len > 0) {
+		if (!fread(post_buf, 1, read_len, conn_fp))
+			read_len = 0;
+	}
+	remaining = clen - read_len;
+	while (remaining-- > 0)
+		fgetc(conn_fp);
+
+	p = post_buf;
+	while (p && *p) {
+		name = p;
+		value = strchr(p, '=');
+		if (!value)
+			break;
+		*value++ = '\0';
+		p = strchr(value, '&');
+		if (p)
+			*p++ = '\0';
+
+		unescape(value);
+
+		if (strcmp(name, "username") == 0)
+			username = value;
+		else if (strcmp(name, "password") == 0)
+			password = value;
+	}
+
+	if (!username || !password || username[0] == '\0') {
+		send_headers(302, "Found", "Location: /Login.asp?error=1", NULL, NULL, conn_fp);
+		return;
+	}
+
+	snprintf(user_pass, sizeof(user_pass), "%s:%s", username, password);
+
+	if (strcmp(user_pass, auth_basic_data) == 0) {
+		usockaddr_to_uaddr(&item->usa, &conn_ip);
+		http_login(&conn_ip);
+		send_headers(302, "Found", "Location: /index.asp", NULL, NULL, conn_fp);
+	} else {
+		send_headers(302, "Found", "Location: /Login.asp?error=1", NULL, NULL, conn_fp);
+	}
+}
+
 static void
 handle_request(FILE *conn_fp, const conn_item_t *item)
 {
@@ -949,16 +1007,23 @@ handle_request(FILE *conn_fp, const conn_item_t *item)
 
 	login_state = http_login_check(&conn_ip);
 
+	/* Handle custom login form POST */
+	if (strcmp(file, "do_login") == 0 && method_id == HTTP_METHOD_POST) {
+		handle_login_post(conn_fp, item, clen);
+		return;
+	}
+
 	if (login_state == 0) {
 		if (strstr(file, ".htm") != NULL || strstr(file, ".asp") != NULL) {
-			file = "Nologin.asp";
+			file = "Login.asp";
 			query = NULL;
 		}
 	}
 
-	/* special case for reset browser credentials */
+	/* special case for logout */
 	if (strcmp(file, "logout") == 0) {
-		send_headers( 401, "Unauthorized", NULL, NULL, NULL, conn_fp );
+		http_logout(&conn_ip);
+		send_headers(302, "Found", "Location: /Login.asp", NULL, NULL, conn_fp);
 		return;
 	}
 
@@ -978,12 +1043,15 @@ handle_request(FILE *conn_fp, const conn_item_t *item)
 
 	do_logout = (strcmp(file, "Logout.asp") == 0) ? 1 : 0;
 
-	if (handler->need_auth && login_state > 1 && !do_logout) {
-		if (!auth_check(authorization)) {
-			http_logout(&conn_ip);
+	/* Login.asp and do_login are accessible without authentication */
+	if (strcmp(file, "Login.asp") != 0 && strcmp(file, "do_login") != 0 &&
+	    handler->need_auth && login_state > 1 && !do_logout) {
+		/* login_state == 3 means already logged in from this IP, skip Basic Auth */
+		if (login_state != 3 && !auth_check(authorization)) {
+			reset_login_data();
 			if (method_id == HTTP_METHOD_POST)
 				eat_post_data(conn_fp, clen);
-			send_authenticate(conn_fp);
+			send_headers(302, "Found", "Location: /Login.asp", NULL, NULL, conn_fp);
 			return;
 		}
 
