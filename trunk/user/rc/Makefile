@@ -5,8 +5,10 @@ PKG_NAME:=rc
 include $(INCLUDE_DIR)/package.mk
 
 TARGET_CFLAGS += \
-	-I$(ROOTDIR)/user/shared/src \
+	-I$(STAGING_DIR)/include/shared \
 	$(if $(STORAGE_ENABLED),-I$(STAGING_DIR)/include/libdisk,)
+
+TARGET_LDFLAGS += -L$(STAGING_DIR)/lib
 
 $(eval $(call BuildPackage,$(PKG_NAME)))
 
@@ -79,6 +81,7 @@ endif
 ifeq ($(CONFIG_FIRMWARE_INCLUDE_OPENVPN),y)
 	$(LN) rc $(ROMFSDIR)/sbin/ovpn_export_client
 endif
+
 ifeq ($(STORAGE_ENABLED),y)
 ifeq ($(CONFIG_FIRMWARE_INCLUDE_SMBD),y)
 	$(LN) rc $(ROMFSDIR)/sbin/run_samba
