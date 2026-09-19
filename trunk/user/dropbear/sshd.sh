@@ -23,6 +23,7 @@ func_createkeys()
 
 func_get_extra_args()
 {
+    [ -d "$dir_storage" ] || mkdir -p -m 755 "$dir_storage"
     [ -f $extra_args ] || echo "-p 22" > $extra_args
     cat $extra_args
 }
