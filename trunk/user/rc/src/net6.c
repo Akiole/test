@@ -50,7 +50,7 @@ void control_if_ipv6_all(int enable)
 {
 	int i;
 	char tmp[64];
-	char* if6_on[] = { "default", "lo", IFNAME_BR, NULL };
+	char* if6_on[] = { "default", "all", "lo", IFNAME_BR, NULL };
 	char* if6_off[] = { "default", "all", NULL };
 	char* rad_off[] = { "default", "lo", "sit0", IFNAME_MAC, NULL };
 

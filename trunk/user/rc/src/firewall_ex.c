@@ -1007,6 +1007,12 @@ ipt_filter_rules(char *man_if, char *wan_if, char *lan_if, char *lan_ip,
 			include_vts_filter(fp, lan_ip, logaccept, 0);
 		
 		/* Accept ICMPv4 packets */
+
+		/* Accept device discovery (for upstream router device list click) */
+		fprintf(fp, "-A %s -p udp --dport %d -j %s\n", dtype, 1900, logaccept);
+		fprintf(fp, "-A %s -p udp --dport %d -j %s\n", dtype, 5353, logaccept);
+		fprintf(fp, "-A %s -p tcp --dport %d -j %s\n", dtype, 80, logaccept);
+		fprintf(fp, "-A %s -p icmp --icmp-type %s -j %s\n", dtype, "echo-request", logaccept);
 		if (nvram_invmatch("misc_ping_x", "0")) {
 			/* Accept all ICMP and UDP ports 33434-33534 for traceroute */
 			fprintf(fp, "-A %s -p icmp -j %s\n", dtype, logaccept);

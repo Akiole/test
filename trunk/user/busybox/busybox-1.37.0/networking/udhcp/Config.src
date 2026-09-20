@@ -113,8 +113,24 @@ config UDHCPC6_DEFAULT_SCRIPT
 # udhcpc6 config is inserted here:
 INSERT
 
+config DHCP6C
+	bool "DHCPv6 client daemon (dhcp6c)"
+	default n
+	depends on FEATURE_IPV6
+	help
+	  dhcp6c is a DHCPv6 client geared primarily toward embedded systems,
+	  while striving to be fully functional and RFC compliant.
+
+config FEATURE_DHCP6_AUTH
+	bool "Support DHCPv6 messages authentication"
+	default n
+	depends on DHCP6C
+	help
+	  If selected, client will support DHCPv6 messages authentication,
+	  currently HMAC-MD5 only.
+
 comment "Common options for DHCP applets"
-        depends on UDHCPD || UDHCPC || UDHCPC6 || DHCPRELAY
+        depends on UDHCPD || UDHCPC || UDHCPC6 || DHCP6C || DHCPRELAY
 
 config UDHCPC_DEFAULT_INTERFACE
 	string "Default interface name"

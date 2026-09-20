@@ -712,7 +712,7 @@ launch_wanx(char *man_ifname, int unit, int wait_dhcpc, int use_zcip)
 
 	/* add a bit delay for AP-Client ready */
 	if (is_man_wisp(man_ifname))
-		wait_apcli_connected(man_ifname, 10);
+		wait_apcli_connected(man_ifname, 3);
 
 	if (use_zcip || !is_valid_ipv4(man_addr)) {
 		/* PPPoE connection not needed WAN physical address first, skip wait DHCP lease */
@@ -871,6 +871,10 @@ start_wan(void)
 		
 		/* bring up physical WAN interface */
 		doSystem("ifconfig %s mtu %d up %s", wan_ifname, 1500, "0.0.0.0");
+
+		/* Disable SLAAC on physical WAN to avoid IPv6 duplicate address and RA default route conflicts */
+		doSystem("echo 0 > /proc/sys/net/ipv6/conf/%s/accept_ra", wan_ifname);
+		doSystem("echo 0 > /proc/sys/net/ipv6/conf/%s/autoconf", wan_ifname);
 		
 		/* perform ApCli reconnect */
 		reconnect_apcli(wan_ifname, 0);
@@ -972,7 +976,7 @@ start_wan(void)
 			
 			/* add a bit delay for AP-Client ready */
 			if (is_man_wisp(wan_ifname))
-				wait_apcli_connected(wan_ifname, 10);
+				wait_apcli_connected(wan_ifname, 3);
 			
 			/* Assign static IP address to i/f */
 			if (wan_proto == IPV4_WAN_PROTO_IPOE_STATIC) {
@@ -2582,6 +2586,7 @@ int start_udhcpc_wan(char *wan_ifname, int unit, int wait_lease)
 	int index, is_man;
 	char log_prefix[32], pidfile[32] = {0};
 	char *wan_hostname, *wan_vci;
+	char hname_opt[64];
 	char *dhcp_argv[] = {
 		"/sbin/udhcpc",
 		"-i", wan_ifname,
@@ -2603,6 +2608,8 @@ int start_udhcpc_wan(char *wan_ifname, int unit, int wait_lease)
 		NULL
 	};
 
+	(void)wait_lease;
+
 	index = 9;		/* first NULL index	*/
 
 	snprintf(pidfile, sizeof(pidfile), "/var/run/udhcpc%d.pid", unit);
@@ -2610,15 +2617,16 @@ int start_udhcpc_wan(char *wan_ifname, int unit, int wait_lease)
 	if (is_man_wisp(wan_ifname) || is_usbnet_interface(wan_ifname))
 		dhcp_argv[7] = "-t6";
 
-	if (wait_lease || is_man_wisp(wan_ifname))
-		dhcp_argv[index++] = "-b";	/* Background if lease is not obtained (timeout 4*4 sec) */
-	else
-		dhcp_argv[index++] = "-d";	/* Background after run (new patch for udhcpc) */
+	/* -b: background if lease not obtained, also background after bound */
+	dhcp_argv[index++] = "-b";
 
 	wan_hostname = get_wan_unit_value(unit, "hostname");
+	if (strlen(wan_hostname) == 0)
+		wan_hostname = get_our_hostname();
 	if (strlen(wan_hostname) > 0) {
-		dhcp_argv[index++] = "-H";
-		dhcp_argv[index++] = sanity_hostname(wan_hostname);
+		snprintf(hname_opt, sizeof(hname_opt), "hostname:%s", sanity_hostname(wan_hostname));
+		dhcp_argv[index++] = "-x";
+		dhcp_argv[index++] = hname_opt;
 	}
 
 	wan_vci = get_wan_unit_value(unit, "vci");
@@ -2660,7 +2668,7 @@ int start_udhcpc_viptv(char *man_ifname)
 		"-p", pidfile,
 		"-t4",
 		"-T4",
-		"-d",		/* Background after run (new patch for udhcpc) */
+		"-b",		/* Background after run (new patch for udhcpc) */
 		NULL,		/* -O mtu		*/
 		NULL,		/* -O routes		*/
 		NULL,		/* -O staticroutes	*/

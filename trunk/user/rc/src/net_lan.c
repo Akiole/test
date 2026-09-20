@@ -1052,7 +1052,8 @@ udhcpc_lan_main(int argc, char **argv)
 int 
 start_udhcpc_lan(char *lan_ifname)
 {
-	char *lan_hostname = get_our_hostname();
+	char lan_hostname_opt[64];
+	snprintf(lan_hostname_opt, sizeof(lan_hostname_opt), "hostname:%s", get_our_hostname());
 	char *dhcp_argv[] = {
 		"/sbin/udhcpc",
 		"-i", lan_ifname,
@@ -1060,12 +1061,10 @@ start_udhcpc_lan(char *lan_ifname)
 		"-p", "/var/run/udhcpc_lan.pid",
 		"-t4",
 		"-T4",
-		"-d", /* Background after run (new patch for udhcpc) */
-		"-H", lan_hostname,
+		"-b", /* Background after run (new patch for udhcpc) */
+		"-x", lan_hostname_opt,
 		NULL
 	};
-	
-	logmessage("DHCP LAN Client", "starting on %s ...", lan_ifname);
 	
 	return _eval(dhcp_argv, NULL, 0, NULL);
 }

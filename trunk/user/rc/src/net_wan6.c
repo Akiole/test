@@ -454,18 +454,12 @@ int dhcp6c_main(int argc, char **argv)
 
 int start_dhcp6c(char *wan_ifname)
 {
-	int wan6_dhcp, dns6_auto, lan6_auto;
-	char *argv[] = {
-		"/usr/bin/udhcpc6",
-		"-i", wan_ifname,
-		"-s", SCRIPT_DHCP6C_WAN,
-		"-p", "/var/run/udhcpc6.pid",
-		"-b",		/* background if lease not obtained */
-		"-R",		/* release on exit */
-		"-l",		/* information-request only (no address/prefix) */
-		"-O", "dns",	/* request DNS servers */
-		NULL
-	};
+	FILE *fp;
+	int wan6_dhcp, dns6_auto, lan6_auto, sla_id, sla_len;
+	unsigned int ia_id;
+	unsigned char ea[ETHER_ADDR_LEN];
+	const char *conf_file = "/etc/dhcp6c.conf";
+	const char *duid_file = "/tmp/dhcp6c_duid";
 
 	wan6_dhcp = nvram_get_int("ip6_wan_dhcp");
 	dns6_auto = nvram_get_int("ip6_dns_auto");
@@ -474,14 +468,87 @@ int start_dhcp6c(char *wan_ifname)
 	if (!wan6_dhcp && !dns6_auto && !lan6_auto)
 		return 1;
 
+	ia_id = 0;
+	sla_id = 1;
+	sla_len = 0; /* auto prefix always /64 */
+
+	if (ether_atoe(nvram_safe_get("wan_hwaddr"), ea)) {
+		uint16_t duid_len;
+		struct {
+			uint16_t type;
+			uint16_t hwtype;
+		} __attribute__ ((__packed__)) duid3;
+
+		/* generate IAID from the last 20 bits of WAN MAC */
+		ia_id = ((unsigned int)(ea[3] & 0x0f) << 16) |
+			((unsigned int)(ea[4]) << 8) |
+			((unsigned int)(ea[5]));
+
+		/* create DUID from WAN MAC */
+		duid_len = sizeof(duid3) + ETHER_ADDR_LEN;
+		duid3.type = htons(3);		/* DUID-LL */
+		duid3.hwtype = htons(1);	/* Ethernet */
+
+		unlink(duid_file);
+		if ((fp = fopen(duid_file, "w"))) {
+			size_t duid_done = 0;
+			duid_done += fwrite(&duid_len, sizeof(duid_len), 1, fp);
+			duid_done += fwrite(&duid3, sizeof(duid3), 1, fp);
+			duid_done += fwrite(&ea, ETHER_ADDR_LEN, 1, fp);
+			fclose(fp);
+			if (duid_done != 3)
+				unlink(duid_file);
+		}
+	}
+
+	fp = fopen(conf_file, "w");
+	if (!fp) {
+		perror(conf_file);
+		return -1;
+	}
+
+	fprintf(fp, "interface %s {\n", wan_ifname);
+	if (wan6_dhcp)
+		fprintf(fp, " send ia-na %d;\n", ia_id);
+	if (lan6_auto)
+		fprintf(fp, " send ia-pd %d;\n", ia_id);
+	if (wan6_dhcp || lan6_auto)
+		fprintf(fp, " send rapid-commit;\n");
+	else
+		fprintf(fp, " information-only ;\n"); /* space needed for dhcp6c port in busybox */
+	if (dns6_auto)
+		fprintf(fp, " request domain-name-servers;\n");
+	fprintf(fp,
+		" script \"%s\";\n"
+		"};\n",
+		SCRIPT_DHCP6C_WAN
+	);
+	if (wan6_dhcp)
+		fprintf(fp, "id-assoc na %d { };\n", ia_id);
+	if (lan6_auto)
+		fprintf(fp,
+			"id-assoc pd %d {\n"
+			" prefix-interface %s {\n"
+			"  sla-id %d;\n"
+			"  sla-len %d;\n"
+			" };\n"
+			"};\n",
+			ia_id,
+			IFNAME_BR,
+			sla_id,
+			sla_len
+		);
+
+	fclose(fp);
+
 	logmessage("DHCPv6 WAN Client", "starting on wan (%s) ...", wan_ifname);
 
-	return _eval(argv, NULL, 0, NULL);
+	return eval("/sbin/dhcp6c", "-D", "LL", wan_ifname);
 }
 
 void stop_dhcp6c(void)
 {
-	char *svcs[] = { "udhcpc6", NULL };
+	char *svcs[] = { "dhcp6c", NULL };
 	kill_services(svcs, 3, 1);
 }
 
