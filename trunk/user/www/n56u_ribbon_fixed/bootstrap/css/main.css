@@ -1,5 +1,6 @@
 body{
-    background-color: #282828;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background-attachment: fixed;
     overflow-y: scroll;
 }
 body.body_iframe{
@@ -14,6 +15,22 @@ body.body_iframe{
     margin: 0 auto;
 }
 
+/* 响应式设计 */
+@media (max-width: 1280px) {
+    .wrapper {
+        width: 98%;
+    }
+}
+
+@media (max-width: 768px) {
+    .wrapper {
+        width: 100%;
+    }
+    #logo {
+        margin-top: 20px;
+        transform: scale(0.8);
+    }
+}
 #logo {
     background-image: url("/bootstrap/img/padavan_logo.png");
     width: 150px;

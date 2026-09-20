@@ -6,41 +6,50 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="-1">
 
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
 <link rel="shortcut icon" href="images/favicon.ico">
 <link rel="icon" href="images/favicon.png">
 
 <style type="text/css">
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
 body {
-  background: url("/bootstrap/img/dark-bg.jpg") repeat scroll center top transparent;
-  min-width: 1060px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  font-family: Arial, Verdana, Helvetica, sans-serif;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
 }
 
 .alert {
-  padding: 10px 20px 2px 20px;
-  margin-bottom: 10px;
-  margin-top: 10px;
-  color: #c09853;
-  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
-  background-color: #fcf8e3;
-  border: 1px solid #fbeed5;
-  -webkit-border-radius: 4px;
-  -moz-border-radius: 4px;
-  border-radius: 4px;
-  width: 460px;
-  height: 100px;
-  font-family:Arial, Verdana, Helvetica, sans-serif;
-  text-align:left;
-}
-
-.alert-info {
+  padding: 20px 25px;
   color: #3a87ad;
-  background-color: #d9edf7;
-  border-color: #bce8f1;
+  background-color: rgba(217, 237, 247, 0.95);
+  border: 1px solid #bce8f1;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+  width: 420px;
+  font-family: Arial, Verdana, Helvetica, sans-serif;
+  text-align: left;
+  line-height: 1.8;
 }
 
-#logined_ip_str
-{
+#logined_ip_str {
     color: #BD362F;
+    font-weight: bold;
+}
+
+@media (max-width: 480px) {
+  .alert {
+    width: 90%;
+    padding: 15px 20px;
+  }
 }
 </style>
 
