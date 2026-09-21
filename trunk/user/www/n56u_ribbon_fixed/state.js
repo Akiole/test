@@ -760,7 +760,8 @@ function show_menu(L1, L2, L3){
 		else
 			menu2_code += '<a href="'+menuL2_link[i]+'"><i class="icon-minus"></i>&nbsp;&nbsp;'+menuL2_title[i]+'</a>\n';
 	}
-	$("subMenu").innerHTML = menu2_code;
+	$("subMenu").innerHTML = "";
+	$("subMenu").style.display = "none";
 
 	if(L3){
 		var tab_idx = (L1 >= 18 && L1 <= 27) ? (L1 - 8) : (L2 - 1);

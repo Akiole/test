@@ -28,31 +28,24 @@ function initial(){
 
 function show_sitemap(){
 	var l1 = tabtitle.length;
-	var l2 = menuL2_title.length;
 
 	if (l1 > 8) l1 = 8;
-	if (l2 > 8) l2 = 8;
 
-	for(var i=0, j=0; i<l1, j<l2;){
-		if(tabtitle[i] == ""){
-			tabtitle.splice(i,1);
-			tablink.splice(i,1);
-		}
-		else
-			i++;
-		if(menuL2_title[j] == "")
-			menuL2_title.splice(j,1);
-		else
-			j++;
+	var l2 = 0;
+	for(var p = 1; p <= 10; p++){
+		if(menuL2_title[p] != "")
+			l2++;
 	}
-
-	l2 = menuL2_title.length;
 	if (l2 > 8) l2 = 8;
 
-	for(var i=0; i<l2; i++){
-		var k = (i/4 < 1)?0:3;
-		$("menu_body").rows[k].cells[i%4].innerHTML = "<b>" + menuL2_title[i] + "</b>";
-		$("menu_body").rows[k].cells[i%4].className = "head";
+	var idx = 0;
+	for(var i = 1; i <= 10 && idx < l2; i++){
+		if(menuL2_title[i] == "")
+			continue;
+		var k = (idx/4 < 1)?0:3;
+		$("menu_body").rows[k].cells[idx%4].innerHTML = '<b><a href="'+menuL2_link[i]+'" style="color: inherit;">'+menuL2_title[i]+'</a></b>';
+		$("menu_body").rows[k].cells[idx%4].className = "head";
+		idx++;
 	}
 
 	l1 = tabtitle.length;
