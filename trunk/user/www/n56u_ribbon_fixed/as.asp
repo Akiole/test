@@ -27,45 +27,35 @@ function initial(){
 }
 
 function show_sitemap(){
-	var l1 = tabtitle.length;
-
-	if (l1 > 8) l1 = 8;
-
-	var l2 = 0;
-	for(var p = 1; p <= 10; p++){
-		if(menuL2_title[p] != "")
-			l2++;
+	var items = [];
+	for(var i = 1; i <= 10; i++){
+		if(menuL2_title[i] != ""){
+			items.push({title: menuL2_title[i], link: menuL2_link[i], tab_idx: i - 1});
+		}
 	}
+	var l2 = items.length;
 	if (l2 > 8) l2 = 8;
 
-	var idx = 0;
-	for(var i = 1; i <= 10 && idx < l2; i++){
-		if(menuL2_title[i] == "")
-			continue;
+	for(var idx = 0; idx < l2; idx++){
 		var k = (idx/4 < 1)?0:3;
-		$("menu_body").rows[k].cells[idx%4].innerHTML = '<b><a href="'+menuL2_link[i]+'" style="color: inherit;">'+menuL2_title[i]+'</a></b>';
+		$("menu_body").rows[k].cells[idx%4].innerHTML = '<b><a href="'+items[idx].link+'" style="color: inherit;">'+items[idx].title+'</a></b>';
 		$("menu_body").rows[k].cells[idx%4].className = "head";
-		idx++;
 	}
 
-	l1 = tabtitle.length;
-	if (l1 > 8) l1 = 8;
-
-	for(var l = 0; l < l1; l++){
+	for(var idx = 0; idx < l2; idx++){
+		var t = items[idx].tab_idx;
 		map_code = '<ul class="nav nav-list">\n';
-		for(var m = 1; m < tabtitle[l].length; m++){
-			if(tablink[l][m] == "")
+		for(var m = 1; m < tabtitle[t].length; m++){
+			if(tablink[t][m] == "")
 				continue;
-			
 			map_code += '    <li>\n';
-			map_code += '        <a href="'+tablink[l][m]+'">'
-			map_code += tabtitle[l][m];
+			map_code += '        <a href="'+tablink[t][m]+'">'
+			map_code += tabtitle[t][m];
 			map_code += '</a>\n    </li>\n';
 		}
 		map_code += '</ul>\n';
-		
-		var n = (l/4 < 1)?0:3;
-		$("menu_body").rows[n+2].cells[l%4].innerHTML = map_code;
+		var n = (idx/4 < 1)?0:3;
+		$("menu_body").rows[n+2].cells[idx%4].innerHTML = map_code;
 	}
 }
 </script>
