@@ -42,7 +42,7 @@ $j(document).ready(function() {
 
 function initial(){
 	show_banner(2);
-	show_menu(5,18,0);
+	show_menu(25, 0,0);
 	fill_status(aliyundrive_status());
 	show_footer();
 

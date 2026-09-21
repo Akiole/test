@@ -586,9 +586,31 @@ if (found_app_frp()){
 } else menuL2_link.push("");
 
 //Level 1 Menu in Gateway, Router mode
-menuL1_title = new Array("", "<#menu1#>", "", "<#menu2#>", "<#menu6#>", "<#menu4#>", "<#menu5_8#>", "<#menu5#>", "<#menu5_11#>", "<#menu5_12#>", "<#menu5_2#>", "<#menu5_3#>", "<#menu5_5#>", "<#menu5_4#>", "<#menu5_6#>", "<#menu5_10#>", "<#menu5_9#>", "<#menu5_7#>");
-menuL1_link = new Array("", "index.asp", "", "vpnsrv.asp", "vpncli.asp", "Main_TrafficMonitor_realtime.asp", "Advanced_System_Info.asp", "as.asp", "Advanced_Wireless2g_Content.asp", "Advanced_Wireless_Content.asp", "Advanced_LAN_Content.asp", "Advanced_WAN_Content.asp", "Advanced_BasicFirewall_Content.asp", "Advanced_AiDisk_others.asp", "Advanced_System_Content.asp", "Advanced_Tweaks_Content.asp", "Main_EStatus_Content.asp", "Main_LogStatus_Content.asp");
-menuL1_icon = new Array("", "icon-home", "icon-hdd", "icon-retweet", "icon-globe", "icon-tasks", "icon-random", "icon-wrench", "icon-signal", "icon-signal", "icon-th", "icon-globe", "icon-lock", "icon-hdd", "icon-cog", "icon-wrench", "icon-list", "icon-file");
+menuL1_title = new Array("", "<#menu1#>", "", "<#menu2#>", "<#menu6#>", "<#menu4#>", "<#menu5_8#>", "<#menu5#>", "<#menu5_11#>", "<#menu5_12#>", "<#menu5_2#>", "<#menu5_3#>", "<#menu5_5#>", "<#menu5_4#>", "<#menu5_6#>", "<#menu5_10#>", "<#menu5_9#>", "<#menu5_7#>",
+	found_app_scutclient() ? "<#menu5_13#>" : "",
+	found_app_dnsforwarder() ? "<#menu5_15#>" : "",
+	found_app_shadowsocks() ? "<#menu5_16#>" : "",
+	found_app_mentohust() ? "mentohust" : "",
+	found_app_adbyby() ? "<#menu5_20#>" : "",
+	(found_app_smartdns()||found_app_adguardhome()) ? "<#menu5_29#>" : "",
+	(found_app_aliddns()||found_app_zerotier()||found_app_ddnsto()||found_app_wireguard()) ? "<#menu5_30#>" : "",
+	found_app_aldriver() ? "<#menu5_36#>" : "",
+	found_app_sqm() ? "<#menu5_37#>" : "",
+	found_app_frp() ? "<#menu5_25#>" : "");
+menuL1_link = new Array("", "index.asp", "", "vpnsrv.asp", "vpncli.asp", "Main_TrafficMonitor_realtime.asp", "Advanced_System_Info.asp", "as.asp", "Advanced_Wireless2g_Content.asp", "Advanced_Wireless_Content.asp", "Advanced_LAN_Content.asp", "Advanced_WAN_Content.asp", "Advanced_BasicFirewall_Content.asp", "Advanced_AiDisk_others.asp", "Advanced_System_Content.asp", "Advanced_Tweaks_Content.asp", "Main_EStatus_Content.asp", "Main_LogStatus_Content.asp",
+	found_app_scutclient() ? scutclient_array[1] : "",
+	found_app_dnsforwarder() ? dns_forwarder_array[1] : "",
+	found_app_shadowsocks() ? shadowsocks_array[1] : "",
+	found_app_mentohust() ? mentohust_array[1] : "",
+	found_app_adbyby() ? ad_array[1] : "",
+	(found_app_smartdns() ? smartdns_array[1] : (found_app_adguardhome() ? adg_array[1] : "")),
+	(found_app_aliddns() ? aliddns_array[1] : (found_app_zerotier() ? zerotier_array[1] : (found_app_ddnsto() ? ddnsto_array[1] : (found_app_wireguard() ? wireguard_array[1] : "")))),
+	found_app_aldriver() ? aliyundrive_array[1] : "",
+	found_app_sqm() ? sqm_array[1] : "",
+	found_app_frp() ? frp_array[1] : "");
+menuL1_icon = new Array("", "icon-home", "icon-hdd", "icon-retweet", "icon-globe", "icon-tasks", "icon-random", "icon-wrench", "icon-signal", "icon-signal", "icon-th", "icon-globe", "icon-lock", "icon-hdd", "icon-cog", "icon-wrench", "icon-list", "icon-file",
+	"icon-education", "icon-globe", "icon-plane", "icon-education", "icon-ban-circle", "icon-tasks",
+	"icon-random", "icon-hdd", "icon-signal", "icon-random");
 
 if (!found_app_vpnsvr()) {
 	menuL1_title[3] = '';
@@ -730,7 +752,7 @@ function show_menu(L1, L2, L3){
 
 	$("mainMenu").innerHTML = menu1_code;
 
-	for(var i = 1; i <= menuL2_title.length-1; ++i){
+	for(var i = 1; i <= 10; ++i){
 		if(menuL2_title[i] == "")
 			continue;
 		else if(L2 == i)
@@ -741,17 +763,18 @@ function show_menu(L1, L2, L3){
 	$("subMenu").innerHTML = menu2_code;
 
 	if(L3){
+		var tab_idx = (L1 >= 18 && L1 <= 27) ? (L1 - 8) : (L2 - 1);
 		tab_code = '<ul class="nav nav-tabs" style="margin-bottom: 0px;">\n';
-		for(var i = 1; i < tabtitle[L2-1].length; ++i){
-			if(tabtitle[L2-1][i] == "")
+		for(var i = 1; i < tabtitle[tab_idx].length; ++i){
+			if(tabtitle[tab_idx][i] == "")
 				continue;
 			if(L3 == i){
 				tab_ref = "javascript: void(0)";
-				if (L2==9 && i>0 && tablink[L2-1][i].indexOf("#")>0)
-					tab_ref = tablink[L2-1][i];
-				tab_code += '<li class="active"><a href="' +tab_ref+ '">'+tabtitle[L2-1][i]+'</a></li>\n';
+				if (L2==9 && i>0 && tablink[tab_idx][i].indexOf("#")>0)
+					tab_ref = tablink[tab_idx][i];
+				tab_code += '<li class="active"><a href="' +tab_ref+ '">'+tabtitle[tab_idx][i]+'</a></li>\n';
 			}else
-				tab_code += '<li><a href="' +tablink[L2-1][i]+ '">'+tabtitle[L2-1][i]+'</a></li>\n';
+				tab_code += '<li><a href="' +tablink[tab_idx][i]+ '">'+tabtitle[tab_idx][i]+'</a></li>\n';
 		}
 		tab_code += '</ul>\n';
 		$("tabMenu").innerHTML = tab_code;

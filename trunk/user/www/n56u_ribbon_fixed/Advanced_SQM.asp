@@ -39,7 +39,7 @@ var $j = jQuery.noConflict();
 
         function initial() {
             show_banner(2);
-            show_menu(5, 19);
+            show_menu(26, 0);
             show_footer();
             fill_sqm_status(sqm_status());
             showTab(getHash());
