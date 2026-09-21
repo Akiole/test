@@ -90,7 +90,7 @@ function num2ip4(addr) {
 }
 
 function str2val(v) {
-    for (i = 0; i < v.length; i++) {
+    for (var i = 0; i < v.length; i++) {
         if (v.charAt(i) != '0') break;
     }
     return v.substring(i);

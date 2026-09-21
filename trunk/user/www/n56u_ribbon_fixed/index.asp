@@ -696,7 +696,7 @@ $j(document).ready(function(){
             <div class="span3">
                 <!--Sidebar content-->
                 <!--=====Beginning of Main Menu=====-->
-                <div class="well sidebar-nav side_nav" style="padding: 0px;">
+                <div class="well sidebar-nav side_nav">
                     <ul id="mainMenu" class="clearfix"></ul>
                     <ul class="clearfix">
                         <li>
@@ -711,7 +711,7 @@ $j(document).ready(function(){
 
                 <div class="row-fluid">
                     <div class="span2">
-                        <div class="well" style="height: 570px; padding-left: 18px;">
+                        <div class="well" style="height: 560px; padding-left: 18px; padding-top: 0px; border-top: 30px solid #0066cc;">
                             <div id="tabMenu"></div>
 
                             <table class="table table-big" style="margin-top: 12px;">

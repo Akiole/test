@@ -35,7 +35,7 @@ function gen_country_list(){
 	countrylist.push(["Spain", "ES"]);
 	countrylist.push(["Sweden", "SE"]);
 	countrylist.push(["Taiwan", "TW"]);
-	countrylist.push(["Thiland", "TH"]);
+	countrylist.push(["Thailand", "TH"]);
 	countrylist.push(["Turkey", "TR"]);
 	countrylist.push(["UK", "UK"]);
 	countrylist.push(["Ukraine", "UA"]);

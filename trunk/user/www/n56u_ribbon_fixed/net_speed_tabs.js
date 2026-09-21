@@ -144,7 +144,7 @@ function processTabs()
 			if (tabs[i][0] != tabs_old[i][0])
 				break;
 		}
-		changed = (i > 0);
+		changed = (i >= 0);
 	}else
 		changed = 1;
 

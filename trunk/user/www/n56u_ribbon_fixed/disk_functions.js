@@ -166,7 +166,7 @@ function getDiskModelName(all_disk_order){
 	if(all_disk_order < foreign_disks().length)
 		disk_model_name = foreign_disk_model_info()[all_disk_order];
 	else
-		disk_model_name = blank_disk_model_info()[all_disk_order-foreign_disk_model_info().length];
+		disk_model_name = blank_disk_model_info()[all_disk_order-foreign_disks().length];
 		
 	return disk_model_name;
 }
@@ -177,7 +177,7 @@ function getDiskTotalSize(all_disk_order){
 	if(all_disk_order < foreign_disks().length)
 		TotalSize = simpleNum(foreign_disk_total_size()[all_disk_order]);
 	else
-		TotalSize = simpleNum(blank_disk_total_size()[all_disk_order-foreign_disk_total_size().length]);
+		TotalSize = simpleNum(blank_disk_total_size()[all_disk_order-foreign_disks().length]);
 		
 	return TotalSize;
 }

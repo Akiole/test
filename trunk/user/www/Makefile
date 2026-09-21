@@ -1,19 +1,25 @@
 include $(ROOTDIR)/rules.mk
 
 PKG_NAME:=www
-PKG_VERSION:=1.0
 
 include $(INCLUDE_DIR)/package.mk
 
 ROMFS_DIR = $(ROMFSDIR)
 include $(BOARD_CONFIG)
+
 PROJECT_HOME_URL="https:\/\/github.com\/hanwckf\/padavan-4.4\/"
 PROJECT_HOME_URL_MOD="https:\/\/github.com\/TurBoTse\/padavan\/"
-LABEL_COPYRIGHT_TEXT="© 2011-`date +'%Y'` Padavan \& N56U Project Community \, Compilation Time: `TZ='Asia/Shanghai' date +'%Y.%m.%d %H:%M:%S'`"
+
+BUILD_TIME="`TZ='Asia/Shanghai' date +'%Y.%m.%d %H:%M:%S'`"
+
+LABEL_COPYRIGHT_TEXT="© 2011-`date +'%Y'` Padavan \& N56U Project Community \, Firmware distribution is prohibited , Non-Commercial Use Only"
+
 BOARD_PATTERN=s/ZVMODELVZ/$(CONFIG_FIRMWARE_PRODUCT_ID)/g
 COPYR_PATTERN=s/ZVCOPYRVZ/$(LABEL_COPYRIGHT_TEXT)/g
 DWURL_PATTERN=s/ZVDWURLVZ/$(PROJECT_HOME_URL)/g
 DWURL_MOD_PATTERN=s/ZVMODWURLVZ/$(PROJECT_HOME_URL_MOD)/g
+BUILDTIME_PATTERN=s/ZVBUILDTIMEVZ/$(BUILD_TIME)/g
+
 WEBUI_NAME=n56u_ribbon_fixed
 
 define Build/Prepare
@@ -91,6 +97,8 @@ endif
 	sed $(COPYR_PATTERN) -i $(ROMFS_DIR)/www/*.dict
 	sed $(DWURL_PATTERN) -i $(ROMFS_DIR)/www/*.dict
 	sed $(DWURL_MOD_PATTERN) -i $(ROMFS_DIR)/www/*.dict
+	sed $(BUILDTIME_PATTERN) -i $(ROMFS_DIR)/www/state.js
+
 	rm -f $(ROMFS_DIR)/www/EN.header
 	rm -f $(ROMFS_DIR)/www/bootstrap/js/bootstrap.js
 	rm -f $(ROMFS_DIR)/www/bootstrap/js/engage.itoggle.js

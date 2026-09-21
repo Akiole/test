@@ -222,7 +222,8 @@ function openHint(hint_array_id, hint_show_id){
 	}
 
 	$('hint_body').style.display = "";
-	$("statusframe").style.display = "none";
+	if($("statusframe"))
+		$("statusframe").style.display = "none";
 
 	showtext($('helpname'), "<#CTL_help#>");
 	showtext($('hint_body'), helpcontent[hint_array_id][hint_show_id]);

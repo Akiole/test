@@ -184,7 +184,7 @@ function BuildTree(){
 		else
 			ItemIcon = '10'; //folder
 		
-		SubClick = ' onclick="GetFolderItem(this, ';
+		var SubClick = ' onclick="GetFolderItem(this, ';
 		if(ItemSub <= 0){
 			SubClick += '0);"';
 			isSubTree = 'n';

@@ -16,9 +16,12 @@ var ss_schedule_support = '<% nvram_get_x("", "ss_schedule_enable"); %>';
 var uagent = navigator.userAgent.toLowerCase();
 var is_ie11p = (/trident\/7\./).test(uagent);
 var is_mobile = (/iphone|ipod|ipad|iemobile|android|blackberry|fennec/).test(uagent);
+var is_ie = (/msie|trident/i).test(uagent);
+var ie_version = (function(){ var m = uagent.match(/(?:msie |rv:)(\d+)/); return m ? parseInt(m[1], 10) : 0; })();
 
 var new_wan_internet = '<% nvram_get_x("", "link_internet"); %>';
 var id_check_status = 0;
+var id_hide_loading = 0;
 var id_system_info = 0;
 
 var cookie = {
@@ -74,7 +77,7 @@ function update_internet_status(){
 }
 
 function notify_status_internet(wan_internet){
-	this.new_wan_internet = wan_internet;
+	new_wan_internet = wan_internet;
 	if((location.pathname == "/" || location.pathname == "/index.asp") && (typeof(update_internet_status) === 'function'))
 		update_internet_status();
 }
@@ -221,6 +224,11 @@ function showSystemInfo(cpu_now,force){
 }
 
 var menu_code="", menu1_code="", menu2_code="", tab_code="", footer_code;
+var scutclient_array, dns_forwarder_array, shadowsocks_array, mentohust_array, ad_array;
+var smartdns_array, adg_array, aliddns_array, zerotier_array, ddnsto_array, wireguard_array;
+var aldriver_array, sqm_array, frp_array;
+var menuL2_title, menuL2_link, menuL1_title, menuL1_link, menuL1_icon;
+var stime_ID, JS_timeObj2, JS_timeObj3, tab_ref, invalid_char;
 var enabled2Gclass = '<% nvram_match_x("","rt_radio_x", "1", "btn-info"); %>';
 var enabled5Gclass = '<% nvram_match_x("","wl_radio_x", "1", "btn-info"); %>';
 var enabledGuest2Gclass = '<% nvram_match_x("","rt_guest_enable", "1", "btn-info"); %>';
@@ -252,7 +260,7 @@ function show_banner(L3){
 		bc += '<table class="" style="margin-top: 0px; margin-bottom: 5px" width="100%" border="0">\n';
 		bc += '  <tr>\n';
 		bc += '    <td width="60%" style="text-align: left"><b><#General_x_SystemTime_itemname#>:</b><span class="alert alert-info" style="margin-left: 10px; padding-top: 4px; padding-bottom: 4px;" id="system_time_log_area"></span></td>\n';
-		bc += '    <td style="text-align: lift"><input type="hidden" id="scrATop" value=""></td>\n';
+		bc += '    <td style="text-align: left"><input type="hidden" id="scrATop" value=""></td>\n';
 		bc += '    <td style="text-align: right"><button type="button" id="clearlog_btn" class="btn btn-info" style="min-width: 170px;" onclick="clearlog();"><#CTL_clear#></button></td>\n';
 		bc += '  </tr>\n';
 		bc += '</table>\n';
@@ -275,7 +283,7 @@ function show_banner(L3){
 
 	// block system info
 	bc += '<div class="span6" style="width:30%">\n';
-	bc += '<div class="well" style="margin-bottom: 0px; height: 110px; padding: 7px 6px 6px 6px;">\n';
+	bc += '<div class="well" style="margin-bottom: 0px; height: 109px; padding: 7px 6px 6px 6px;">\n';
 	bc += '<div class="row-fluid">\n';
 
 	bc += '<div id="main_info">\n';
@@ -347,7 +355,7 @@ function show_banner(L3){
 
 	// block wireless
 	bc += '<div class="span6" style="width:30%">\n';
-	bc += '<div class="well" style="margin-bottom: 0px; height: 110px; padding: 5px 6px 8px 6px;">\n';
+	bc += '<div class="well" style="margin-bottom: 0px; height: 109px; padding: 5px 6px 8px 6px;">\n';
 	bc += '<div class="row-fluid">\n';
 	bc += '<table class="table table-condensed" style="margin-bottom: 0px">\n';
 	bc += '  <tr>\n';
@@ -365,20 +373,16 @@ function show_banner(L3){
 
 	// block firmware info + buttons
 	bc += '<div class="span6" style="width:38%">\n';
-	bc += '<div class="well" style="margin-bottom: 0px; height: 110px; padding: 7px 6px 6px 6px;">\n';
+	bc += '<div class="well" style="margin-bottom: 0px; height: 109px; padding: 7px 6px 6px 6px;">\n';
 	bc += '<div class="row-fluid">\n';
 	bc += '<table class="table table-condensed" width="100%" style="margin-bottom: 0px;">\n';
 	bc += '  <tr>\n';
-	bc += '    <td width="43%" style="border: 0 none;"><#SI_Uptime#></td>\n';
-	bc += '    <td style="border: 0 none; min-width: 115px;"><span id="uptime_info">&nbsp;</span></td>\n';
+	bc += '    <td>编译时间:</td>\n';
+	bc += '    <td><span id="buildtime_info">ZVBUILDTIMEVZ</span></td>\n';
 	bc += '  </tr>\n';
 	bc += '  <tr>\n';
 	bc += '    <td><#General_x_FirmwareVersion_itemname#></td>\n';
 	bc += '    <td><a href="/Advanced_FirmwareUpgrade_Content.asp"><span id="firmver" class="time"></span></a></td>\n';
-	bc += '  </tr>\n';
-	bc += '  <tr>\n';
-	bc += '    <td>编译时间:</td>\n';
-	bc += '    <td><span id="buildtime_info">ZVBUILDTIMEVZ</span></td>\n';
 	bc += '  </tr>\n';
 	bc += '  <tr>\n';
 	bc += '    <td><button type="button" class="btn btn-mini" style="height: 30px; width: 36px;" title="<#CTL_refresh#>" onclick="parent.location.reload();"><i class="icon icon-refresh icon-large"></i></button> <button type="button" class="btn btn-mini" style="height: 30px; width: 36px;" title="<#CTL_apply#>" onclick="applyRule();"><i class="icon icon-ok icon-large"></i></button> <button type="button" id="commit_btn" class="btn btn-mini" style="height: 30px; width: 36px; outline:0; '+enabledBtnCommit+'" onclick="commit();"><i class="icon icon-download-alt icon-large"></i></button></td>\n';
@@ -501,8 +505,8 @@ if (found_app_aliddns()){
 	tablink[16] = (wireguard_array);
 }
 if (found_app_aldriver()){
-	aldriver_arry = new Array("","Advanced_aliyundrive.asp");
-	tablink[17] = (aldriver_arry);
+	aldriver_array = new Array("","Advanced_aliyundrive.asp");
+	tablink[17] = (aldriver_array);
 }
 if (found_app_sqm()){
 	sqm_array = new Array("","Advanced_SQM.asp");
@@ -516,7 +520,6 @@ if (found_app_frp()){
 }
 
 //Level 2 Menu
-menuL2_title = new Array(20)
 menuL2_title = new Array("", "<#menu5_11#>", "<#menu5_12#>", "<#menu5_2#>", "<#menu5_3#>", "<#menu5_5#>", "<#menu5_4#>", "<#menu5_6#>", "<#menu5_10#>", "<#menu5_9#>", "<#menu5_7#>");
 if (found_app_scutclient()){
 	menuL2_title.push("<#menu5_13#>");
@@ -596,7 +599,7 @@ if (found_app_aliddns()){
 } else menuL2_link.push("");
 
 if (found_app_aldriver()){
-	menuL2_link.push(aldriver_arry[1]);
+	menuL2_link.push(aldriver_array[1]);
 } else menuL2_link.push("");
 
 if (found_app_sqm()){
@@ -627,7 +630,7 @@ menuL1_link = new Array("", "index.asp", "", "vpnsrv.asp", "vpncli.asp", "Main_T
 	found_app_adbyby() ? ad_array[1] : "",
 	(found_app_smartdns() ? smartdns_array[1] : (found_app_adguardhome() ? adg_array[1] : "")),
 	(found_app_aliddns() ? aliddns_array[1] : (found_app_zerotier() ? zerotier_array[1] : (found_app_ddnsto() ? ddnsto_array[1] : (found_app_wireguard() ? wireguard_array[1] : "")))),
-	found_app_aldriver() ? aliyundrive_array[1] : "",
+	found_app_aldriver() ? aldriver_array[1] : "",
 	found_app_sqm() ? sqm_array[1] : "",
 	found_app_frp() ? frp_array[1] : "");
 menuL1_icon = new Array("", "icon-home", "icon-hdd", "icon-retweet", "icon-globe", "icon-tasks", "icon-random", "icon-wrench", "icon-signal", "icon-signal", "icon-th", "icon-globe", "icon-lock", "icon-hdd", "icon-cog", "icon-wrench", "icon-list", "icon-file",
@@ -810,9 +813,7 @@ function show_footer(){
 	footer_code = '<div align="center" class="bottom-image"></div>\n';
 	footer_code +='<div align="center" class="copyright"><#footer_copyright_desc#></div>\n';
 	footer_code +='<div align="center">\n';
-	footer_code +='  <span>Developed by © <a href="https://bitbucket.org/padavan/rt-n56u/">Andy Padavan</a> &amp; <a href="https://github.com/hanwckf/padavan-4.4">hanwckf</a> &amp; <a href="https://github.com/MeIsReallyBa/padavan-4.4">MeIsReallyBa</a> &amp; <a href="https://github.com/tsl0922/padavan">tsl0922</a> &amp; <a href="https://github.com/TurBoTse/padavan">TurBoTse</a></span></br>\n';
-	footer_code +='  <span>Firmware distribution is prohibited , Non-Commercial Use Only</span></br>\n';
-	footer_code +='</div>\n';
+	footer_code += '  <span>Developed by © <a href="https://bitbucket.org/padavan/rt-n56u/">Andy Padavan</a> &amp; <a href="https://github.com/hanwckf/padavan-4.4">hanwckf</a> &amp; <a href="https://github.com/MeIsReallyBa/padavan-4.4">MeIsReallyBa</a> &amp; <a href="https://github.com/tsl0922/padavan">tsl0922</a> &amp; <a href="https://github.com/TurBoTse/padavan">TurBoTse</a></span></br>\n';
 
 	$("footer").innerHTML = footer_code;
 
@@ -858,7 +859,6 @@ function go_wguest(band){
 
 function show_time(){
 	JS_timeObj.setTime(systime_millsec); // Add millsec to it.
-	JS_timeObj3 = JS_timeObj.toString();
 	JS_timeObj3 = checkTime(JS_timeObj.getHours()) + ":" +
 			checkTime(JS_timeObj.getMinutes()) + ":" +
 			checkTime(JS_timeObj.getSeconds());
@@ -880,13 +880,13 @@ function show_loading_obj(){
 	code += '<div class="container-fluid">';
 	code += '<div class="well" style="background-color: #212121; width: 60%;">';
 	code += '<div class="progress progress-striped active" style="width: 50%; text-align: left;"><div class="bar" id="proceeding_bar" style="width: 0%;"><span id="proceeding_txt"></span></div></div>';
-	code += '<span id="proceeding_main_txt"><#Main_alert_proceeding_desc4#></span></span>';
+	code += '<span id="proceeding_main_txt"><#Main_alert_proceeding_desc4#></span>';
 	code += '</div>';
 	code += '</div>';
 	code += '</div></center>';
 
 	$("Loading").innerHTML = code;
-	id_check_status = setTimeout('hideLoading();', 3000);
+	id_hide_loading = setTimeout('hideLoading();', 3000);
 }
 
 function submit_language(){
@@ -977,7 +977,7 @@ function commit(){
 		dataType: "json",
 		error: function(xhr) {
 			$btn.addClass('alert-error');
-			setTimeout("reset_btn_commit('#commit_btn')", 1500);
+			setTimeout("reset_btn_commit('commit_btn')", 1500);
 		},
 		success: function(response) {
 			var sys_result = (response != null && typeof response === 'object' && "sys_result" in response)
@@ -1168,7 +1168,7 @@ function validate_string(string_obj, flag){
 }
 
 function validate_hex(obj){
-	var obj_value = obj.value
+	var obj_value = obj.value;
 	var re = new RegExp("[^a-fA-F0-9]+","gi");
 	if(re.test(obj_value))
 		return false;
@@ -1364,7 +1364,7 @@ jQuery(document).ready(function(){
     var idFindSyslogPanel = setInterval(function(){
         if(is_mobile || log_float == '0'){
             clearInterval(idFindSyslogPanel);
-        }else if($j('.syslog_panel').size() > 0){
+        }else if($j('.syslog_panel').length > 0){
             clearInterval(idFindSyslogPanel);
 
             var offsetLeft = $j('.wrapper').offset().left;
@@ -1420,14 +1420,14 @@ function setLogData(){
     var $j = jQuery.noConflict();
     $j.get('/log_content.asp', function(data){
         // fix for ie
-        if($j.browser.msie && !is_ie11p)
+        if(is_ie && !is_ie11p)
             data = data.nl2br();
         if($j("#log_area").val() == ''){
             $j("#log_area").text(data);
             $j("#log_area").prop('scrollTop', $j("#log_area").prop('scrollHeight'));
             $j("#scrATop").val($j("#log_area").prop('scrollTop'));
         }else{
-            var scrMaxTop = $j("#log_area").prop('scrollHeight')
+            var scrMaxTop = $j("#log_area").prop('scrollHeight');
             var scrTop = $j("#log_area").prop('scrollTop');
             $j("#log_area").text(data);
             var scrITop = scrMaxTop - scrTop;
@@ -1442,7 +1442,7 @@ function setLogData(){
 }
 
 function showClockLogArea(){
-    if(jQuery('#system_time').size() == 0){
+    if(jQuery('#system_time').length == 0){
         JS_timeObj.setTime(systime_millsec);
         systime_millsec += 1000;
 
@@ -1466,9 +1466,10 @@ function onCompleteSlideOutLogArea(){
 }
 
 function passwordShowHide(id){
+    var $j = jQuery.noConflict();
     var obj = $j('#'+id);
     var changeTo = (obj.attr('type') == 'password') ? 'text' : 'password';
-    if ($j.browser.msie && parseInt($j.browser.version, 10) < 9){
+    if (is_ie && ie_version < 9){
         var marker = $j('<span />').insertBefore('#'+id);
         obj.detach().attr('type', changeTo).insertAfter(marker);
         marker.remove();
@@ -1503,7 +1504,7 @@ function setToLocalStorage(name, value){
         try {
             localStorage.setItem(name, value);
         } catch (e) {
-            if (e == QUOTA_EXCEEDED_ERR) {
+            if (e.code == 22) { // QUOTA_EXCEEDED_ERR
             }
         }
     }
@@ -1650,13 +1651,13 @@ function removeFromLocalStorage(name){
         var slideOut = function() {
 
             if (settings.tabLocation == 'top') {
-                obj.animate({top:'-3px'},  settings.speed, onCompleteSlideOutLogArea()).addClass('open');
+                obj.animate({top:'-3px'},  settings.speed, onCompleteSlideOutLogArea).addClass('open');
             } else if (settings.tabLocation == 'left') {
-                obj.animate({left:'-3px'},  settings.speed, onCompleteSlideOutLogArea()).addClass('open');
+                obj.animate({left:'-3px'},  settings.speed, onCompleteSlideOutLogArea).addClass('open');
             } else if (settings.tabLocation == 'right') {
-                obj.animate({right:'-3px'},  settings.speed, onCompleteSlideOutLogArea()).addClass('open');
+                obj.animate({right:'-3px'},  settings.speed, onCompleteSlideOutLogArea).addClass('open');
             } else if (settings.tabLocation == 'bottom') {
-                obj.animate({bottom:'-3px'},  settings.speed, onCompleteSlideOutLogArea()).addClass('open');
+                obj.animate({bottom:'-3px'},  settings.speed, onCompleteSlideOutLogArea).addClass('open');
             }
         };
 
@@ -1712,14 +1713,32 @@ function removeFromLocalStorage(name){
     };
 })(jQuery);
 
-
-function saveRule(){
-	if(typeof validForm === 'function' && !validForm()) return;
-	if(typeof showLoading === 'function') showLoading();
-	if(document.form && document.form.action_mode){
-		document.form.action_mode.value = " Save ";
-	}
-	if(document.form && document.form.submit){
-		document.form.submit();
-	}
-}
+// 动态添加左侧菜单和中间图标列的顶部文字
+(function() {
+    function addTopLabels() {
+        // 左侧菜单
+        var sidebar = document.querySelector('.sidebar-nav');
+        if (sidebar && !sidebar.querySelector('.top-label')) {
+            var label = document.createElement('div');
+            label.className = 'top-label';
+            label.textContent = '导航菜单';
+            sidebar.insertBefore(label, sidebar.firstChild);
+        }
+        
+        // 中间图标列（首页才有）
+        var tabMenu = document.getElementById("tabMenu");
+        var isHomePage = document.getElementById("statusContainer") !== null;
+        if (isHomePage && tabMenu && !tabMenu.parentElement.querySelector('.top-label')) {
+            var label2 = document.createElement('div');
+            label2.className = 'top-label';
+            label2.textContent = '功能图标';
+            tabMenu.parentElement.insertBefore(label2, tabMenu);
+        }
+    }
+    
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', addTopLabels);
+    } else {
+        addTopLabels();
+    }
+})();
