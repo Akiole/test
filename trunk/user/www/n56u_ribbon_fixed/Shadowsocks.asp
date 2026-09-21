@@ -1804,7 +1804,7 @@ setTimeout('document.getElementById("btn_ctime").style.display="none";',1000);
 														<td colspan="3">
 															<i class="icon-hand-right"></i> <a href="javascript:spoiler_toggle('script7')"><span>点击输入节点订阅地址：(一行一个地址)</span></a>
 															<div id="script7" style="display: none">
-																<textarea rows="8" wrap="off" spellcheck="false" maxlength="314571" class="span12" name="scripts.ss_dlink.sh" style="font-family:'Courier New'; font-size:12px;"><% nvram_dump("scripts.ss_dlink.sh",""); %></textarea>
+																<textarea rows="25" wrap="off" spellcheck="false" maxlength="314571" class="span12" name="scripts.ss_dlink.sh" style="font-family:'Courier New'; font-size:12px;"><% nvram_dump("scripts.ss_dlink.sh",""); %></textarea>
 															</div>
 														</td>
 													</tr>
@@ -2422,49 +2422,49 @@ setTimeout('document.getElementById("btn_ctime").style.display="none";',1000);
 													<tr>
 														<td colspan="3"><i class="icon-hand-right"></i> <a href="javascript:spoiler_toggle('script8')"><span>游戏模式LAN IP:</span></a>
 															<div id="script8" style="display: none">
-																<textarea rows="8" wrap="off" spellcheck="false" maxlength="314571" class="span12" name="scripts.ss_lan_gmip.sh" style="font-family:'Courier New'; font-size:12px;"><% nvram_dump("scripts.ss_lan_gmip.sh",""); %></textarea>
+																<textarea rows="25" wrap="off" spellcheck="false" maxlength="314571" class="span12" name="scripts.ss_lan_gmip.sh" style="font-family:'Courier New'; font-size:12px;"><% nvram_dump("scripts.ss_lan_gmip.sh",""); %></textarea>
 															</div>
 														</td>
 													</tr>
 													<tr>
 														<td colspan="3"><i class="icon-hand-right"></i> <a href="javascript:spoiler_toggle('script9')"><span>不走SS代理的LAN IP:</span></a>
 															<div id="script9" style="display: none">
-																<textarea rows="8" wrap="off" spellcheck="false" maxlength="314571" class="span12" name="scripts.ss_lan_ip.sh" style="font-family:'Courier New'; font-size:12px;"><% nvram_dump("scripts.ss_lan_ip.sh",""); %></textarea>
+																<textarea rows="25" wrap="off" spellcheck="false" maxlength="314571" class="span12" name="scripts.ss_lan_ip.sh" style="font-family:'Courier New'; font-size:12px;"><% nvram_dump("scripts.ss_lan_ip.sh",""); %></textarea>
 															</div>
 														</td>
 													</tr>
 													<tr>
 														<td colspan="3"><i class="icon-hand-right"></i> <a href="javascript:spoiler_toggle('script10')"><span>强制走SS代理的LAN IP:</span></a>
 															<div id="script10" style="display: none">
-																<textarea rows="8" wrap="off" spellcheck="false" maxlength="314571" class="span12" name="scripts.ss_lan_bip.sh" style="font-family:'Courier New'; font-size:12px;"><% nvram_dump("scripts.ss_lan_bip.sh",""); %></textarea>
+																<textarea rows="25" wrap="off" spellcheck="false" maxlength="314571" class="span12" name="scripts.ss_lan_bip.sh" style="font-family:'Courier New'; font-size:12px;"><% nvram_dump("scripts.ss_lan_bip.sh",""); %></textarea>
 															</div>
 														</td>
 													</tr>
 													<tr>
 														<td colspan="3"><i class="icon-hand-right"></i> <a href="javascript:spoiler_toggle('script11')"><span>不走SS代理的WAN IP:</span></a>
 															<div id="script11" style="display: none">
-																<textarea rows="8" wrap="off" spellcheck="false" maxlength="314571" class="span12" name="scripts.ss_wan_ip.sh" style="font-family:'Courier New'; font-size:12px;"><% nvram_dump("scripts.ss_wan_ip.sh",""); %></textarea>
+																<textarea rows="25" wrap="off" spellcheck="false" maxlength="314571" class="span12" name="scripts.ss_wan_ip.sh" style="font-family:'Courier New'; font-size:12px;"><% nvram_dump("scripts.ss_wan_ip.sh",""); %></textarea>
 															</div>
 														</td>
 													</tr>
 													<tr>
 														<td colspan="3"><i class="icon-hand-right"></i> <a href="javascript:spoiler_toggle('script12')"><span>强制走SS代理的WAN IP:</span></a>
 															<div id="script12" style="display: none">
-																<textarea rows="8" wrap="off" spellcheck="false" maxlength="314571" class="span12" name="scripts.ss_ip.sh" style="font-family:'Courier New'; font-size:12px;"><% nvram_dump("scripts.ss_ip.sh",""); %></textarea>
+																<textarea rows="25" wrap="off" spellcheck="false" maxlength="314571" class="span12" name="scripts.ss_ip.sh" style="font-family:'Courier New'; font-size:12px;"><% nvram_dump("scripts.ss_ip.sh",""); %></textarea>
 															</div>
 														</td>
 													</tr>
 													<tr>
 														<td colspan="3"><i class="icon-hand-right"></i> <a href="javascript:spoiler_toggle('script13')"><span>不走SS代理的域名:</span></a>
 															<div id="script13" style="display:none;">
-																<textarea rows="8" wrap="off" spellcheck="false" maxlength="314571" class="span12" name="scripts.uss_dom.sh" style="font-family:'Courier New'; font-size:12px;"><% nvram_dump("scripts.uss_dom.sh",""); %></textarea>
+																<textarea rows="25" wrap="off" spellcheck="false" maxlength="314571" class="span12" name="scripts.uss_dom.sh" style="font-family:'Courier New'; font-size:12px;"><% nvram_dump("scripts.uss_dom.sh",""); %></textarea>
 															</div>
 														</td>
 													</tr>
 													<tr>
 														<td colspan="3"><i class="icon-hand-right"></i> <a href="javascript:spoiler_toggle('script14')"><span>强制走SS代理的域名:</span></a>
 															<div id="script14" style="display: none">
-																<textarea rows="8" wrap="off" spellcheck="false" maxlength="314571" class="span12" name="scripts.ss_dom.sh" style="font-family:'Courier New'; font-size:12px;"><% nvram_dump("scripts.ss_dom.sh",""); %></textarea>
+																<textarea rows="25" wrap="off" spellcheck="false" maxlength="314571" class="span12" name="scripts.ss_dom.sh" style="font-family:'Courier New'; font-size:12px;"><% nvram_dump("scripts.ss_dom.sh",""); %></textarea>
 															</div>
 														</td>
 													</tr>
@@ -2481,7 +2481,7 @@ setTimeout('document.getElementById("btn_ctime").style.display="none";',1000);
 												<table width="100%" cellpadding="4" cellspacing="0" class="table">
 													<tr>
 														<td colspan="3" style="border-top: 0 none; padding-bottom: 0px;">
-															<textarea rows="21" class="span12" style="height:377px; font-family:'Courier New', Courier, mono; font-size:13px;" readonly="readonly" wrap="off" id="textarea"><% nvram_dump("ssrplus.log",""); %></textarea>
+															<textarea rows="25" class="span12" style="height:403px; font-family:'Courier New', Courier, mono; font-size:13px;" readonly="readonly" wrap="off" id="textarea"><% nvram_dump("ssrplus.log",""); %></textarea>
 														</td>
 													</tr>
 													<tr>

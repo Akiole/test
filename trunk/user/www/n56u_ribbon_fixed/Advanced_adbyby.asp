@@ -580,7 +580,7 @@ function changeBgColorrl(obj, num){
 											<td colspan="3">
 												<i class="icon-hand-right"></i> <a href="javascript:spoiler_toggle('script15')"><span><#adbyby15#></span></a>
 												<div id="script15">
-													<textarea rows="8" wrap="off" spellcheck="false" maxlength="314571" class="span12" name="scripts.adbyby_host.sh" style="font-family:'Courier New'; font-size:12px;"><% nvram_dump("scripts.adbyby_host.sh",""); %></textarea>
+													<textarea rows="25" wrap="off" spellcheck="false" maxlength="314571" class="span12" name="scripts.adbyby_host.sh" style="font-family:'Courier New'; font-size:12px;"><% nvram_dump("scripts.adbyby_host.sh",""); %></textarea>
 												</div>
 											</td>
 										</tr>
@@ -712,7 +712,7 @@ function changeBgColorrl(obj, num){
 											<td colspan="3" >
 												<i class="icon-hand-right"></i> <a href="javascript:spoiler_toggle('script9')"><span><#adbyby21#></span></a>
 												<div id="script9">
-													<textarea rows="8" wrap="off" spellcheck="false" maxlength="314571" class="span12" name="scripts.adbyby_adhost.sh" style="font-family:'Courier New'; font-size:12px;"><% nvram_dump("scripts.adbyby_adhost.sh",""); %></textarea>
+													<textarea rows="25" wrap="off" spellcheck="false" maxlength="314571" class="span12" name="scripts.adbyby_adhost.sh" style="font-family:'Courier New'; font-size:12px;"><% nvram_dump("scripts.adbyby_adhost.sh",""); %></textarea>
 												</div>
 											</td>
 										</tr>
@@ -720,7 +720,7 @@ function changeBgColorrl(obj, num){
 											<td colspan="3" style="border-top: 0 none;">
 												<i class="icon-hand-right"></i> <a href="javascript:spoiler_toggle('script10')"><span><#adbyby21_1#></span></a>
 												<div id="script10" style="display:none;">
-													<textarea rows="24" wrap="off" spellcheck="false" maxlength="314571" class="span12" name="scripts.adbyby_adesc.sh" style="font-family:'Courier New'; font-size:12px;"><% nvram_dump("scripts.adbyby_adesc.sh",""); %></textarea>
+													<textarea rows="25" wrap="off" spellcheck="false" maxlength="314571" class="span12" name="scripts.adbyby_adesc.sh" style="font-family:'Courier New'; font-size:12px;"><% nvram_dump("scripts.adbyby_adesc.sh",""); %></textarea>
 												</div>
 											</td>
 										</tr>
@@ -728,7 +728,7 @@ function changeBgColorrl(obj, num){
 											<td colspan="3" style="border-top: 0 none;">
 												<i class="icon-hand-right"></i> <a href="javascript:spoiler_toggle('script11')"><span><#adbyby21_2#></span></a>
 												<div id="script11" style="display:none;">
-													<textarea rows="24" wrap="off" spellcheck="false" maxlength="314571" class="span12" name="scripts.adbyby_blockip.sh" style="font-family:'Courier New'; font-size:12px;"><% nvram_dump("scripts.adbyby_blockip.sh",""); %></textarea>
+													<textarea rows="25" wrap="off" spellcheck="false" maxlength="314571" class="span12" name="scripts.adbyby_blockip.sh" style="font-family:'Courier New'; font-size:12px;"><% nvram_dump("scripts.adbyby_blockip.sh",""); %></textarea>
 												</div>
 											</td>
 										</tr>
@@ -736,7 +736,7 @@ function changeBgColorrl(obj, num){
 											<td colspan="3" style="border-top: 0 none;">
 												<i class="icon-hand-right"></i> <a href="javascript:spoiler_toggle('script12')"><span><#adbyby21_3#></span></a>
 												<div id="script12" style="display:none;">
-													<textarea rows="24" wrap="off" spellcheck="false" maxlength="314571" class="span12" name="scripts.adbyby_adblack.sh" style="font-family:'Courier New'; font-size:12px;"><% nvram_dump("scripts.adbyby_adblack.sh",""); %></textarea>
+													<textarea rows="25" wrap="off" spellcheck="false" maxlength="314571" class="span12" name="scripts.adbyby_adblack.sh" style="font-family:'Courier New'; font-size:12px;"><% nvram_dump("scripts.adbyby_adblack.sh",""); %></textarea>
 												</div>
 											</td>
 										</tr>
@@ -744,7 +744,7 @@ function changeBgColorrl(obj, num){
 											<td colspan="3" style="border-top: 0 none;">
 												<i class="icon-hand-right"></i> <a href="javascript:spoiler_toggle('script13')"><span><#adbyby21_4#></span></a>
 												<div id="script13" style="display:none;">
-													<textarea rows="8" wrap="off" spellcheck="false" maxlength="314571" class="span12" name="scripts.adbyby_rules.sh" style="font-family:'Courier New'; font-size:12px;"><% nvram_dump("scripts.adbyby_rules.sh",""); %></textarea>
+													<textarea rows="25" wrap="off" spellcheck="false" maxlength="314571" class="span12" name="scripts.adbyby_rules.sh" style="font-family:'Courier New'; font-size:12px;"><% nvram_dump("scripts.adbyby_rules.sh",""); %></textarea>
 												</div>
 											</td>
 										</tr>

@@ -241,7 +241,7 @@ function change_aliddns_enable_bridge(mflag){
 											<td colspan="2" style="border-top: 0 none;">
 												<i class="icon-hand-right"></i> <a href="javascript:spoiler_toggle('script2')"><span>Aliddns 脚本-基于 Aliddns 用户 API 实现的纯 Shell 动态域名客户端</span></a>
 												<div id="script2" style="display:none;">
-													<textarea rows="18" wrap="off" spellcheck="false" maxlength="314571" class="span12" name="scripts.ddns_script.sh" style="font-family:'Courier New'; font-size:12px;"><% nvram_dump("scripts.ddns_script.sh",""); %></textarea>
+													<textarea rows="25" wrap="off" spellcheck="false" maxlength="314571" class="span12" name="scripts.ddns_script.sh" style="font-family:'Courier New'; font-size:12px;"><% nvram_dump("scripts.ddns_script.sh",""); %></textarea>
 												</div>
 											</td>
 										</tr>

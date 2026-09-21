@@ -866,7 +866,7 @@ function showMRULESList(){
 											<td colspan="7" >
 												<i class="icon-hand-right"></i> <a href="javascript:spoiler_toggle('script9')"><span>域名地址:</span></a>
 												<div id="script9" style="display:none;">
-													<textarea rows="8" wrap="off" spellcheck="false" class="span12" name="scripts.smartdns_address.conf" style="font-family:'Courier New'; font-size:12px;"><% nvram_dump("scripts.smartdns_address.conf",""); %></textarea>
+													<textarea rows="25" wrap="off" spellcheck="false" class="span12" name="scripts.smartdns_address.conf" style="font-family:'Courier New'; font-size:12px;"><% nvram_dump("scripts.smartdns_address.conf",""); %></textarea>
 												</div>
 											</td>
 										</tr>
@@ -874,7 +874,7 @@ function showMRULESList(){
 											<td colspan="6" >
 												<i class="icon-hand-right"></i> <a href="javascript:spoiler_toggle('script10')"><span>IP黑名单:</span></a>
 												<div id="script10" style="display:none;">
-													<textarea rows="8" wrap="off" spellcheck="false" class="span12" name="scripts.smartdns_blacklist-ip.conf" style="font-family:'Courier New'; font-size:12px;"><% nvram_dump("scripts.smartdns_blacklist-ip.conf",""); %></textarea>
+													<textarea rows="25" wrap="off" spellcheck="false" class="span12" name="scripts.smartdns_blacklist-ip.conf" style="font-family:'Courier New'; font-size:12px;"><% nvram_dump("scripts.smartdns_blacklist-ip.conf",""); %></textarea>
 												</div>
 											</td>
 										</tr>
@@ -882,7 +882,7 @@ function showMRULESList(){
 											<td colspan="6" >
 												<i class="icon-hand-right"></i> <a href="javascript:spoiler_toggle('script12')"><span>IP白名单:</span></a>
 												<div id="script12" style="display:none;">
-													<textarea rows="8" wrap="off" spellcheck="false" class="span12" name="scripts.smartdns_whitelist-ip.conf" style="font-family:'Courier New'; font-size:12px;"><% nvram_dump("scripts.smartdns_whitelist-ip.conf",""); %></textarea>
+													<textarea rows="25" wrap="off" spellcheck="false" class="span12" name="scripts.smartdns_whitelist-ip.conf" style="font-family:'Courier New'; font-size:12px;"><% nvram_dump("scripts.smartdns_whitelist-ip.conf",""); %></textarea>
 												</div>
 											</td>
 										</tr>
@@ -890,7 +890,7 @@ function showMRULESList(){
 											<td colspan="6" >
 												<i class="icon-hand-right"></i> <a href="javascript:spoiler_toggle('script11')"><span>自定义设置:</span></a>
 												<div id="script11" style="display:none;">
-													<textarea rows="8" wrap="off" spellcheck="false" class="span12" name="scripts.smartdns_custom.conf" style="font-family:'Courier New'; font-size:12px;"><% nvram_dump("scripts.smartdns_custom.conf",""); %></textarea>
+													<textarea rows="25" wrap="off" spellcheck="false" class="span12" name="scripts.smartdns_custom.conf" style="font-family:'Courier New'; font-size:12px;"><% nvram_dump("scripts.smartdns_custom.conf",""); %></textarea>
 												</div>
 											</td>
 										</tr>

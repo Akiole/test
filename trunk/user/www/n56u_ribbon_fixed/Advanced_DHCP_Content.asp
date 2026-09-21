@@ -615,7 +615,7 @@ function changeBgColor(obj, num){
                                             <td colspan="2">
                                                 <a href="javascript:spoiler_toggle('spoiler_conf')"><span><#CustomConf#> "dnsmasq.conf"</span></a>
                                                 <div id="spoiler_conf" style="display:none;">
-                                                    <textarea rows="16" wrap="off" spellcheck="false" maxlength="16384" class="span12" name="dnsmasq.dnsmasq.conf" style="font-family:'Courier New'; font-size:12px;"><% nvram_dump("dnsmasq.dnsmasq.conf",""); %></textarea>
+                                                    <textarea rows="25" wrap="off" spellcheck="false" maxlength="16384" class="span12" name="dnsmasq.dnsmasq.conf" style="font-family:'Courier New'; font-size:12px;"><% nvram_dump("dnsmasq.dnsmasq.conf",""); %></textarea>
                                                 </div>
                                             </td>
                                         </tr>
@@ -623,7 +623,7 @@ function changeBgColor(obj, num){
                                             <td colspan="2">
                                                 <a href="javascript:spoiler_toggle('spoiler_dservers')"><span><#CustomConf#> "dnsmasq.servers"</span></a>
                                                 <div id="spoiler_dservers" style="display:none;">
-                                                    <textarea rows="16" wrap="off" spellcheck="false" maxlength="16384" class="span12" name="dnsmasq.dnsmasq.servers" style="font-family:'Courier New'; font-size:12px;"><% nvram_dump("dnsmasq.dnsmasq.servers",""); %></textarea>
+                                                    <textarea rows="25" wrap="off" spellcheck="false" maxlength="16384" class="span12" name="dnsmasq.dnsmasq.servers" style="font-family:'Courier New'; font-size:12px;"><% nvram_dump("dnsmasq.dnsmasq.servers",""); %></textarea>
                                                 </div>
                                             </td>
                                         </tr>
@@ -631,7 +631,7 @@ function changeBgColor(obj, num){
                                             <td colspan="2">
                                                 <a href="javascript:spoiler_toggle('spoiler_dhcpconf')"><span><#CustomConf#> "dhcp.conf"</span></a>
                                                 <div id="spoiler_dhcpconf" style="display:none;">
-                                                    <textarea rows="16" wrap="off" spellcheck="false" maxlength="16384" class="span12" name="dnsmasq.dhcp.conf" style="font-family:'Courier New'; font-size:12px;"><% nvram_dump("dnsmasq.dhcp.conf",""); %></textarea>
+                                                    <textarea rows="25" wrap="off" spellcheck="false" maxlength="16384" class="span12" name="dnsmasq.dhcp.conf" style="font-family:'Courier New'; font-size:12px;"><% nvram_dump("dnsmasq.dhcp.conf",""); %></textarea>
                                                 </div>
                                             </td>
                                         </tr>
@@ -639,7 +639,7 @@ function changeBgColor(obj, num){
                                             <td colspan="2" style="padding-bottom: 0px;">
                                                 <a href="javascript:spoiler_toggle('spoiler_hosts')"><span><#CustomConf#> "hosts"</span></a>
                                                 <div id="spoiler_hosts" style="display:none;">
-                                                    <textarea rows="16" wrap="off" spellcheck="false" maxlength="8192" class="span12" name="dnsmasq.hosts" style="font-family:'Courier New'; font-size:12px;"><% nvram_dump("dnsmasq.hosts",""); %></textarea>
+                                                    <textarea rows="25" wrap="off" spellcheck="false" maxlength="8192" class="span12" name="dnsmasq.hosts" style="font-family:'Courier New'; font-size:12px;"><% nvram_dump("dnsmasq.hosts",""); %></textarea>
                                                 </div>
                                             </td>
                                         </tr>
