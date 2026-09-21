@@ -31,7 +31,7 @@ $j(document).ready(function(){
 
 function initial(){
 	show_banner(2);
-	show_menu(20, 0,2);
+	show_menu(20, 0);
 	show_footer();
 }
 </script>

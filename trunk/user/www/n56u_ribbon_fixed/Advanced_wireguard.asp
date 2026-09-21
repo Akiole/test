@@ -39,7 +39,7 @@ $j(document).ready(function() {
 
 function initial(){
 	show_banner(2);
-	show_menu(24, 0,0);
+	show_menu(24, 0);
 	showmenu();
 	show_footer();
 
