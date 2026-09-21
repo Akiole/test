@@ -185,7 +185,7 @@ refresh_ntp(void)
 	ntp_server = ntp_addr[ntpc_server_idx];
 	ntpc_server_idx = (ntpc_server_idx + 1) % 2;
 
-	result = eval("/usr/sbin/ntpd", "-qt", "-S", NTPC_DONE_SCRIPT, "-p", ntp_server);
+	result = eval("/usr/sbin/ntpd", "-q", "-S", NTPC_DONE_SCRIPT, "-p", ntp_server);
 
 	logmessage("NTP Client", "Synchronizing time to %s.", ntp_server);
 	return result;
@@ -219,10 +219,10 @@ ntpc_handler(void)
 		int ntp_skip = 3;	// update every 30s
 		
 		ntpc_tries++;
-		if (ntpc_tries > 60)
+		if (ntpc_tries > 10)
+			ntp_skip = 180;	// update every 30m
+		else if (ntpc_tries > 3)
 			ntp_skip = 30;	// update every 5m
-		else if (ntpc_tries > 9)
-			ntp_skip = 6;	// update every 60s
 		
 		if (!(ntpc_tries % ntp_skip))
 			refresh_ntp();
