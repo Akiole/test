@@ -408,9 +408,9 @@ function networkmap_update(s){
         </tr>
         <tr>
             <th width="10%"><a href="javascript:sort(0)"><#Type#></a></th>
-            <th id="col_hname" width="35%"><a href="javascript:sort(1)"><#Computer_Name#></a></th>
+            <th id="col_hname" width="30%"><a href="javascript:sort(1)"><#Computer_Name#></a></th>
             <th width="20%"><a href="javascript:sort(2)"><#IP_Address#></a></th>
-            <th width="24%"><a href="javascript:sort(3)"><#MAC_Address#></a></th>
+            <th width="20%"><a href="javascript:sort(3)"><#MAC_Address#></a></th>
             <th id="col_rssi"><a href="javascript:sort(4)"><#Rssi#></a></th>
             <th id="col_block"></th>
         </tr>
@@ -427,9 +427,9 @@ function networkmap_update(s){
         </tr>
         <tr>
             <th width="10%"><#Type#></th>
-            <th id="col_unhname" width="35%"><#Computer_Name#></th>
+            <th id="col_unhname" width="30%"><#Computer_Name#></th>
             <th width="20%"><#IP_Address#></th>
-            <th width="24%"><#MAC_Address#></th>
+            <th width="20%"><#MAC_Address#></th>
             <th id="col_unrssi"><#Rssi#></th>
             <th id="col_unblock"></th>
         </tr>
@@ -466,8 +466,8 @@ function networkmap_update(s){
 	}
 	if (sw_mode != "3") {
 		if (list_type != "1") {
-			$("col_hname").width = "35%";
-			$("col_unhname").width = "35%";
+			$("col_hname").width = "30%";
+			$("col_unhname").width = "30%";
 			$("col_block").width = "10%";
 			$("col_block").innerHTML = "<#Block#>";
 			$("col_unblock").width = "10%";
