@@ -512,7 +512,7 @@ textarea[readonly] {
     width: 370px;
 }
 
-.table th, .table td{vertical-align: middle;}
+.table th, .table td{vertical-align: middle; padding: 4px; line-height: 14px;}
 .table input, .table select{margin-bottom: 0px;}
 
 .syslog_panel {
