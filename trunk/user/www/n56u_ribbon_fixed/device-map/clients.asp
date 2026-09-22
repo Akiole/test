@@ -278,7 +278,7 @@ function show_clients(){
 		}
 	}
 
-	table2.style.display = hasBlocked ? "inline" : "none";
+	table2.style.display = hasBlocked ? "table" : "none";
 
 	var NDRow = "<tr><td colspan='6'><div class='alert alert-info'><#Nodata#></div></td></tr>";
 
