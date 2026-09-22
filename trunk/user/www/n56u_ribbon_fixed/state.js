@@ -377,7 +377,7 @@ function show_banner(L3){
 	bc += '<div class="row-fluid">\n';
 	bc += '<table class="table table-condensed" width="100%" style="margin-bottom: 0px;">\n';
 	bc += '  <tr>\n';
-	bc += '    <td>编译时间:</td>\n';
+	bc += '    <td><#General_x_BuildTime_itemname#></td>\n';
 	bc += '    <td><span id="buildtime_info">ZVBUILDTIMEVZ</span></td>\n';
 	bc += '  </tr>\n';
 	bc += '  <tr>\n';
@@ -1721,7 +1721,7 @@ function removeFromLocalStorage(name){
         if (sidebar && !sidebar.querySelector('.top-label')) {
             var label = document.createElement('div');
             label.className = 'top-label';
-            label.textContent = '导航菜单';
+            label.textContent = '<#sidebar_top_label#>';
             sidebar.insertBefore(label, sidebar.firstChild);
         }
         
@@ -1731,7 +1731,7 @@ function removeFromLocalStorage(name){
         if (isHomePage && tabMenu && !tabMenu.parentElement.querySelector('.top-label')) {
             var label2 = document.createElement('div');
             label2.className = 'top-label';
-            label2.textContent = '功能图标';
+            label2.textContent = '<#tabmenu_top_label#>';
             tabMenu.parentElement.insertBefore(label2, tabMenu);
         }
     }
