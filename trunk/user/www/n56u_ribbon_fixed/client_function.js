@@ -28,7 +28,7 @@ function getclients(flag_mac,flag_all){
 		for(var mac in wireless){
 			if(clients[j][2] == mac){
 				clients[j][3] = 10;	// 10 is meant the client is wireless.
-				clients[j][4] = wireless[mac]; // By Yonsm: Fetch from wireless
+				clients[j][4] = Number(wireless[mac]); // By Yonsm: Fetch from wireless
 				break;
 			}
 		}

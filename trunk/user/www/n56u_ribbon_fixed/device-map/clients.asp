@@ -20,6 +20,7 @@ var $j = jQuery.noConflict();
 
 var ipmonitor = [<% get_static_client(); %>];
 var wireless = {<% wl_auth_list(); %>};
+var ap_names = {};
 
 var list_type = '<% nvram_get_x("", "macfilter_enable_x"); %>';
 var list_of_BlockedClient = [<% get_nvram_list("FirewallConfig", "MFList"); %>];
@@ -181,14 +182,14 @@ function rssi_to_bars(rssi){
 	else if (quality >= 50) color = '#f0ad4e'; // 黄
 	else if (quality >= 25) color = '#f0ad4e'; // 橙
 	
-	var html = '<span style="display:inline-flex;align-items:flex-end;gap:1px;height:14px;">';
+	var html = '<span style="display:inline-flex;align-items:flex-end;gap:2px;height:16px;vertical-align:middle;">';
 	for (var i = 1; i <= 4; i++){
 		var h = 3 + i * 2.5;
 		var c = (i <= bars) ? color : '#ddd';
-		html += '<span style="width:3px;height:' + h + 'px;background:' + c + ';border-radius:1px;"></span>';
+		html += '<span style="width:4px;height:' + h + 'px;background:' + c + ';border-radius:1px;"></span>';
 	}
 	html += '</span>';
-	html += ' <span style="color:' + color + ';font-size:11px;margin-left:3px;">' + quality + '%</span>';
+	html += ' <span style="color:' + color + ';font-size:12px;margin-left:6px;font-weight:500;">' + quality + '%</span>';
 	return html;
 }
 
@@ -220,21 +221,26 @@ function add_client_row(table, atIndex, client, blocked, j){
 	var typeTitle = DEVICE_TYPE[deviceType] ? DEVICE_TYPE[deviceType] : "";
 	typeCell.innerHTML = "<img title='" + typeTitle + "' src='/bootstrap/img/wl_device/" + deviceType + ".gif'>";
 	var rawName = (client[0] == null || client[0] == "*" || client[0].length < 1) ? null : client[0];
+	// 如果本地没有名称，尝试从跨 AP 采集的名称中获取
+	if (!rawName && ap_names[client[2]]) {
+		rawName = ap_names[client[2]];
+	}
 	var clientName = rawName ? rawName.replace(/\.lan$/i, "") : null;
 	var displayName = clientName ? clientName : "<span style='color:#999;'>-</span>";
 	nameCell.innerHTML = (client[6] == "1" && clientName) ? "<a href=http://" + clientName + " target='blank'>" + clientName + "</a>" : displayName;
 	var displayIP = (client[1] == null || client[1] == "*" || client[1].length < 1) ? "<span style='color:#999;'>-</span>" : client[1];
 	ipCell.innerHTML = (client[6] == "1" && client[1] != null && client[1] != "*") ? "<a href=http://" + client[1] + " target='blank'>" + client[1] + "</a>" : displayIP;
 	macCell.innerHTML = "<a target='_blank' href='https://services13.ieee.org/RST/standards-ra-web/rest/assignments/?registry=MAC&text=" + client[2].substr(0,6) + "'>" + mac_add_delimiters(client[2]) + "</a>";
-	if (client[3] == 10){
-		rssiCell.innerHTML = rssi_to_bars(client[4]);
+	if (client[3] == 10 || client[3] === "10"){
+		rssiCell.innerHTML = rssi_to_bars(Number(client[4]));
 		rssiCell.title = 'RSSI: ' + client[4] + ' dBm';
 	} else {
-		rssiCell.innerHTML = '<span style="color:#999;">-</span>';
+		rssiCell.innerHTML = '<svg class="wired-icon" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#5cb85c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;transition:transform 0.2s,opacity 0.2s;cursor:default;"><rect x="3" y="8" width="18" height="12" rx="1"/><path d="M7 8V5h10v3"/><path d="M7 12h.01M11 12h.01M15 12h.01"/><path d="M7 16h.01M11 16h.01M15 16h.01"/></svg>';
+		rssiCell.title = '<#wired_conn#>';
 	}
 	if(list_type != "1" && sw_mode != "3"){
 		blockCell.style.textAlign = "center";
-		blockCell.innerHTML = "<div class='icon icon-" + (blocked ? "plus" : "remove") + "' onClick='" + (blocked ? "unBlock" : "block") + "Client("+j+")' style='cursor:pointer;'></div>\n";
+		blockCell.innerHTML = "<div class='icon icon-" + (blocked ? "plus" : "remove") + "' onClick='" + (blocked ? "unBlock" : "block") + "Client("+j+")'></div>\n";
 	}
 }
 
@@ -420,9 +426,17 @@ function merge_ap_wireless(){
 	if (typeof ap_wireless !== 'object' || ap_wireless === null) return;
 	var changed = 0;
 	for (var mac in ap_wireless) {
-		if (ap_wireless.hasOwnProperty(mac) && !(mac in wireless)) {
-			wireless[mac] = ap_wireless[mac];
+		if (!ap_wireless.hasOwnProperty(mac)) continue;
+		var data = ap_wireless[mac];
+		// 兼容新旧格式：新格式 {"rssi":-57,"name":"xxx"}，旧格式 -57
+		var rssi = (typeof data === 'object') ? data.rssi : data;
+		var name = (typeof data === 'object' && data.name) ? data.name : '';
+		if (!(mac in wireless)) {
+			wireless[mac] = rssi;
 			changed = 1;
+		}
+		if (name) {
+			ap_names[simplyMAC(mac)] = name;
 		}
 	}
 	if (changed) {
@@ -443,12 +457,41 @@ function load_ap_wireless(){
 	document.head.appendChild(script);
 }
 
+// 每 30 秒刷新一次跨 AP 数据
+setInterval(load_ap_wireless, 30000);
+
 </script>
 
 <style>
-    .table th, .table td{vertical-align: middle; text-align: center;}
-    #Clients_table, #xClients_table { table-layout: fixed; }
+    /* 设备状态表格整体居中 */
+    #Clients_table th, #Clients_table td, #xClients_table th, #xClients_table td { text-align: center; }
+    /* 名称列：左对齐 + 省略号 */
+    #Clients_table td:nth-child(2), #xClients_table td:nth-child(2) { text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    /* IP/MAC 列：等宽字体 */
+    #Clients_table td:nth-child(3), #xClients_table td:nth-child(3),
+    #Clients_table td:nth-child(4), #xClients_table td:nth-child(4) { font-family: monospace; }
+    /* RSSI 列：不换行 */
+    #Clients_table td:nth-child(5), #xClients_table td:nth-child(5) { white-space: nowrap; line-height: 14px; }
+    /* Block 列：行高 */
+    #Clients_table td:nth-child(6), #xClients_table td:nth-child(6) { line-height: 14px; }
+    /* Block 图标：放大 + hover 效果 */
+    #Clients_table td:nth-child(6) .icon, #xClients_table td:nth-child(6) .icon { transform: scale(1.8); cursor: pointer; transition: transform 0.2s, opacity 0.2s; display: inline-block; vertical-align: middle; }
+    #Clients_table td:nth-child(6) .icon:hover, #xClients_table td:nth-child(6) .icon:hover { opacity: 0.7; transform: scale(2.5); }
+    /* 有线连接图标：hover 放大效果 */
+    #Clients_table .wired-icon, #xClients_table .wired-icon { transition: transform 0.2s, opacity 0.2s; }
+    #Clients_table .wired-icon:hover, #xClients_table .wired-icon:hover { opacity: 0.7; transform: scale(1.5); }
+    /* 移动端：特定列字体微调 */
+    @media (max-width: 768px) {
+        #Clients_table td:nth-child(3), #xClients_table td:nth-child(3),
+        #Clients_table td:nth-child(4), #xClients_table td:nth-child(4) { font-size: 11px; }
+        #Clients_table td:nth-child(5), #xClients_table td:nth-child(5) { font-size: 11px; }
+    }
+    @media (max-width: 480px) {
+        #Clients_table td:nth-child(3), #xClients_table td:nth-child(3),
+        #Clients_table td:nth-child(4), #xClients_table td:nth-child(4) { font-size: 10px; }
+    }
 </style>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 
 </head>
 

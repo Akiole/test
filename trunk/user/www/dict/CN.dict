@@ -2387,3 +2387,6 @@ zerotier_006=ZeroTier Moon服务器 IP or DomainName
 zerotier_007=ZeroTier Moon服务器 ID
 zerotier_008=服务器启用后自动生成Moon服务器的ID，在加入Moon时请使用客户端zerotier-cli orbit
 zerotier_009=需要访问其它zerotier的内网LAN网段,IP和网关和zerotier后台对应即可(本机的LAN网段不用填进去)
+
+# --- device-map clients ---
+wired_conn=使用网线连接到路由器以获得更好的体验。

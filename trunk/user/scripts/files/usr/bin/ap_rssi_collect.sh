@@ -1,54 +1,73 @@
 #!/bin/sh
-# Padavan 跨 AP 无线客户端 RSSI 采集脚本
-# 从其他 Padavan AP 采集无线客户端列表，合并写入 /www/ap_rssi.js
-# 前端 device-map/clients.asp 动态加载此文件显示跨 AP RSSI
-# 用法: /etc/storage/ap_rssi_collect.sh
-# 定时: cru a ap_rssi "* * * * * /etc/storage/ap_rssi_collect.sh"
+# Padavan 跨 AP 无线客户端 RSSI + 主机名采集脚本
+# 数据格式：var ap_wireless = {"MAC":{"rssi":-57,"name":"hostname"}}
 
-# 从 nvram 读取配置
 AP_IPS=$(nvram get ap_slave_ips)
 AP_USER=$(nvram get ap_slave_user)
 AP_PASS=$(nvram get ap_slave_pass)
-
-# 默认值
 [ -z "$AP_USER" ] && AP_USER="admin"
 [ -z "$AP_PASS" ] && AP_PASS="admin"
-
-# 没有配置 AP 列表就退出
 [ -z "$AP_IPS" ] && exit 0
 
-TMP_FILE="/tmp/ap_wireless_tmp.js"
 CACHE_FILE="/tmp/ap_wireless.js"
 BIND_TARGET="/www/ap_rssi.js"
+RSSI_FILE="/tmp/ap_rssi_list.txt"
+NAME_FILE="/tmp/ap_name_list.txt"
+> "$RSSI_FILE"
+> "$NAME_FILE"
 
-# 开始输出
-printf 'var ap_wireless = {' > "$TMP_FILE"
-
-first=1
 for ip in $AP_IPS; do
     [ -z "$ip" ] && continue
-
-    # 请求 AP 的 lan_clients.asp（用 Basic Auth header，BusyBox wget 不支持 --http-user）
-    AUTH_HEADER="Authorization: Basic $(echo -n "$AP_USER:$AP_PASS" | base64)"
-    data=$(wget --header="$AUTH_HEADER" -qO- "http://$ip/lan_clients.asp" 2>/dev/null | grep -o 'wireless_last = {.*};' | sed 's/wireless_last = {//;s/};.*//')
-
-    if [ -n "$data" ]; then
-        if [ $first -eq 1 ]; then
-            first=0
-        else
-            printf ', ' >> "$TMP_FILE"
-        fi
-        printf '%s' "$data" >> "$TMP_FILE"
+    AUTH="Authorization: Basic $(echo -n "$AP_USER:$AP_PASS" | base64)"
+    PAGE=$(wget --header="$AUTH" -qO- "http://$ip/lan_clients.asp" 2>/dev/null)
+    # 重试一次：如果页面为空或不包含 ipmonitor_last
+    if [ -z "$PAGE" ] || ! echo "$PAGE" | grep -q "ipmonitor_last"; then
+        sleep 1
+        PAGE=$(wget --header="$AUTH" -qO- "http://$ip/lan_clients.asp" 2>/dev/null)
     fi
+    [ -z "$PAGE" ] && continue
+
+    # 提取 wireless_last："MAC":rssi → 输出 "MAC rssi"
+    echo "$PAGE" | grep -o 'wireless_last = {.*};' \
+        | sed 's/wireless_last = {//;s/};.*//' \
+        | tr ',' '\n' \
+        | sed 's/^ *"//;s/":/ /' >> "$RSSI_FILE"
+
+    # 提取 ipmonitor_last：用 awk 解析数组，输出 "MAC name"
+    echo "$PAGE" | grep -o 'ipmonitor_last = \[.*\];' \
+        | sed 's/ipmonitor_last = \[//;s/\];.*//' \
+        | awk '{
+            n = split($0, arr, /\], \[/);
+            for(i=1; i<=n; i++) {
+                gsub(/^\[|\]$/, "", arr[i]);
+                split(arr[i], f, /,/);
+                mac = f[2]; name = f[3];
+                gsub(/^ *"|" *$/, "", mac);
+                gsub(/^ *"|" *$/, "", name);
+                gsub(/^ +| +$/, "", name);
+                gsub(/\.lan$/, "", name);
+                if(name != "" && name != "null") print mac" "name;
+            }
+        }' >> "$NAME_FILE"
 done
 
-printf '};\n' >> "$TMP_FILE"
+# 去重
+sort -u "$RSSI_FILE" -o "$RSSI_FILE" 2>/dev/null
+sort -u -k1,1 "$NAME_FILE" -o "$NAME_FILE" 2>/dev/null
 
-# 覆盖缓存文件（用 cat 覆盖而非 mv，保持 inode 不变，使 mount --bind 能看到更新）
-cat "$TMP_FILE" > "$CACHE_FILE"
-rm -f "$TMP_FILE"
+# 合并输出 JSON
+printf 'var ap_wireless = {' > "$CACHE_FILE"
+first=1
+while read mac rssi; do
+    [ -z "$mac" ] && continue
+    name=$(grep -i "^$mac " "$NAME_FILE" 2>/dev/null | head -1 | cut -d' ' -f2-)
+    [ $first -eq 1 ] && first=0 || printf ', ' >> "$CACHE_FILE"
+    printf '"%s":{"rssi":%s,"name":"%s"}' "$mac" "$rssi" "${name:-}" >> "$CACHE_FILE"
+done < "$RSSI_FILE"
+printf '};\n' >> "$CACHE_FILE"
 
-# /www 是只读 squashfs，用 mount --bind 把缓存文件覆盖到 /www/ap_rssi.js
+rm -f "$RSSI_FILE" "$NAME_FILE"
+
 if ! mount | grep -q "$BIND_TARGET"; then
     mount --bind "$CACHE_FILE" "$BIND_TARGET" 2>/dev/null
 fi
