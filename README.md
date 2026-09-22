@@ -279,3 +279,246 @@ nvram commit
    ```
 2. 检查 `ap_slave_ips` 是否非空（为空时不会配置 cron）
 3. 手动执行 `/usr/bin/ap_rssi_collect.sh` 测试
+
+# AP 中继自动守护 (AP Relay auto-daemon)
+
+AP-Client 模式下的智能中继守护进程，支持多 AP 自动切换、信号阈值触发、漫游保护和连接质量评估。提供独立的 Web UI 配置页面。
+
+## 功能特性
+
+### 第一阶段：基础重构 + 可靠性
+
+- **配置持久化**：AP 列表保存到 `/etc/storage/ap_relay.conf`，重启不丢失
+- **防重复运行**：进程检查 + PID 文件双重保护
+- **Lock 自动清理**：启动时清理残留的 `/tmp/apc.lock`
+- **代码重构**：`connAPSite` 提取 7 个公共辅助函数，消除 2G/5G 重复代码
+- **模式检查**：非 AP-Client 模式或配置为空时不启动守护
+
+### 第二阶段：智能切换
+
+- **信号阈值触发**：当前信号低于阈值时自动扫描周围 AP
+- **切换迟滞**：候选信号需比当前强指定 dBm 以上才切换，避免临界震荡
+- **漫游保护**：切换后 N 秒内不再切换，防止频繁切换
+- **连接质量评估**：基于 ping 延迟/丢包率，质量差也触发切换评估
+- **每 30 秒评估一次**：避免频繁扫描导致无线网络瞬断
+
+### 第三阶段：Web UI 配置页面
+
+- **独立配置页面**：`/Advanced_APRelay_Content.asp`
+- **实时状态显示**：守护进程状态、当前模式、SSID、BSSID、信号强度、连接质量
+- **AP 列表可视化编辑**：textarea 编辑，支持注释
+- **参数表单**：基础参数 + 智能切换参数，开关联动置灰
+- **操作按钮**：刷新状态、立即扫描、重启守护、查看日志
+- **httpd 服务组**：新增 `APRelayConfig` 服务组，14 个 nvram 变量一键保存
+
+## 修改文件清单
+
+| 文件 | 说明 |
+|------|------|
+| `trunk/user/scripts/files/usr/bin/ap_script.sh` | 守护进程主脚本（完全重写） |
+| `trunk/user/scripts/files/usr/bin/sh_ezscript.sh` | 扩展脚本集合（connAPSite 重构 + 智能切换函数） |
+| `trunk/user/scripts/files/usr/bin/autostart.sh` | 启动时复制脚本到 /etc/storage/ 并运行 |
+| `trunk/user/httpd/src/variables.c` | 新增 `APRelayConfig` 服务组（14个 nvram 变量） |
+| `trunk/user/www/n56u_ribbon_fixed/Advanced_APRelay_Content.asp` | AP 中继配置页面（新增） |
+| `trunk/user/www/n56u_ribbon_fixed/ap_relay_status.asp` | 状态数据接口（新增） |
+| `trunk/user/www/n56u_ribbon_fixed/ap_relay_log.asp` | 日志查看页面（新增） |
+
+## 工作原理
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    autostart.sh (启动时)                  │
+│  cp /usr/bin/ap_script.sh → /etc/storage/ap_script.sh   │
+│  cp /usr/bin/sh_ezscript.sh → /etc/storage/sh_ezscript.sh│
+│  /etc/storage/ap_script.sh &                              │
+└────────────────────────┬────────────────────────────────┘
+                         ▼
+┌─────────────────────────────────────────────────────────┐
+│                  ap_script.sh (主流程)                    │
+│  1. init_nvram_defaults()  初始化默认参数                │
+│  2. load_config()           从 nvram/文件加载 AP 列表    │
+│  3. 检查 AP-Client 模式 (rt_mode_x > 2 || wl_mode_x > 2)│
+│  4. 防重复运行检查                                        │
+│  5. 生成守护进程 /tmp/sh_apauto.sh 并启动                │
+└────────────────────────┬────────────────────────────────┘
+                         ▼
+┌─────────────────────────────────────────────────────────┐
+│              sh_apauto.sh (守护进程，每15秒循环)          │
+│                                                           │
+│  ┌─ 状态更新 ────────────────────────────────────────┐  │
+│  │  iwconfig 获取当前 SSID/BSSID/信号强度             │  │
+│  │  写入 nvram ap_relay_status (JSON)                 │  │
+│  └────────────────────────────────────────────────────┘  │
+│                                                           │
+│  ┌─ 断线重连 ────────────────────────────────────────┐  │
+│  │  ap_check=0: ping 223.5.5.5 失败 → connAPSite    │  │
+│  │  ap_check=1: 无线接口断开 → connAPSite             │  │
+│  └────────────────────────────────────────────────────┘  │
+│                                                           │
+│  ┌─ 定时搜寻 ────────────────────────────────────────┐  │
+│  │  ap_time_check ≥ 10: 每隔N秒搜寻最优先信号         │  │
+│  └────────────────────────────────────────────────────┘  │
+│                                                           │
+│  ┌─ 智能切换 (每30秒) ───────────────────────────────┐  │
+│  │  ap_auto_switch=1 且 信号<阈值 或 质量差           │  │
+│  │  → 扫描周围 AP → 找最强候选 → 差值≥迟滞 → 切换     │  │
+│  │  → 标记漫游保护 (ap_roam_protect 秒)               │  │
+│  └────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────┘
+```
+
+## 使用方法
+
+### 1. 开启 AP-Client 模式
+
+在 Web UI → 高级设置 → 无线 → 无线模式中，将 2.4G 或 5G 的工作模式设置为：
+- **AP-Client**（模式3，AP 被禁用）
+- **AP-Client + AP**（模式4，不支持 WDS）
+
+### 2. 配置 AP 中继
+
+访问配置页面：
+```
+http://路由器IP/Advanced_APRelay_Content.asp
+```
+
+在页面中配置：
+- **AP 列表**：每行一个 AP，格式 `频段@模式@角色@SSID@密码@BSSID`
+- **基础参数**：触发条件、定时搜寻间隔、搜寻排序、黑名单
+- **智能切换参数**：开关、阈值、迟滞、漫游保护、质量检查
+
+点击"保存配置"。
+
+### 3. 验证
+
+- 配置页面顶部显示当前连接状态（SSID、信号强度等）
+- 系统日志中可看到 `【AP 中继】` 和 `【连接 AP】` 相关日志
+- 点击"查看日志"按钮可查看最近 50 条 AP 中继日志
+
+## AP 列表配置格式
+
+```
+# 注释行以 # 开头
+# 格式：频段@工作模式@客户端角色@SSID@密码@BSSID
+#
+# 频段:     2=2.4GHz  5=5GHz
+# 工作模式: 3=AP-Client(AP被禁用)  4=AP-Client+AP(不支持WDS)
+# 客户端角色: 0=LAN bridge  1=WAN (Wireless ISP)
+# SSID:     目标AP的名称
+# 密码:     目标AP的密码
+# BSSID:    目标AP的MAC地址(SSID含中文时必填，大小写不限)
+
+# 示例：
+2@4@1@ASUS_2.4G@1234567890
+5@4@1@ASUS_5G@1234567890@34:bd:f9:1f:d2:b1
+```
+
+**多 AP 优先级**：第一行最优先（按配置顺序模式）；或自动连接最强信号（最强信号模式）。
+
+## 配置项说明
+
+### 基础参数
+
+| NVRAM 变量 | 默认值 | 说明 |
+|------------|--------|------|
+| `ap_check` | `0` | 守护触发条件：0=Internet 断线后搜寻；1=信号断开时搜寻 |
+| `ap_inet_check` | `0` | 连接成功条件：0=连上即可；1=连上且能联网 |
+| `ap_time_check` | `0` | 定时搜寻间隔(秒)：0=成功后停止；≥10=每隔N秒搜寻最优信号 |
+| `ap_black` | `0` | 黑名单功能：0=关闭；1=启用（无法联网的 AP 自动加入黑名单） |
+| `ap_fenge` | `@` | 配置字段分隔符 |
+| `ap_rule` | `0` | 搜寻排序：0=按配置顺序(首行最优先)；1=自动连接最强信号 |
+| `ap_relay_list` | （模板） | AP 列表配置文本（含注释） |
+
+### 智能切换参数
+
+| NVRAM 变量 | 默认值 | 说明 |
+|------------|--------|------|
+| `ap_auto_switch` | `0` | 智能切换开关：0=关闭；1=启用 |
+| `ap_switch_threshold` | `-75` | 切换信号阈值(dBm)：当前信号低于此值时触发扫描评估 |
+| `ap_switch_hysteresis` | `10` | 切换迟滞(dBm)：候选信号需比当前强多少才切换 |
+| `ap_roam_protect` | `60` | 漫游保护(秒)：切换后多久内不再切换 |
+| `ap_quality_check` | `0` | 连接质量检查：0=关闭；1=启用（ping 延迟/丢包率评估） |
+| `ap_quality_ping_loss` | `50` | 质量检查丢包率阈值(%)：超过则认为质量差 |
+| `ap_quality_ping_delay` | `200` | 质量检查延迟阈值(ms)：超过则认为质量差 |
+
+### 信号强度参考
+
+| 信号强度 | 质量 | 建议 |
+|----------|------|------|
+| -30 ~ -50 dBm | 极好 | 无需切换 |
+| -50 ~ -65 dBm | 良好 | 稳定连接 |
+| -65 ~ -75 dBm | 一般 | 可能触发切换评估 |
+| -75 ~ -85 dBm | 较差 | 建议切换 |
+| < -85 dBm | 很差 | 几乎不可用 |
+
+## 注意事项
+
+1. **必须在 AP-Client 模式下使用**：路由模式下守护进程不会启动
+2. **扫描会导致瞬断**：每次扫描周围 AP 时无线网络会短暂断开（约1-2秒）
+3. **配置持久化**：所有配置保存到 nvram，AP 列表同时同步到 `/etc/storage/ap_relay.conf`
+4. **脚本位置**：运行时脚本在 `/etc/storage/`，固件中的脚本在 `/usr/bin/`，启动时自动复制
+5. **智能切换默认关闭**：需要手动在配置页面启用 `ap_auto_switch`
+6. **漫游保护很重要**：设置过短可能导致频繁切换震荡，建议 ≥30 秒
+7. **迟滞值避免震荡**：建议 ≥5 dBm，否则在两个 AP 信号接近时会频繁切换
+
+## 故障排查
+
+### 守护进程不启动
+
+1. 确认当前是 AP-Client 模式：
+   ```bash
+   nvram get rt_mode_x  # 2G: >2 表示 AP-Client
+   nvram get wl_mode_x  # 5G: >2 表示 AP-Client
+   ```
+2. 确认 AP 列表非空：
+   ```bash
+   cat /etc/storage/ap_relay.conf | grep -v '^#' | grep -v '^$'
+   ```
+3. 查看日志：
+   ```bash
+   logread | grep "AP 中继"
+   ```
+4. 手动启动测试：
+   ```bash
+   /etc/storage/ap_script.sh
+   ```
+
+### 不自动切换 AP
+
+1. 确认智能切换已启用：
+   ```bash
+   nvram get ap_auto_switch  # 应为 1
+   ```
+2. 确认当前信号低于阈值：
+   ```bash
+   iwconfig apcli0 | grep "Signal level"   # 2G
+   iwconfig apclii0 | grep "Signal level"  # 5G
+   ```
+3. 确认候选 AP 信号比当前强迟滞值以上
+4. 确认不在漫游保护期内：
+   ```bash
+   cat /tmp/ap_last_switch  # 切换时间戳
+   ```
+5. 查看智能切换日志：
+   ```bash
+   logread | grep "智能切换"
+   ```
+
+### 连接不上目标 AP
+
+1. 确认 SSID、密码、BSSID 配置正确
+2. 确认目标 AP 在范围内：
+   ```bash
+   iwpriv ra0 set SiteSurvey=1; sleep 1; iwpriv ra0 get_site_survey
+   ```
+3. 确认认证/加密模式匹配（WPA2-PSK/AES 等）
+4. 查看连接日志：
+   ```bash
+   logread | grep "连接 AP"
+   ```
+
+### Web UI 配置页面不显示
+
+1. 确认已编译包含新文件的固件（`Advanced_APRelay_Content.asp` 等）
+2. 直接访问 URL：`http://路由器IP/Advanced_APRelay_Content.asp`
+3. 确认 httpd 已重启（编译刷入后自动重启）

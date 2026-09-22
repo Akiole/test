@@ -910,7 +910,6 @@
 			{"wl_guest_mcs_mode", "", NULL, EVM_RESTART_WIFI5},
 			{"wl_KickStaRssiLow", "", NULL, EVM_RESTART_WIFI5},
 			{"wl_AssocReqRssiThres", "", NULL, EVM_RESTART_WIFI5},
-			{"scripts.ap_script.sh", "File", NULL, EVM_RESTART_WIFI5},
 			{"RBRList", "Group", ARGV((char*)variables_WLANConfig11a_RBRList, "16", "32", "wl_wdsnum_x"), EVM_RESTART_WIFI5},
 #endif
 			{0,0,0,0}
@@ -1335,8 +1334,26 @@
 			{"rt_KickStaRssiLow", "", NULL, EVM_RESTART_WIFI2},
 			{"rt_AssocReqRssiThres", "", NULL, EVM_RESTART_WIFI2},
 			{"rt_band_steering", "", NULL, EVM_RESTART_WIFI2},
-			{"scripts.ap_script.sh", "File", NULL, EVM_RESTART_WIFI2},
 			{"rt_RBRList", "Group", ARGV((char*)variables_WLANConfig11b_rt_RBRList, "16", "32", "rt_wdsnum_x"), EVM_RESTART_WIFI2},
+			{0,0,0,0}
+		};
+
+	/* AP Relay auto-daemon 配置组 */
+	struct variable variables_APRelayConfig[] = {
+			{"ap_check", "", NULL, FALSE},
+			{"ap_inet_check", "", NULL, FALSE},
+			{"ap_time_check", "", NULL, FALSE},
+			{"ap_black", "", NULL, FALSE},
+			{"ap_fenge", "", NULL, FALSE},
+			{"ap_rule", "", NULL, FALSE},
+			{"ap_auto_switch", "", NULL, FALSE},
+			{"ap_switch_threshold", "", NULL, FALSE},
+			{"ap_switch_hysteresis", "", NULL, FALSE},
+			{"ap_roam_protect", "", NULL, FALSE},
+			{"ap_quality_check", "", NULL, FALSE},
+			{"ap_quality_ping_loss", "", NULL, FALSE},
+			{"ap_quality_ping_delay", "", NULL, FALSE},
+			{"ap_relay_list", "", NULL, FALSE},
 			{0,0,0,0}
 		};
 
@@ -1397,6 +1414,7 @@
 #if defined(APP_FRP)
 		{"FrpConf",		variables_FrpConf},
 #endif
+		{"APRelayConfig",		variables_APRelayConfig},
 		{"DwebConf",			variables_DwebConf},
 		{"LANGUAGE",			variables_Language},
 		{0,0}
