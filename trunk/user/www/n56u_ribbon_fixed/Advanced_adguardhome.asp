@@ -138,7 +138,7 @@ function done_validating(action){
 
 									<table width="100%" align="center" cellpadding="4" cellspacing="0" class="table">
 										<tr>
-											<th width="30%" style="border-top: 0 none;">启用AdGuardHome</th>
+											<th width="30%" style="border-top: 0 none;"><#adguardhome_001#></th>
 											<td style="border-top: 0 none;">
 													<div class="main_itoggle">
 													<div id="adg_enable_on_of">
@@ -153,17 +153,17 @@ function done_validating(action){
 										</tr>
 										</tr>
                                          <tr>
-											<th><a class="help_tooltip" href="javascript: void(0)" onmouseover="openTooltip(this, 1, 1);">DNS重定向</a></th>
+											<th><a class="help_tooltip" href="javascript: void(0)" onmouseover="openTooltip(this, 1, 1);"><#adguardhome_002#></a></th>
 											<td>
 												<select name="adg_redirect" class="input" style="width: 200px">
-													<option value="0" <% nvram_match_x("","adg_redirect", "0","selected"); %>>无</option>
-													<option value="1" <% nvram_match_x("","adg_redirect", "1","selected"); %>>作为dnsmasq的上游服务器</option>
-													<option value="2" <% nvram_match_x("","adg_redirect", "2","selected"); %>>重定向53端口到AdGuardHome</option>
+													<option value="0" <% nvram_match_x("","adg_redirect", "0","selected"); %>><#smartdns_007#></option>
+													<option value="1" <% nvram_match_x("","adg_redirect", "1","selected"); %>><#smartdns_008#></option>
+													<option value="2" <% nvram_match_x("","adg_redirect", "2","selected"); %>><#adguardhome_003#></option>
 												</select>
 											</td>
 										</tr>
 										<tr>
-											<th>WEB管理地址:</th>
+											<th><#adguardhome_004#></th>
 											<td>
 											<a href="http://<% nvram_get_x("", "lan_ipaddr"); %>:3030">http://<% nvram_get_x("", "lan_ipaddr"); %>:3030</a>
 											</td>

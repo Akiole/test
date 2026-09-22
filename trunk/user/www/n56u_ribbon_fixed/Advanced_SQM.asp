@@ -174,7 +174,7 @@ function getHash(){
                                             </td>
                                             </tr>
                                             <tr>
-                                                <th>启用SQM</th>
+                                                <th><#sqm_001#></th>
                                                 <td colspan="2">
                                                     <div class="main_itoggle">
                                                         <div id="sqm_enable_on_of">
@@ -190,27 +190,27 @@ function getHash(){
                                                 </td>
                                             </tr>
                                               <tr>
-                                            <th>流控对象</th>
+                                            <th><#sqm_002#></th>
                                             <td>
                                                 <select name="sqm_flag" class="input">
-                                                    <option value="1" <% nvram_match_x("", "sqm_flag", "1", "selected"); %>>仅有线到外网</option>
-                                                    <option value="2" <% nvram_match_x("", "sqm_flag", "2", "selected"); %>>仅无线到外网</option>
-                                                    <option value="3" <% nvram_match_x("", "sqm_flag", "3", "selected"); %>>有线到外网+无线到外网</option>
-                                                    <option value="4" <% nvram_match_x("", "sqm_flag", "4", "selected"); %>>自定义接口</option>
+                                                    <option value="1" <% nvram_match_x("", "sqm_flag", "1", "selected"); %>><#sqm_003#></option>
+                                                    <option value="2" <% nvram_match_x("", "sqm_flag", "2", "selected"); %>><#sqm_004#></option>
+                                                    <option value="3" <% nvram_match_x("", "sqm_flag", "3", "selected"); %>><#sqm_005#></option>
+                                                    <option value="4" <% nvram_match_x("", "sqm_flag", "4", "selected"); %>><#sqm_006#></option>
                                                 </select>
                                             </td>
                                         </tr>
                                             <tr>
-                                                <th>自定义接口</th>
+                                                <th><#sqm_006#></th>
                                                 <td>
                                                     <input type="text" maxlength="10" class="input" size="10" name="sqm_active" value="<% nvram_get_x("","sqm_active"); %>"/>
                                                 </td>
                                                 <td>
-                                                    &nbsp;<span style="color:#888;">上项菜单需选择“自定义接口“ 可填写例如:ra0</span>
+                                                    &nbsp;<span style="color:#888;"><#sqm_007#></span>
                                                 </td>
                                             </tr>
                                             <tr>
-                                                <th>队列规则</th>
+                                                <th><#sqm_008#></th>
                                                 <td>
                                                     <select name="sqm_qdisc" class="input">
                                                         <option value="fq_codel" <% nvram_match_x("","sqm_qdisc", "fq_codel","selected"); %>>fq_codel (*)</option>
@@ -221,7 +221,7 @@ function getHash(){
                                                 </td>
                                             </tr>
                                             <tr>
-                                                <th>队列脚本</th>
+                                                <th><#sqm_009#></th>
                                                 <td>
                                                     <select name="sqm_script" class="input">
                                                         <option value="simple.qos" <% nvram_match_x("","sqm_script", "simple.qos","selected"); %>>simple (*)</option>
@@ -233,25 +233,25 @@ function getHash(){
                                                 </td>
                                             </tr>
                                             <tr>
-                                                <th width="32%">宽带下载速度 (<span class="label label-info">kbit/s</span>)</th>
+                                                <th width="32%"><#sqm_010#><span class="label label-info">kbit/s</span>)</th>
                                                 <td>
                                                     <input type="text" maxlength="10" class="input" size="10" id="sqm_down_speed" name="sqm_down_speed" value="<% nvram_get_x("","sqm_down_speed"); %>"/>
                                                 </td>
                                                 <td>
-                                                    <a href="#bw_calc_dialog" class="btn btn-info" data-toggle="modal">速度计算器</a>
+                                                    <a href="#bw_calc_dialog" class="btn btn-info" data-toggle="modal"><#sqm_012#></a>
                                                 </td>
                                             </tr>
                                             <tr>
-                                                <th width="32%">宽带上传速度 (<span class="label label-info">kbit/s</span>)</th>
+                                                <th width="32%"><#sqm_013#><span class="label label-info">kbit/s</span>)</th>
                                                 <td>
                                                     <input type="text" maxlength="10" class="input" size="10" id="sqm_up_speed" name="sqm_up_speed" value="<% nvram_get_x("","sqm_up_speed"); %>"/>
                                                 </td>
                                                 <td>
-                                                    &nbsp;<span style="color:#888;">测速的80-95％，1 Mbps = 1024 kbit/s 需填写小于下载速度的值</span>
+                                                    &nbsp;<span style="color:#888;"><#sqm_015#></span>
                                                 </td>
                                             </tr>
                                             <tr>
-                                                <th>启用日志</th>
+                                                <th><#sqm_016#></th>
                                                 <td>
                                                     <div class="main_itoggle">
                                                         <div id="sqm_debug_log_on_of">
@@ -270,7 +270,7 @@ function getHash(){
                                                 </td>
                                             </tr>
                                             <tr>
-                                                <th>日志等级</th>
+                                                <th><#sqm_017#></th>
                                                 <td>
                                                     <select name="sqm_log_level" class="input">
                                                         <option value="0" <% nvram_match_x("","sqm_log_level", "0","selected"); %>>silent</option>
@@ -282,7 +282,7 @@ function getHash(){
                                                     </select>
                                                 </td>
                                                 <td>
-                                                    &nbsp;<span style="color:#888;">仅调试时启用debug/trace</span>
+                                                    &nbsp;<span style="color:#888;"><#sqm_018#></span>
                                                 </td>
                                             </tr>
                 </table>
@@ -315,22 +315,22 @@ function getHash(){
                 <button type="button" class="close" data-dismiss="modal">
                     <span aria-hidden="true">&times;</span>
                 </button>
-                <h4 class="modal-title">SQM QoS 速度计算器</h4>
+                <h4 class="modal-title"><#sqm_019#></h4>
             </div>
             <div class="modal-body">
                 <div>
-                    <span style="display: inline-block; width:68px;">带宽</span>:<input type="text" class="span2" style="margin: 1px 5px;" id="bw_in_Mbps" value="10">Mbps
+                    <span style="display: inline-block; width:68px;"><#sqm_020#></span>:<input type="text" class="span2" style="margin: 1px 5px;" id="bw_in_Mbps" value="10">Mbps
                 </div>
                 <div>
-                    <span style="display: inline-block; width:68px;">百分比</span>:<input type="text" class="span2" style="margin: 1px 5px;" id="bw_percent" value="95"> %
+                    <span style="display: inline-block; width:68px;"><#sqm_022#></span>:<input type="text" class="span2" style="margin: 1px 5px;" id="bw_percent" value="95"> %
                 </div>
                 <div>
-                    <span style="display: inline-block; width:68px;">结果</span>:<input type="text" readonly class="span2" style="margin: 1px 5px;" id="bw_result" value=""> kbit/s
+                    <span style="display: inline-block; width:68px;"><#sqm_024#></span>:<input type="text" readonly class="span2" style="margin: 1px 5px;" id="bw_result" value=""> kbit/s
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="button" id="bw_set_down_action" class="btn btn-primary">设置下载速度</button>
-                <button type="button" id="bw_set_up_action" class="btn btn-primary">设置上传速度</button>
+                <button type="button" id="bw_set_down_action" class="btn btn-primary"><#sqm_026#></button>
+                <button type="button" id="bw_set_up_action" class="btn btn-primary"><#sqm_027#></button>
             </div>
         </div>
     </div>

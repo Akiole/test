@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-<title><#Web_Title#> - 内网穿透</title>
+<title><#Web_Title#><#frp_001#></title>
 <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="-1">
@@ -137,7 +137,7 @@ function done_validating(action){
 				<div class="row-fluid">
 					<div class="span12">
 						<div class="box well grad_colour_dark_blue">
-							<h2 class="box_head round_top">Frp - 内网穿透</h2>
+							<h2 class="box_head round_top"><#frp_002#></h2>
 							<div class="round_bottom">
 								<div class="row-fluid">
 									<div id="tabMenu" class="submenuBlock"></div>
@@ -152,7 +152,7 @@ function done_validating(action){
                                             <td id="frps_status" colspan="2"></td>
                                         </tr>
 										<tr>
-											<th width="30%"><a class="help_tooltip" href="javascript: void(0)" onmouseover="openTooltip(this, 26, 9);">启用frpc</a></th>
+											<th width="30%"><a class="help_tooltip" href="javascript: void(0)" onmouseover="openTooltip(this, 26, 9);"><#frp_003#></a></th>
 											<td>
 													<div class="main_itoggle">
 													<div id="frpc_enable_on_of">
@@ -166,7 +166,7 @@ function done_validating(action){
 											</td>
 										</tr>
 												<tr>
-											<th width="30%"><a class="help_tooltip" href="javascript: void(0)" onmouseover="openTooltip(this, 26, 9);">启用frps</a></th>
+											<th width="30%"><a class="help_tooltip" href="javascript: void(0)" onmouseover="openTooltip(this, 26, 9);"><#frp_004#></a></th>
 											<td>
 													<div class="main_itoggle">
 													<div id="frps_enable_on_of">
@@ -181,7 +181,7 @@ function done_validating(action){
 										</tr>
 										<tr id="row_post_wan_script">
 											<td colspan="2">
-												<i class="icon-hand-right"></i> <a href="javascript:spoiler_toggle('script2')"><span>frp脚本-请自行配置脚本里的相关参数</span></a>
+												<i class="icon-hand-right"></i> <a href="javascript:spoiler_toggle('script2')"><span><#frp_005#></span></a>
 												<div id="script2">
 													<textarea rows="25" wrap="off" spellcheck="false" maxlength="314571" class="span12" name="scripts.frp_script.sh" style="font-family:'Courier New'; font-size:12px;"><% nvram_dump("scripts.frp_script.sh",""); %></textarea>
 												</div>

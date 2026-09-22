@@ -2064,3 +2064,327 @@ pppoemwan1=内网IP分流
 pppoemwan1_1=出口序号
 pppoemwan0=禁用443负载均衡
 AP_Relay=中继增强 (自动搜索 切换 信道 信号)【点击打开配置脚本】
+
+# === 扩展功能页面翻译（自动提取）===
+
+# --- adbyby ---
+adbyby_001=广告屏蔽大师 Plus + 可以全面过滤各种横幅、弹窗、视频广告，同时阻止跟踪、隐私窃取及各种恶意网站
+adbyby_002=Plus + 版本可以和 Hosts 结合方式运行，过滤广告不损失带宽
+adbyby_003=anti-AD项目地址:
+adbyby_004=静态规则：【
+adbyby_005=】 | 视频规则：【
+adbyby_006=); %>】 | 视频规则：【<% nvram_get_x(
+adbyby_007=anti-AD规则：【
+adbyby_008=】条 | Hosts AD：【
+adbyby_009=】条
+adbyby_010=); %>】条 | Hosts AD：【<% nvram_get_x(
+adbyby_011=第三方规则：【
+
+# --- adguardhome ---
+adguardhome_001=启用AdGuardHome
+adguardhome_002=DNS重定向
+adguardhome_003=重定向53端口到AdGuardHome
+adguardhome_004=WEB管理地址:
+
+# --- aliddns ---
+aliddns_001=- Aliddns 域名解析
+aliddns_002=使用 Aliddns 实现顶级个人域名的 ddns 服务。
+aliddns_003=Aliddns 主页
+aliddns_004=>使用 Aliddns 实现顶级个人域名的 ddns 服务。 <a href=
+aliddns_005=Aliddns 项目地址：https://github.com/kyriosli/koolshare-aliddns
+aliddns_006=Aliddns 使用帮助：http://koolshare.cn/thread-64703-1-1.html
+aliddns_007=使用前需要将域名添加到 aliyun 中，并添加一条A记录，使用之后将自动更新ip
+aliddns_008=点
+aliddns_009=这里
+aliddns_010=查看不同域名注册商修改 DNS 方法。
+aliddns_011=查看如何获取 Aliddns 的 Access Key ID 和 Access Key Secret。
+aliddns_012=上次运行:
+aliddns_013=启用 Aliddns 域名解析
+aliddns_014=检查周期(秒) :
+aliddns_015=解析TTL(秒) :
+aliddns_016=[1-86400]默认10分钟，免费版的范围是600-86400
+aliddns_017=顶级域名1
+aliddns_018=顶级域名2
+aliddns_019=顶级域名3[IPv6]
+aliddns_020=Aliddns 脚本-基于 Aliddns 用户 API 实现的纯 Shell 动态域名客户端
+
+# --- aliyundrive ---
+aliyundrive_001=阿里云盘
+aliyundrive_002=阿里云盘 WebDAV
+aliyundrive_003=点击查看获取 refresh token 的方法
+aliyundrive_004=启用阿里云盘 WebDAV
+aliyundrive_005=云盘根目录
+aliyundrive_006=监听主机
+aliyundrive_007=监听端口
+aliyundrive_008=用户名
+aliyundrive_009=密码
+aliyundrive_010=下载缓冲大小(bytes)
+aliyundrive_011=目录缓存大小
+aliyundrive_012=目录缓存过期时间（单位为秒）
+aliyundrive_013=禁止上传、修改和删除文件操作
+aliyundrive_014=启用只读模式
+aliyundrive_015=阿里云相册与云盘服务 domainId
+
+# --- ddnsto ---
+ddnsto_001=DDNSTO是简单、快速的内网穿透工具，不受网络限制，全局掌控私人设备
+ddnsto_002=DDNSTO官网
+ddnsto_003=ddnsto官网
+ddnsto_004=启用DDNSTO客户端
+
+# --- frp ---
+frp_001=- 内网穿透
+frp_002=Frp - 内网穿透
+frp_003=启用frpc
+frp_004=启用frps
+frp_005=frp脚本-请自行配置脚本里的相关参数
+
+# --- smartdns ---
+smartdns_001=已禁用
+smartdns_002=已启用
+smartdns_003=禁用
+smartdns_004=白名单
+smartdns_005=黑名单
+smartdns_006=SmartDNS官网
+smartdns_007=无
+smartdns_008=作为dnsmasq的上游服务器
+smartdns_009=重定向53端口到SmartDNS
+smartdns_010=例如: oversea, office, home
+smartdns_011=启用:
+smartdns_012=上游名称:
+smartdns_013=上游地址:
+smartdns_014=上游端口:
+smartdns_015=上游类型:
+smartdns_016=IP过滤:
+smartdns_017=指定服务器组可用于单独解析gfwlist,如果不需要配合SS解析gfwlist,可以不填
+smartdns_018=服务器组(留空为不指定):
+smartdns_019=加入ipset(解析gfwlist要用):
+smartdns_020=注意IP直接填,如果是域名
+smartdns_021=例如:https://dns.google/dns-query
+smartdns_022=将服务器从默认分组中排除:
+smartdns_023=否
+smartdns_024=是
+smartdns_025=保存上游
+smartdns_026=启用
+smartdns_027=>启用 <i class=
+smartdns_028=名称
+smartdns_029=>名称 <i class=
+smartdns_030=地址
+smartdns_031=>地址 <i class=
+smartdns_032=端口
+smartdns_033=>端口 <i class=
+smartdns_034=协议
+smartdns_035=>协议 <i class=
+smartdns_036=过滤
+smartdns_037=>过滤 <i class=
+smartdns_038=域名地址:
+smartdns_039=IP黑名单:
+smartdns_040=IP白名单:
+smartdns_041=自定义设置:
+smartdns_042=广告过滤
+smartdns_043=过滤文件地址:
+smartdns_044=加载ChnrouteIP为白名单
+smartdns_045=此项可配合科学上网来实现大陆IP才走国内DNS
+smartdns_046=需在上游服务器国内组中开启白名单过滤[-whitelist-ip]
+smartdns_047=加载ChnrouteIP为黑名单
+smartdns_048=此项可配合科学上网来实现大陆IP禁止走国外DNS
+smartdns_049=需在上游服务器国外组中开启黑名单过滤[-blacklist-ip]
+smartdns_050=异常自动重启
+smartdns_051=生成coredump
+
+# --- sqm ---
+sqm_001=启用SQM
+sqm_002=流控对象
+sqm_003=仅有线到外网
+sqm_004=仅无线到外网
+sqm_005=有线到外网+无线到外网
+sqm_006=自定义接口
+sqm_007=上项菜单需选择“自定义接口“ 可填写例如:ra0
+sqm_008=队列规则
+sqm_009=队列脚本
+sqm_010=宽带下载速度 (
+sqm_011=>宽带下载速度 (<span class=
+sqm_012=速度计算器
+sqm_013=宽带上传速度 (
+sqm_014=>宽带上传速度 (<span class=
+sqm_015=测速的80-95％，1 Mbps = 1024 kbit/s 需填写小于下载速度的值
+sqm_016=启用日志
+sqm_017=日志等级
+sqm_018=仅调试时启用debug/trace
+sqm_019=SQM QoS 速度计算器
+sqm_020=带宽
+sqm_021=>带宽</span>:<input type=
+sqm_022=百分比
+sqm_023=>百分比</span>:<input type=
+sqm_024=结果
+sqm_025=>结果</span>:<input type=
+sqm_026=设置下载速度
+sqm_027=设置上传速度
+
+# --- ss ---
+ss_001=添加节点
+ss_002=正在运行脚本:0s
+ss_003=正在运行脚本:
+ss_004=脚本运行完成!
+ss_005=本地DNS ' + wan0_dns + '
+ss_006=selected>本地DNS
+ss_007=脚本执行成功...
+ss_008=无法访问
+ss_009=正在更新
+ss_010=脚本执行失败！！！
+ss_011=更新订阅
+ss_012=正在清空
+ss_013=清空节点
+ss_014=类型获取失败
+ss_015=名字获取失败
+ss_016=删除
+ss_017=序号
+ss_018=类型
+ss_019=别名
+ss_020=服务器地址
+ss_021=丢包
+ss_022=操作
+ss_023=编辑
+ss_024=复制
+ss_025=编辑节点
+ss_026=复制节点
+ss_027=确认删除
+ss_028=吗？
+ss_029=删除失败,请重试！
+ss_030=正在删除节点
+ss_031=删除节点
+ss_032=正在ping节点
+ss_033=ping节点
+ss_034=ping全部
+ss_035=在这里粘贴配置链接 ssr:// | ss:// | vmess:// | vless:// | trojan://
+ss_036=用户取消
+ss_037=>用户取消</font>
+ss_038=无效格式
+ss_039=>无效格式</font>
+ss_040=导入ShadowsocksR配置信息成功
+ss_041=>导入ShadowsocksR配置信息成功</font>
+ss_042=导入Shadowsocks配置信息成功
+ss_043=>导入Shadowsocks配置信息成功</font>
+ss_044=导入Trojan配置信息成功
+ss_045=>导入Trojan配置信息成功</font>
+ss_046=导入V2ray配置信息成功
+ss_047=>导入V2ray配置信息成功</font>
+ss_048=导入Xray配置信息成功
+ss_049=>导入Xray配置信息成功</font>
+ss_050=客户端
+ss_051=节点管理
+ss_052=高级设置
+ss_053=规则管理
+ss_054=运行日志
+ss_055=帮助文档
+ss_056=注意:
+ss_057=若被编辑的节点正在运行使用，请完成后点击“应用设置”更新节点信息并"重连"
+ss_059=运行状态不会实时更新，启动程序后需等待一段时间后点击"刷新"获取运行状态
+ss_061=Google 访问状态：
+ss_062=国内IP：
+ss_063=国外IP：
+ss_064=主服务器：
+ss_065=停用
+ss_066=游戏UDP中继服务器：
+ss_067=与主服务相同
+ss_068=多线程并发转发：
+ss_069=自动（CPU线程数）
+ss_070=单线程
+ss_071=2 线程
+ss_072=4 线程
+ss_073=8 线程
+ss_074=16 线程
+ss_075=24 线程
+ss_076=运行模式：
+ss_077=gfw列表模式
+ss_078=绕过大陆IP模式
+ss_079=全局模式
+ss_080=海外用户回国模式
+ss_081=需要代理的端口：
+ss_082=所有端口（默认）
+ss_083=仅常用端口(不走P2P流量到代理)
+ss_084=内网IP控制：
+ss_085=全部走代理
+ss_086=指定IP走代理
+ss_087=DNS代理解析方式：(推荐dnsproxy)
+ss_088=使用dnsproxy查询
+ss_089=使用dns2tcp查询
+ss_090=加载chinadns-ng：(仅绕过模式生效)
+ss_091=国内DNS：(仅chinadns-ng生效)
+ss_092=国外DNS：
+ss_093=SmartDNS加载方式:
+ss_094=添加完节点地址后，请先点击上方的 “应用” 再点击 “更新节点” 按钮更新所订阅的节点。
+ss_095=点击输入节点订阅地址：(一行一个地址)
+ss_096=全部节点
+ss_097=自定义节点
+ss_098=订阅节点
+ss_099=添加/导入
+ss_100=更新节点
+ss_101=ping所选
+ss_102=添加/删除/编辑节点
+ss_103=导入节点信息：
+ss_104=点击输入节点URL
+ss_105=服务器节点类型：
+ss_106=别名：（可选）
+ss_107=服务器IP地址：
+ss_108=服务器端口：
+ss_109=服务器密码：
+ss_110=加密方式：
+ss_111=协议：
+ss_112=插件：
+ss_113=插件参数：
+ss_114=传输协议参数：（可选）
+ss_115=混淆：
+ss_116=混淆参数：（可选）
+ss_117=启用用户名/密码认证：
+ss_118=用户名：
+ss_119=密码：
+ss_120=加密：
+ss_121=传输方式：
+ss_122=伪装类型：
+ss_123=未配置
+ss_124=自动切换类型：
+ss_125=保存节点
+ss_126=取消
+ss_127=进程资源限制
+ss_128=启用进程资源限制：
+ss_129=CPU 限制：
+ss_130=内存限制：
+ss_131=进程守护：
+ss_132=SOCKS5代理
+ss_133=服务器：
+ss_134=本地端口：
+ss_135=游戏模式客户端UDP所有端口,TCP跟随主服务器端口模式,强制走绕过大陆模式
+ss_136=游戏模式LAN IP:
+ss_137=不走SS代理的LAN IP:
+ss_138=强制走SS代理的LAN IP:
+ss_139=不走SS代理的WAN IP:
+ss_140=强制走SS代理的WAN IP:
+ss_141=不走SS代理的域名:
+ss_142=强制走SS代理的域名:
+ss_143=chinadns-ng说明:
+ss_144=绕过大陆模式启用chinadns会加载CDN域名规则来分流常用网站跑国内DNS,加载gfwlist列表来分流到国外DNS
+ss_145=此模式会占用一部分内存资源,内存少的机器请谨慎开启。
+ss_146=进程资源限制说明: 此功能底层使用
+ss_147=>进程资源限制说明: 此功能底层使用 <a href=
+ss_148=进程资源限制是为了防止进程占用过多资源导致路由器卡顿或重启,如果你的路由器配置足够,可以适当调高限制值。
+ss_149=CPU 限制值为一个大于 2 小于 1024 的整数，表示可以使用的 CPU 百分比，如 512 表示 50%;内存限制值需要带上 M 作为单位,
+ss_150=如 20M 表示可以使用 20M 内存，超出会被内核 OOM Killer 自动 kill。
+
+# --- wireguard ---
+wireguard_001=WireGuard 是一个易于配置、快速且安全的开源VPN
+wireguard_002=启用wireguard客户端
+wireguard_003=本机密钥key
+wireguard_004=本机IP（格式 10.0.0.2/24）
+wireguard_005=对端密钥key
+wireguard_006=对端ip:端口（格式 223.5.6.6:4900)
+
+# --- zerotier ---
+zerotier_001=Zerotier官网
+zerotier_002=启用ZeroTier客户端
+zerotier_003=ZeroTier 客户端 ID
+zerotier_004=允许客户端NAT
+zerotier_005=启用ZeroTier Moon服务器
+zerotier_006=ZeroTier Moon服务器 IP or DomainName
+zerotier_007=ZeroTier Moon服务器 ID
+zerotier_008=服务器启用后自动生成Moon服务器的ID，在加入Moon时请使用客户端zerotier-cli orbit
+zerotier_009=需要访问其它zerotier的内网LAN网段,IP和网关和zerotier后台对应即可(本机的LAN网段不用填进去)

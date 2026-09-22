@@ -131,14 +131,14 @@ function done_validating(action){
 							<div>
                             <ul class="nav nav-tabs" style="margin-bottom: 10px;">
 								<li class="active">
-                                    <a href="Advanced_aliyundrive.asp">阿里云盘</a>
+                                    <a href="Advanced_aliyundrive.asp"><#aliyundrive_001#></a>
                                 </li>
                             </ul>
                         </div>
 								<div class="row-fluid">
 									<div id="tabMenu" class="submenuBlock"></div>
 									<div class="alert alert-info" style="margin: 10px;">
-									<p>阿里云盘 WebDAV<br>
+									<p><#aliyundrive_002#><br>
 									</p>
 									</div>
 
@@ -149,14 +149,14 @@ function done_validating(action){
 										<tr>
 											<th>refresh token</th>
 											<td>
-				<input type="button" class="btn btn-success" value="点击查看获取 refresh token 的方法" onclick="window.open('https://github.com/messense/aliyundrive-webdav#%E8%8E%B7%E5%8F%96-refresh_token')" size="0">
+				<input type="button" class="btn btn-success" value="<#aliyundrive_003#>" onclick="window.open('https://github.com/messense/aliyundrive-webdav#%E8%8E%B7%E5%8F%96-refresh_token')" size="0">
 											</td>
 										</tr>
 										<tr> <th><#running_status#></th>
                                             <td id="aliyundrive_status" colspan="3"></td>
                                         </tr>
 										<tr>
-										<th width="30%" style="border-top: 0 none;">启用阿里云盘 WebDAV</th>
+										<th width="30%" style="border-top: 0 none;"><#aliyundrive_004#></th>
 											<td style="border-top: 0 none;">
 													<div class="main_itoggle">
 													<div id="aliyundrive_enable_on_of">
@@ -179,61 +179,61 @@ function done_validating(action){
 
 										</tr>
 										<tr>
-										<th>云盘根目录</th>
+										<th><#aliyundrive_005#></th>
 				<td>
 					<input type="text" class="input" name="ald_root" id="ald_root" style="width: 200px" value="<% nvram_get_x("","ald_root"); %>" />
 				</td>
 
 										</tr>
 										<tr>
-										<th>监听主机</th>
+										<th><#aliyundrive_006#></th>
 				<td>
 					<input type="text" class="input" name="ald_host" id="ald_host" style="width: 200px" value="<% nvram_get_x("","ald_host"); %>" />
 				</td>
 
 										</tr>
 										<tr>
-										<th>监听端口</th>
+										<th><#aliyundrive_007#></th>
 				<td>
 					<input type="text" class="input" name="ald_port" id="ald_port" style="width: 200px" value="<% nvram_get_x("","ald_port"); %>" />
 				</td>
 
 										</tr>
 										<tr>
-										<th>用户名</th>
+										<th><#aliyundrive_008#></th>
 				<td>
 					<input type="text" class="input" name="ald_auth_user" id="ald_auth_user" style="width: 200px" value="<% nvram_get_x("","ald_auth_user"); %>" />
 				</td>
 
 										</tr>
 										<tr>
-										<th>密码</th>
+										<th><#aliyundrive_009#></th>
 				<td>
 					<input type="text" class="input" name="ald_auth_password" id="ald_auth_password" style="width: 200px" value="<% nvram_get_x("","ald_auth_password"); %>" />
 				</td>
 
 										</tr>
 										<tr>
-										<th>下载缓冲大小(bytes)</th>
+										<th><#aliyundrive_010#></th>
 				<td>
 					<input type="text" class="input" name="ald_read_buffer_size" id="ald_read_buffer_size" style="width: 200px" value="<% nvram_get_x("","ald_read_buffer_size"); %>" />
 				</td>
 
 										</tr>
 										<tr>
-										<th>目录缓存大小</th>
+										<th><#aliyundrive_011#></th>
 				<td>
 					<input type="text" class="input" name="ald_cache_size" id="ald_cache_size" style="width: 200px" value="<% nvram_get_x("","ald_cache_size"); %>" />
 				</td>
 
 										</tr>
 										<tr>
-										<th>目录缓存过期时间（单位为秒）</th>
+										<th><#aliyundrive_012#></th>
 				<td>
 					<input type="text" class="input" name="ald_cache_ttl" id="ald_cache_ttl" style="width: 200px" value="<% nvram_get_x("","ald_cache_ttl"); %>" />
 				</td>
 				<tr>
-										<th width="30%" style="border-top: 0 none;">禁止上传、修改和删除文件操作</th>
+										<th width="30%" style="border-top: 0 none;"><#aliyundrive_013#></th>
 											<td style="border-top: 0 none;">
 													<div class="main_itoggle">
 													<div id="ald_no_trash_on_of">
@@ -248,7 +248,7 @@ function done_validating(action){
 
 										</tr>
 										<tr>
-										<th width="30%" style="border-top: 0 none;">启用只读模式</th>
+										<th width="30%" style="border-top: 0 none;"><#aliyundrive_014#></th>
 											<td style="border-top: 0 none;">
 													<div class="main_itoggle">
 													<div id="ald_read_only_on_of">
@@ -263,7 +263,7 @@ function done_validating(action){
 
 										</tr><!--
 										<tr>
-										<th width="30%" style="border-top: 0 none;">阿里云相册与云盘服务 domainId</th>
+										<th width="30%" style="border-top: 0 none;"><#aliyundrive_015#></th>
 											<td style="border-top: 0 none;">
 													<div class="main_itoggle">
 													<div id="ald_domain_id_on_of">

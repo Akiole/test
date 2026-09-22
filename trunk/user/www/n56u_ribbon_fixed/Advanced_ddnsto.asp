@@ -149,7 +149,7 @@ function done_validating(action){
 								<div class="row-fluid">
 									<div id="tabMenu" class="submenuBlock"></div>
 									<div class="alert alert-info" style="margin: 10px;">
-									<p>DDNSTO是简单、快速的内网穿透工具，不受网络限制，全局掌控私人设备<br>
+									<p><#ddnsto_001#><br>
 									</p>
 									</div>
 
@@ -158,9 +158,9 @@ function done_validating(action){
 									<table width="100%" align="center" cellpadding="4" cellspacing="0" class="table">
 
 										<tr>
-											<th>DDNSTO官网</th>
+											<th><#ddnsto_002#></th>
 											<td>
-				<input type="button" class="btn btn-success" value="ddnsto官网" onclick="window.open('https://www.ddnsto.com/')" size="0">
+				<input type="button" class="btn btn-success" value="<#ddnsto_003#>" onclick="window.open('https://www.ddnsto.com/')" size="0">
 				<br>点击跳转到DDNSTO官网管理平台,获取ID
 											</td>
 										</tr>
@@ -168,7 +168,7 @@ function done_validating(action){
                                             <td id="ddnsto_status" colspan="3"></td>
                                         </tr>
 										<tr>
-										<th width="30%" style="border-top: 0 none;">启用DDNSTO客户端</th>
+										<th width="30%" style="border-top: 0 none;"><#ddnsto_004#></th>
 											<td style="border-top: 0 none;">
 													<div class="main_itoggle">
 													<div id="ddnsto_enable_on_of">

@@ -129,9 +129,9 @@ function showMRULESList(){
 	else{
 	    for(var i = 0; i < m_list.length; i++){
 		if(m_list[i][0] == 0)
-		zero_enable="已禁用";
+		zero_enable="<#smartdns_001#>";
 		else{
-		zero_enable="已启用";
+		zero_enable="<#smartdns_002#>";
 		}
 		code +='<tr id="rowrl' + i + '">';
 		code +='<td width="20%">&nbsp;' + zero_enable + '</td>';
@@ -221,7 +221,7 @@ function showMRULESList(){
                         </div>
 								<div class="row-fluid">
 									<div id="tabMenu" class="submenuBlock"></div>
-									<div class="alert alert-info" style="margin: 10px;"><input type="button" class="btn btn-success" value="Zerotier官网" onclick="window.open('https://my.zerotier.com/network')" size="0"><br />
+									<div class="alert alert-info" style="margin: 10px;"><input type="button" class="btn btn-success" value="<#zerotier_001#>" onclick="window.open('https://my.zerotier.com/network')" size="0"><br />
 									<br>Zerotier是一个开源，跨平台，而且适合内网穿透互联的傻瓜配置虚拟 VPN LAN
 									<br>新建或者管理网络，并允许客户端接入访问你私人网路（新接入的节点默认不允许访问）
 									</div>
@@ -229,7 +229,7 @@ function showMRULESList(){
                                         <tr> <th><#running_status#></th>
                                                 <td id="zerotier_status" colspan="3"></td>
                                         </tr>
-										<tr> <th width="30%" style="border-top: 0 none;">启用ZeroTier客户端</th>
+										<tr> <th width="30%" style="border-top: 0 none;"><#zerotier_002#></th>
 											<td style="border-top: 0 none;">
 													<div class="main_itoggle">
 													<div id="zerotier_enable_on_of">
@@ -242,12 +242,12 @@ function showMRULESList(){
 												</div>
 											</td>
 										</tr>
-										<tr> <th>ZeroTier 客户端 ID</th>
+										<tr> <th><#zerotier_003#></th>
 											<td>
 												<input type="text" class="input" name="zerotier_id" id="zerotier_id" style="width: 200px" value="<% nvram_get_x("","zerotier_id"); %>" />
 											</td>
 										</tr>
-										<tr> <th width="30%" style="border-top: 0 none;">允许客户端NAT</th>
+										<tr> <th width="30%" style="border-top: 0 none;"><#zerotier_004#></th>
 											<td style="border-top: 0 none;">
 												<div class="main_itoggle">
 													<div id="zerotier_nat_on_of">
@@ -266,7 +266,7 @@ function showMRULESList(){
 												<input type="text" class="input" name="zerotier_moonid" id="zerotier_moonid" style="width: 200px" value="<% nvram_get_x("","zerotier_moonid"); %>" />
 											</td>
 										</tr>			
-										<tr> <th width="30%" style="border-top: 0 none;">启用ZeroTier Moon服务器</th>
+										<tr> <th width="30%" style="border-top: 0 none;"><#zerotier_005#></th>
 											<td style="border-top: 0 none;">
 													<div class="main_itoggle">
 													<div id="zerotiermoon_enable_on_of">
@@ -279,24 +279,23 @@ function showMRULESList(){
 												</div>
 											</td>
 										</tr>
-										<tr> <th>ZeroTier Moon服务器 IP or DomainName</th>
+										<tr> <th><#zerotier_006#></th>
 											<td>
 												<input type="text" class="input" name="zerotiermoon_ip" id="zerotiermoon_ip" style="width: 200px" value="<% nvram_get_x("","zerotiermoon_ip"); %>" />
 													<br>如果没有填写，将使用Wan获得的IP；如果填写IP地址，将使用该IP；如果填写域名，将使用域名获得IP（请注意为公网IP）。
 											</td>
 										</tr>
-										<tr> <th>ZeroTier Moon服务器 ID</th>
+										<tr> <th><#zerotier_007#></th>
 											<td>
 												<input type="text" class="input" name="zerotiermoon_id" id="zerotiermoon_id" style="width: 200px" value="<% nvram_get_x("","zerotiermoon_id"); %>" readonly />
-													<br>服务器启用后自动生成Moon服务器的ID，在加入Moon时请使用客户端zerotier-cli orbit <该ID> <该ID>。
+													<br><#zerotier_008#><该ID> <该ID>。
 											</td>
 										</tr>
 									</table>
 									<table width="100%" align="center" cellpadding="4" cellspacing="0" class="table">
-										<tr> <th colspan="4">需要访问其它zerotier的内网LAN网段,IP和网关和zerotier后台对应即可(本机的LAN网段不用填进去)</th> </tr>
+										<tr> <th colspan="4"><#zerotier_009#></th> </tr>
                                         <tr id="row_rules_caption">
-                                            <th width="10%">
-                                                启用 <i class="icon-circle-arrow-down"></i>
+                                            <th width="10%"><#smartdns_026#><i class="icon-circle-arrow-down"></i>
                                             </th>
 											<th width="20%">
                                                 IP <i class="icon-circle-arrow-down"></i>
@@ -311,8 +310,8 @@ function showMRULESList(){
                                         <tr>
                                          	<th>
                                           	 	<select name="zero_enable_x_0" class="input" style="width: 100px">
-													<option value="1" <% nvram_match_x("","zero_enable_x_0", "1","selected"); %>>是</option>
-													<option value="0" <% nvram_match_x("","zero_enable_x_0", "0","selected"); %>>否</option>
+													<option value="1" <% nvram_match_x("","zero_enable_x_0", "1","selected"); %>><#smartdns_024#></option>
+													<option value="0" <% nvram_match_x("","zero_enable_x_0", "0","selected"); %>><#smartdns_023#></option>
 												</select>
                                             </th>
                                             <th>

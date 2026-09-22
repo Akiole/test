@@ -137,20 +137,57 @@ function check_full_scan_done(){
 function update_clients(e) {
 	$j.ajax({
 		url: '/lan_clients.asp',
-		dataType: 'script',
+		dataType: 'text',
+		cache: false,
 		error: function(xhr) {
 			;
 		},
 		success: function(response) {
-			ipmonitor = ipmonitor_last;
-			nmap_fullscan = nmap_fullscan_last;
-			clients = [];
-			clients = getclients(1,0);
-			prepare_clients();
-			show_clients();
-			check_full_scan_done();
+			try {
+				window.execScript ? window.execScript(response) : window.eval(response);
+			} catch (err) {
+				return;
+			}
+			if (typeof window.ipmonitor_last != 'undefined' && window.ipmonitor_last != null) {
+				ipmonitor = window.ipmonitor_last;
+				nmap_fullscan = window.nmap_fullscan_last;
+				clients = [];
+				clients = getclients(1,0);
+				prepare_clients();
+				show_clients();
+				check_full_scan_done();
+			}
 		}
 	});
+}
+
+// RSSI (dBm) 转换为信号质量百分比 (0-100)
+function rssi_to_quality(rssi){
+	if (rssi == null || isNaN(rssi))
+		return 0;
+	// -80 dBm = 0%, -30 dBm = 100%
+	var quality = 2 * (rssi + 80);
+	return Math.max(0, Math.min(100, quality));
+}
+
+// 生成信号条 HTML
+function rssi_to_bars(rssi){
+	var quality = rssi_to_quality(rssi);
+	var bars = Math.ceil(quality / 25); // 1-4 格
+	var color = '#d9534f'; // 红
+	if (quality >= 75) color = '#5cb85c'; // 绿
+	else if (quality >= 50) color = '#f0ad4e'; // 黄
+	else if (quality >= 25) color = '#f0ad4e'; // 橙
+	
+	var html = '<span style="display:inline-flex;align-items:flex-end;gap:1px;height:14px;">';
+	for (var i = 1; i <= 4; i++){
+		var h = 3 + i * 2.5;
+		var c = (i <= bars) ? color : '#ddd';
+		html += '<span style="width:3px;height:' + h + 'px;background:' + c + ';border-radius:1px;"></span>';
+	}
+	html += '</span>';
+	html += ' <span style="color:' + color + ';font-size:11px;margin-left:3px;">' + quality + '%</span>';
+	return html;
 }
 
 function add_client_row(table, atIndex, client, blocked, j){
@@ -177,12 +214,21 @@ function add_client_row(table, atIndex, client, blocked, j){
 	}
 
 	typeCell.style.textAlign = "center";
-	typeCell.innerHTML = "<img title='"+ DEVICE_TYPE[client[5]]+"' src='/bootstrap/img/wl_device/" + client[5] +".gif'>";
-	nameCell.innerHTML = (client[6] == "1") ? "<a href=http://" + client[0] + " target='blank'>" + client[0] + "</a>" : client[0];
-	ipCell.innerHTML = (client[6] == "1") ? "<a href=http://" + client[1] + " target='blank'>" + client[1] + "</a>" : client[1];
+	var deviceType = (client[5] == null || client[5] == "" || isNaN(client[5])) ? 0 : client[5];
+	var typeTitle = DEVICE_TYPE[deviceType] ? DEVICE_TYPE[deviceType] : "";
+	typeCell.innerHTML = "<img title='" + typeTitle + "' src='/bootstrap/img/wl_device/" + deviceType + ".gif'>";
+	var rawName = (client[0] == null || client[0] == "*" || client[0].length < 1) ? null : client[0];
+	var clientName = rawName ? rawName.replace(/\.lan$/i, "") : null;
+	var displayName = clientName ? clientName : "<span style='color:#999;'>-</span>";
+	nameCell.innerHTML = (client[6] == "1" && clientName) ? "<a href=http://" + clientName + " target='blank'>" + clientName + "</a>" : displayName;
+	var displayIP = (client[1] == null || client[1] == "*" || client[1].length < 1) ? "<span style='color:#999;'>-</span>" : client[1];
+	ipCell.innerHTML = (client[6] == "1" && client[1] != null && client[1] != "*") ? "<a href=http://" + client[1] + " target='blank'>" + client[1] + "</a>" : displayIP;
 	macCell.innerHTML = "<a target='_blank' href='https://services13.ieee.org/RST/standards-ra-web/rest/assignments/?registry=MAC&text=" + client[2].substr(0,6) + "'>" + mac_add_delimiters(client[2]) + "</a>";
 	if (client[3] == 10){
-		rssiCell.innerHTML = client[4].toString();
+		rssiCell.innerHTML = rssi_to_bars(client[4]);
+		rssiCell.title = 'RSSI: ' + client[4] + ' dBm';
+	} else {
+		rssiCell.innerHTML = '<span style="color:#999;">-</span>';
 	}
 	if(list_type != "1" && sw_mode != "3"){
 		blockCell.style.textAlign = "center";
@@ -404,7 +450,7 @@ function networkmap_update(s){
 <table id="Clients_table" width="100%" align="center" cellpadding="1" class="table">
     <thead>
         <tr>
-            <th colspan="5" style="text-align: center;"><#ConnectedClient#></th>
+            <th colspan="6" style="text-align: center;"><#ConnectedClient#></th>
         </tr>
         <tr>
             <th width="10%"><a href="javascript:sort(0)"><#Type#></a></th>
@@ -423,7 +469,7 @@ function networkmap_update(s){
 <table id="xClients_table" width="100%" align="center" class="table">
     <thead>
         <tr>
-            <th colspan="5" style="text-align: center;"><#BlockedClient#></th>
+            <th colspan="6" style="text-align: center;"><#BlockedClient#></th>
         </tr>
         <tr>
             <th width="10%"><#Type#></th>
@@ -462,7 +508,7 @@ function networkmap_update(s){
 		$("col_rssi").width = "10%";
 		$("col_rssi").innerHTML = "<#Rssi#>";
 		$("col_unrssi").width = "10%";
-		$("col_unrssi").innerText = "<#unRssi#>";
+		$("col_unrssi").innerHTML = "<#unRssi#>";
 	}
 	if (sw_mode != "3") {
 		if (list_type != "1") {

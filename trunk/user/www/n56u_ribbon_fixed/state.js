@@ -281,15 +281,37 @@ function show_banner(L3){
 	bc += '<div class="container-fluid" style="padding-left: 0px; margin-left: -6px;">\n';
 	bc += '<div class="row-fluid">\n';
 
+	// block wireless + buttons
+	bc += '<div class="span6">\n';
+	bc += '<div class="well" style="margin-bottom: 0px; height: 109px; padding: 5px 6px 8px 6px;">\n';
+	bc += '<div class="row-fluid">\n';
+	bc += '<table class="table table-condensed" style="margin-bottom: 0px">\n';
+	bc += '  <tr>\n';
+	bc += '    <td width="50%" style="border: 0 none;"><#menu5_1#>:</td>\n';
+	bc += '    <td style="border: 0 none; min-width: 115px;"><div class="form-inline"><input type="button" id="wifi2_b" class="btn btn-mini '+enabled2Gclass+'" style="'+style_2g+'" value='+title_2g+' onclick="go_setting(2);">&nbsp;<input type="button" id="wifi5_b" style="'+style_5g+'" class="btn btn-mini '+enabled5Gclass+'" value='+title_5g+' onclick="go_setting(5);"></div></td>\n';
+	bc += '  </tr>\n';
+	bc += '  <tr>\n';
+	bc += '    <td><#menu5_1_2#>:</td>\n';
+	bc += '    <td><div class="form-inline"><input type="button" id="wifi2_b_g" class="btn btn-mini '+enabledGuest2Gclass+'" style="'+style_2g+'" value='+title_2g+' onclick="go_wguest(2);">&nbsp;<input type="button" id="wifi5_b_g" style="'+style_5g+'" class="btn btn-mini '+enabledGuest5Gclass+'" value='+title_5g+' onclick="go_wguest(5);"></div></td>\n';
+	bc += '  </tr>\n';
+  bc += '  <tr>\n';
+	bc += '    <td style="white-space: nowrap;"><button type="button" class="btn btn-mini" style="height: 30px; width: 36px;" title="<#CTL_refresh#>" onclick="parent.location.reload();"><i class="icon icon-refresh icon-large"></i></button> <button type="button" class="btn btn-mini" style="height: 30px; width: 36px;" title="<#CTL_apply#>" onclick="applyRule();"><i class="icon icon-ok icon-large"></i></button> <button type="button" id="commit_btn" class="btn btn-mini" style="height: 30px; width: 36px; outline:0; '+enabledBtnCommit+'" onclick="commit();"><i class="icon icon-download-alt icon-large"></i></button></td>\n';
+	bc += '    <td style="white-space: nowrap;"><button type="button" id="freememory_btn" class="btn btn-mini" style="height: 30px; width: 36px; outline:0;" title="<#BTN_FREEMEMORY#>" onclick="freememory();"><i class="icon icon-trash icon-large"></i></button> <button type="button" id="logout_btn" class="btn btn-mini" style="height: 30px; width: 36px; outline:0;" title="<#t1Logout#>" onclick="logout();"><i class="icon icon-user icon-large"></i></button> <button type="button" id="reboto_btn" class="btn btn-mini" style="height: 30px; width: 36px; outline:0;" title="<#BTN_REBOOT#>" onclick="reboot();"><i class="icon icon-repeat icon-large"></i></button></td>\n';
+	bc += '  </tr>\n';
+	bc += '</table>\n';
+	bc += '</div>\n';
+	bc += '</div>\n';
+	bc += '</div>\n';
+  
 	// block system info
-	bc += '<div class="span6" style="width:30%">\n';
+	bc += '<div class="span6">\n';
 	bc += '<div class="well" style="margin-bottom: 0px; height: 109px; padding: 7px 6px 6px 6px;">\n';
 	bc += '<div class="row-fluid">\n';
 
 	bc += '<div id="main_info">\n';
 	bc += '<table class="table table-condensed" width="100%" style="margin-bottom: 0px;">\n';
 	bc += '  <tr>\n';
-	bc += '    <td width="43%" style="border: 0 none;"><#SI_LoadAvg#></td>\n';
+	bc += '    <td width="33%" style="border: 0 none;"><#SI_LoadAvg#></td>\n';
 	bc += '    <td style="border: 0 none; min-width: 115px;"><div id="la_info"> -- -- -- </div></td>\n';
 	bc += '  </tr>\n';
 	bc += '  <tr>\n';
@@ -299,10 +321,6 @@ function show_banner(L3){
 	bc += '  <tr>\n';
 	bc += '    <td><a class="adv_info" href="javascript:void(0)" onclick="click_info_mem();"><#SI_FreeMem#></a></td>\n';
 	bc += '    <td><span id="mem_info"> -- MB / -- MB </span></td>\n';
-	bc += '  </tr>\n';
-	bc += '  <tr>\n';
-	bc += '    <td><#SI_Uptime#></td>\n';
-	bc += '    <td><span id="uptime_info">&nbsp;</span></td>\n';
 	bc += '  </tr>\n';
 	bc += '</table>\n';
 	bc += '</div>\n';
@@ -353,29 +371,15 @@ function show_banner(L3){
 	bc += '</div>\n';
 	bc += '</div>\n';
 
-	// block wireless
-	bc += '<div class="span6" style="width:30%">\n';
-	bc += '<div class="well" style="margin-bottom: 0px; height: 109px; padding: 5px 6px 8px 6px;">\n';
-	bc += '<div class="row-fluid">\n';
-	bc += '<table class="table table-condensed" style="margin-bottom: 0px">\n';
-	bc += '  <tr>\n';
-	bc += '    <td width="50%" style="border: 0 none;"><#menu5_1#>:</td>\n';
-	bc += '    <td style="border: 0 none; min-width: 115px;"><div class="form-inline"><input type="button" id="wifi2_b" class="btn btn-mini '+enabled2Gclass+'" style="'+style_2g+'" value='+title_2g+' onclick="go_setting(2);">&nbsp;<input type="button" id="wifi5_b" style="'+style_5g+'" class="btn btn-mini '+enabled5Gclass+'" value='+title_5g+' onclick="go_setting(5);"></div></td>\n';
-	bc += '  </tr>\n';
-	bc += '  <tr>\n';
-	bc += '    <td><#menu5_1_2#>:</td>\n';
-	bc += '    <td><div class="form-inline"><input type="button" id="wifi2_b_g" class="btn btn-mini '+enabledGuest2Gclass+'" style="'+style_2g+'" value='+title_2g+' onclick="go_wguest(2);">&nbsp;<input type="button" id="wifi5_b_g" style="'+style_5g+'" class="btn btn-mini '+enabledGuest5Gclass+'" value='+title_5g+' onclick="go_wguest(5);"></div></td>\n';
-	bc += '  </tr>\n';
-	bc += '</table>\n';
-	bc += '</div>\n';
-	bc += '</div>\n';
-	bc += '</div>\n';
-
-	// block firmware info + buttons
-	bc += '<div class="span6" style="width:38%">\n';
+	// block firmware info
+	bc += '<div class="span6">\n';
 	bc += '<div class="well" style="margin-bottom: 0px; height: 109px; padding: 7px 6px 6px 6px;">\n';
 	bc += '<div class="row-fluid">\n';
 	bc += '<table class="table table-condensed" width="100%" style="margin-bottom: 0px;">\n';
+	bc += '  <tr>\n';
+	bc += '    <td><#SI_Uptime#></td>\n';
+	bc += '    <td><span id="uptime_info">&nbsp;</span></td>\n';
+	bc += '  </tr>\n';
 	bc += '  <tr>\n';
 	bc += '    <td><#General_x_BuildTime_itemname#></td>\n';
 	bc += '    <td><span id="buildtime_info">ZVBUILDTIMEVZ</span></td>\n';
@@ -383,10 +387,6 @@ function show_banner(L3){
 	bc += '  <tr>\n';
 	bc += '    <td><#General_x_FirmwareVersion_itemname#></td>\n';
 	bc += '    <td><a href="/Advanced_FirmwareUpgrade_Content.asp"><span id="firmver" class="time"></span></a></td>\n';
-	bc += '  </tr>\n';
-	bc += '  <tr>\n';
-	bc += '    <td><button type="button" class="btn btn-mini" style="height: 30px; width: 36px;" title="<#CTL_refresh#>" onclick="parent.location.reload();"><i class="icon icon-refresh icon-large"></i></button> <button type="button" class="btn btn-mini" style="height: 30px; width: 36px;" title="<#CTL_apply#>" onclick="applyRule();"><i class="icon icon-ok icon-large"></i></button> <button type="button" id="commit_btn" class="btn btn-mini" style="height: 30px; width: 36px; outline:0; '+enabledBtnCommit+'" onclick="commit();"><i class="icon icon-download-alt icon-large"></i></button></td>\n';
-	bc += '    <td><button type="button" id="freememory_btn" class="btn btn-mini" style="height: 30px; width: 36px; outline:0;" title="<#BTN_FREEMEMORY#>" onclick="freememory();"><i class="icon icon-trash icon-large"></i></button> <button type="button" id="logout_btn" class="btn btn-mini" style="height: 30px; width: 36px; outline:0;" title="<#t1Logout#>" onclick="logout();"><i class="icon icon-user icon-large"></i></button> <button type="button" id="reboto_btn" class="btn btn-mini" style="height: 30px; width: 36px; outline:0;" title="<#BTN_REBOOT#>" onclick="reboot();"><i class="icon icon-repeat icon-large"></i></button></td>\n';
 	bc += '  </tr>\n';
 	bc += '</table>\n';
 	bc += '</div>\n';

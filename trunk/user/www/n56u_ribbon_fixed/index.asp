@@ -711,7 +711,7 @@ $j(document).ready(function(){
 
                 <div class="row-fluid">
                     <div class="span2">
-                        <div class="well" style="height: 560px; padding-left: 18px; padding-top: 0px; border-top: 30px solid #0066cc;">
+                        <div class="well" style="height: 560px; padding-left: 18px; padding-top: 0px; border-top: 30px solid #0066cc">
                             <div id="tabMenu"></div>
 
                             <table class="table table-big" style="margin-top: 12px;">
