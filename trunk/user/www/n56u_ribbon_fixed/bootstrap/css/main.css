@@ -637,3 +637,89 @@ textarea[readonly] {
     border-radius: 3px 0 0 3px;
 }
 
+
+/* ============================================================
+   自定义样式 - 从 bootstrap.min.css 迁移
+   ============================================================ */
+
+/* 栅格宽度调整 */
+.row-fluid .span3 {
+  width: 15%;
+  *width: 14.9%;
+}
+.row-fluid .span9 {
+  width: 84%;
+  *width: 83.9%;
+}
+.row-fluid .span2 {
+  width: 15%;
+  *width: 14.9%;
+}
+.row-fluid .span10 {
+  width: 84%;
+  *width: 83.9%;
+}
+.row-fluid .span6 {
+  width: 32.33%;
+  *width: 32.33%;
+}
+.row-fluid [class*="span"] {
+  margin-left: 1%;
+  *margin-left: 1%;
+}
+
+/* 左侧菜单样式 */
+.sidebar-nav {
+  padding: 0 !important;
+  height: 580px !important;
+  border-top: 30px solid #0066cc !important;
+}
+
+/* 顶部文字标签样式 */
+.top-label {
+  color: white !important;
+  font-weight: bold !important;
+  padding: 0 15px !important;
+  margin-top: -30px !important;
+  height: 30px !important;
+  line-height: 30px !important;
+  text-align: left !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+  white-space: nowrap !important;
+  position: relative !important;
+}
+
+/* 移动端响应式 */
+@media (max-width: 768px) {
+  .row-fluid .span3 {
+    width: 23.404255317% !important;
+    *width: 23.3510638276383% !important;
+  }
+  .row-fluid .span9 {
+    width: 74.468085099% !important;
+    *width: 74.4148936096383% !important;
+  }
+  .row-fluid .span2 {
+    display: none !important;
+  }
+  .row-fluid .span10 {
+    width: 100% !important;
+    *width: 99.9% !important;
+  }
+  .row-fluid .span6 {
+    width: 48.93617020799999% !important;
+    *width: 48.88297871863829% !important;
+  }
+  [class*="span"] {
+    margin-left: 2.127659574% !important;
+    *margin-left: 2.127659574% !important;
+  }
+  .sidebar-nav {
+    height: auto !important;
+    border-top: none !important;
+  }
+  .icon-column {
+    display: none !important;
+  }
+}
