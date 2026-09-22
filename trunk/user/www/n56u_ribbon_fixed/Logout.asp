@@ -25,6 +25,17 @@ function initial(){
 		xmlhttp.open("HEAD","logout",true,"logout","");
 		xmlhttp.send(null);
 	}
+	// 注销后 3 秒自动跳转主页
+	var countdown = 3;
+	var timer = setInterval(function(){
+		countdown--;
+		var el = document.getElementById('redirect_countdown');
+		if (el) el.textContent = countdown;
+		if (countdown <= 0){
+			clearInterval(timer);
+			window.location.href = '/';
+		}
+	}, 1000);
 }
 </script>
 </head>
@@ -35,6 +46,9 @@ function initial(){
                 <h2><#logoutmessage#></h2>
 
                 <div><#Not_authpage_login_again#></div>
+                <div style="margin-top: 15px; color: #666;">
+                    <span id="redirect_countdown">3</span> 秒后自动跳转主页...
+                </div>
             </div>
         </center>
     </div>
