@@ -1,0 +1,1 @@
+var ap_wireless = {};

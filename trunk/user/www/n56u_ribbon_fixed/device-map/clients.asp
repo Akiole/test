@@ -42,6 +42,7 @@ function initial(){
 	prepare_clients();
 	show_clients();
 	check_full_scan_done();
+	load_ap_wireless();
 }
 
 function prepare_clients(){
@@ -154,6 +155,7 @@ function update_clients(e) {
 				clients = [];
 				clients = getclients(1,0);
 				prepare_clients();
+				merge_ap_wireless();
 				show_clients();
 				check_full_scan_done();
 			}
@@ -413,10 +415,39 @@ function networkmap_update(s){
 	document.form.submit();
 }
 
+// 合并其他 AP 的无线客户端 RSSI 数据
+function merge_ap_wireless(){
+	if (typeof ap_wireless !== 'object' || ap_wireless === null) return;
+	var changed = 0;
+	for (var mac in ap_wireless) {
+		if (ap_wireless.hasOwnProperty(mac) && !(mac in wireless)) {
+			wireless[mac] = ap_wireless[mac];
+			changed = 1;
+		}
+	}
+	if (changed) {
+		clients = getclients(1, 0);
+		prepare_clients();
+	}
+}
+
+// 加载其他 AP 的无线数据缓存（由后端脚本采集后 mount --bind 到 /www/ap_rssi.js）
+function load_ap_wireless(){
+	var script = document.createElement('script');
+	script.src = '/ap_rssi.js?ts=' + (new Date().getTime());
+	script.onload = function() {
+		merge_ap_wireless();
+		show_clients();
+	};
+	script.onerror = function() {};
+	document.head.appendChild(script);
+}
+
 </script>
 
 <style>
     .table th, .table td{vertical-align: middle; text-align: center;}
+    #Clients_table, #xClients_table { table-layout: fixed; }
 </style>
 
 </head>

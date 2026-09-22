@@ -5,6 +5,7 @@ This project is based on original rt-n56u with latest mtk 4.4.198 kernel, which 
 #### Extra functions / changes
 - Adding user/chinadns-ng , and fix shadowsocks + chinadns-ng using local domain whitellist.
 - AP Relay auto-daemon
+- 跨 AP 无线客户端 RSSI 显示（多 Padavan AP 组网时，主路由可显示连到其他 AP 的设备信号强度）
 
 
 #### SS/SSR
@@ -160,3 +161,121 @@ This project is based on original rt-n56u with latest mtk 4.4.198 kernel, which 
 - How to use NAND RWFS partition
 - How to use IPv6 NAT and fullcone NAT
 - How to add new device support with device tree
+
+# 跨 AP 无线客户端 RSSI 显示
+
+在多 AP（Padavan 固件）组网环境下，主路由的设备状态页面只能显示直接连到自身无线接口的客户端 RSSI。本功能增加了跨 AP 无线客户端采集，让连到其他 AP 的设备也能在主路由上显示信号强度。
+
+## 功能特性
+
+- **跨 AP RSSI 采集**：主路由定时从其他 Padavan AP 拉取无线客户端列表，合并显示
+- **自动定时采集**：启动后自动配置 cron，每分钟执行一次
+- **零侵入**：未配置 `ap_slave_ips` 时功能不启用，不影响原有行为
+
+## 修改文件清单
+
+| 文件 | 说明 |
+|------|------|
+| `trunk/user/www/n56u_ribbon_fixed/device-map/clients.asp` | 跨 AP RSSI 合并逻辑 |
+| `trunk/user/www/n56u_ribbon_fixed/lan_clients.asp` | 新增 `wireless_last` 变量输出 |
+| `trunk/user/www/n56u_ribbon_fixed/ap_rssi.js` | 前端数据缓存占位文件（新增） |
+| `trunk/user/scripts/files/usr/bin/ap_rssi_collect.sh` | 跨 AP 无线客户端采集脚本（新增） |
+| `trunk/user/scripts/files/usr/bin/autostart.sh` | 启动时自动配置 cron 定时任务 |
+
+## 工作原理
+
+```
+┌─────────────┐   每分钟 wget (Basic Auth)   ┌─────────────┐
+│  主路由     │ ──────────────────────────────▶ │  AP 节点 1  │
+│  (cron)     │ ◀────────────────────────────── │             │
+│             │   wireless_last = {MAC:RSSI}    └─────────────┘
+│             │
+│             │   ┌─────────────┐
+│             │ ─▶│  AP 节点 2  │
+│             │ ◀─│             │
+│             │   └─────────────┘
+│             │
+│  合并写入    │
+│  /tmp/ap_wireless.js │
+│  (mount --bind 到 /www/ap_rssi.js) │
+└─────────────┘
+       │
+       ▼
+  前端页面加载 /ap_rssi.js
+  合并到本地 wireless 对象
+  重新渲染设备列表
+```
+
+1. 每台 AP 的 `lan_clients.asp` 输出 `wireless_last`（该 AP 的无线客户端 MAC 与 RSSI）
+2. 主路由的采集脚本通过 `wget --header="Authorization: Basic ..."` 拉取各 AP 数据
+3. 合并后写入 `/tmp/ap_wireless.js`，并 `mount --bind` 覆盖 `/www/ap_rssi.js`
+4. 前端设备状态页面加载 `/ap_rssi.js`，将其他 AP 的无线客户端合并到本地列表
+
+## 使用方法
+
+### 1. 配置 AP 列表
+
+SSH 登录主路由，执行：
+
+```bash
+# 设置其他 AP 的 IP（空格分隔多个）
+nvram set ap_slave_ips="192.168.3.2 192.168.3.3"
+
+# 如果其他 AP 的登录账号密码不是默认的 admin/admin
+nvram set ap_slave_user="admin"
+nvram set ap_slave_pass="your_password"
+
+# 保存
+nvram commit
+```
+
+### 2. 生效方式
+
+- **重启主路由**：`autostart.sh` 会自动配置 cron 并执行一次采集
+- **或手动执行**：`/usr/bin/ap_rssi_collect.sh`
+
+### 3. 验证
+
+打开主路由 Web 界面 → 设备状态地图（`/device-map/clients.asp`），连到其他 AP 的无线设备应该也会显示 RSSI 信号条。
+
+## 配置项说明
+
+| NVRAM 变量 | 默认值 | 说明 |
+|------------|--------|------|
+| `ap_slave_ips` | （空） | 其他 AP 的 IP 列表，空格分隔。为空则不启用采集 |
+| `ap_slave_user` | `admin` | 其他 AP 的 Web 登录用户名 |
+| `ap_slave_pass` | `admin` | 其他 AP 的 Web 登录密码 |
+
+## 注意事项
+
+1. **所有 AP 必须刷入相同固件**：每台 AP 都需要 `lan_clients.asp` 输出 `wireless_last`，否则采集不到数据
+2. **AP 之间网络需互通**：主路由需要能访问其他 AP 的 Web 管理端口（80）
+3. **采集间隔**：默认每分钟一次，可在 `autostart.sh` 中修改 cron 表达式
+4. **mount --bind**：采集脚本用 `mount --bind` 覆盖 `/www/ap_rssi.js`，重启后自动重新挂载
+5. **去重逻辑**：前端合并时会跳过已存在的 MAC，不会重复显示
+6. **RSSI 来源限制**：只能获取各 AP 自身的无线客户端信号，无法获取有线设备或非 Padavan AP 的信号
+
+## 故障排查
+
+### 其他 AP 的设备不显示 RSSI
+
+1. 确认其他 AP 已刷入包含本补丁的固件
+2. 手动执行采集脚本查看输出：
+   ```bash
+   /usr/bin/ap_rssi_collect.sh
+   cat /tmp/ap_wireless.js
+   ```
+3. 测试能否访问其他 AP 的接口：
+   ```bash
+   wget --header="Authorization: Basic $(echo -n admin:admin | base64)" -qO- http://192.168.3.2/lan_clients.asp
+   ```
+4. 确认 `ap_slave_ips` 配置正确且已 `nvram commit`
+
+### 采集脚本不自动运行
+
+1. 检查 cron 任务：
+   ```bash
+   cat /etc/storage/cron/crontabs/admin
+   ```
+2. 检查 `ap_slave_ips` 是否非空（为空时不会配置 cron）
+3. 手动执行 `/usr/bin/ap_rssi_collect.sh` 测试
