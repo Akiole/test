@@ -417,6 +417,7 @@ function networkmap_update(s){
 
 <style>
     .table th, .table td{vertical-align: middle; text-align: center;}
+    #Clients_table, #xClients_table { table-layout: fixed; }
 </style>
 
 </head>
@@ -457,7 +458,7 @@ function networkmap_update(s){
             <th id="col_hname" width="30%"><a href="javascript:sort(1)"><#Computer_Name#></a></th>
             <th width="20%"><a href="javascript:sort(2)"><#IP_Address#></a></th>
             <th width="20%"><a href="javascript:sort(3)"><#MAC_Address#></a></th>
-            <th id="col_rssi"><a href="javascript:sort(4)"><#Rssi#></a></th>
+            <th id="col_rssi" width="10%"><a href="javascript:sort(4)"><#Rssi#></a></th>
             <th id="col_block"></th>
         </tr>
     </thead>
@@ -476,7 +477,7 @@ function networkmap_update(s){
             <th id="col_unhname" width="30%"><#Computer_Name#></th>
             <th width="20%"><#IP_Address#></th>
             <th width="20%"><#MAC_Address#></th>
-            <th id="col_unrssi"><#Rssi#></th>
+            <th id="col_unrssi" width="10%"><#Rssi#></th>
             <th id="col_unblock"></th>
         </tr>
     </thead>
