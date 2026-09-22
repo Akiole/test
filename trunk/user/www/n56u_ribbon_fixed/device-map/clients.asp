@@ -417,7 +417,6 @@ function networkmap_update(s){
 
 <style>
     .table th, .table td{vertical-align: middle; text-align: center;}
-    #Clients_table, #xClients_table { table-layout: fixed; }
 </style>
 
 </head>
