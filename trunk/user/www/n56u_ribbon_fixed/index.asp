@@ -716,14 +716,11 @@ $j(document).ready(function(){
 
                             <table class="table table-big" style="margin-top: 12px;">
                                 <tbody>
-                                    <tr id="row_internet">
-                                        <td width="30%">
-                                            <a id="linkInternet" href="/device-map/internet.asp" target="statusframe" style="outline:0;">
-                                                <div id="iconInternet" class="big-icons big-icons-globe" onclick="clickEvent(this);"></div>
-                                            </a>
-                                            <div id="overDiv" style="position:absolute; visibility:hidden; z-index:1000;"></div>
-                                            <div style="position: absolute; margin-top: -47px; margin-left: 50px;"><div id="internetStatus" style="padding-left: 3px;"></div></div>
-                                            <div class="arrow-right" id="arrow-internet"><img src="/bootstrap/img/arrow-right.png"></div>
+                                    <tr>
+                                        <td>
+                                            <a id="clientStatusLink" href="device-map/clients.asp" target="statusframe" style="outline:0;"><div id="iconClient" class="big-icons big-icons-laptop" onclick="clickEvent(this);"></div></a>
+                                            <div style="position: absolute; margin-top: -47px; margin-left: 50px;"><b><div id="clientNumber">&nbsp;</div></b></div>
+                                            <div class="arrow-right" id="arrow-clients"><img src="/bootstrap/img/arrow-right.png"></div>
                                         </td>
                                     </tr>
                                     <tr id="row_radio">
@@ -733,11 +730,14 @@ $j(document).ready(function(){
                                             <div class="arrow-right" id="arrow-router"><img src="/bootstrap/img/arrow-right.png"></div>
                                         </td>
                                     </tr>
-                                    <tr>
-                                        <td>
-                                            <a id="clientStatusLink" href="device-map/clients.asp" target="statusframe" style="outline:0;"><div id="iconClient" class="big-icons big-icons-laptop" onclick="clickEvent(this);"></div></a>
-                                            <div style="position: absolute; margin-top: -47px; margin-left: 50px;"><b><div id="clientNumber">&nbsp;</div></b></div>
-                                            <div class="arrow-right" id="arrow-clients"><img src="/bootstrap/img/arrow-right.png"></div>
+                                    <tr id="row_internet">
+                                        <td width="30%">
+                                            <a id="linkInternet" href="/device-map/internet.asp" target="statusframe" style="outline:0;">
+                                                <div id="iconInternet" class="big-icons big-icons-globe" onclick="clickEvent(this);"></div>
+                                            </a>
+                                            <div id="overDiv" style="position:absolute; visibility:hidden; z-index:1000;"></div>
+                                            <div style="position: absolute; margin-top: -47px; margin-left: 50px;"><div id="internetStatus" style="padding-left: 3px;"></div></div>
+                                            <div class="arrow-right" id="arrow-internet"><img src="/bootstrap/img/arrow-right.png"></div>
                                         </td>
                                     </tr>
                                     <tr id="row_usb_port1">
