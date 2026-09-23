@@ -168,19 +168,22 @@ This project is based on original rt-n56u with latest mtk 4.4.198 kernel, which 
 
 ## 功能特性
 
-- **跨 AP RSSI 采集**：主路由定时从其他 Padavan AP 拉取无线客户端列表，合并显示
+- **跨 AP RSSI 采集**：主路由定时从其他 Padavan AP 拉取无线客户端列表，合并显示信号强度
+- **跨 AP 设备名称采集**：同时采集各 AP 的 DHCP 主机名，本地无名称时自动显示跨 AP 名称
 - **自动定时采集**：启动后自动配置 cron，每分钟执行一次
+- **前端自动刷新**：页面每 30 秒自动重新加载跨 AP 数据，实时更新
 - **零侵入**：未配置 `ap_slave_ips` 时功能不启用，不影响原有行为
 
 ## 修改文件清单
 
 | 文件 | 说明 |
 |------|------|
-| `trunk/user/www/n56u_ribbon_fixed/device-map/clients.asp` | 跨 AP RSSI 合并逻辑 |
+| `trunk/user/www/n56u_ribbon_fixed/device-map/clients.asp` | 跨 AP RSSI + 设备名称合并逻辑，30秒自动刷新 |
 | `trunk/user/www/n56u_ribbon_fixed/lan_clients.asp` | 新增 `wireless_last` 变量输出 |
 | `trunk/user/www/n56u_ribbon_fixed/ap_rssi.js` | 前端数据缓存占位文件（新增） |
-| `trunk/user/scripts/files/usr/bin/ap_rssi_collect.sh` | 跨 AP 无线客户端采集脚本（新增） |
+| `trunk/user/scripts/files/usr/bin/ap_rssi_collect.sh` | 跨 AP 无线客户端采集脚本（RSSI + 主机名） |
 | `trunk/user/scripts/files/usr/bin/autostart.sh` | 启动时自动配置 cron 定时任务 |
+| `trunk/user/www/dict/CN.dict` | 新增 `wired_conn=网线连接` 字典项 |
 
 ## 工作原理
 
@@ -206,10 +209,22 @@ This project is based on original rt-n56u with latest mtk 4.4.198 kernel, which 
   重新渲染设备列表
 ```
 
-1. 每台 AP 的 `lan_clients.asp` 输出 `wireless_last`（该 AP 的无线客户端 MAC 与 RSSI）
+1. 每台 AP 的 `lan_clients.asp` 输出 `wireless_last`（该 AP 的无线客户端 MAC 与 RSSI）和 `ipmonitor_last`（客户端列表含 DHCP 主机名）
 2. 主路由的采集脚本通过 `wget --header="Authorization: Basic ..."` 拉取各 AP 数据
-3. 合并后写入 `/tmp/ap_wireless.js`，并 `mount --bind` 覆盖 `/www/ap_rssi.js`
-4. 前端设备状态页面加载 `/ap_rssi.js`，将其他 AP 的无线客户端合并到本地列表
+3. 解析并合并 RSSI 与主机名，写入 `/tmp/ap_wireless.js`，并 `mount --bind` 覆盖 `/www/ap_rssi.js`
+4. 前端设备状态页面加载 `/ap_rssi.js`，将其他 AP 的无线客户端合并到本地列表，本地无名称时使用跨 AP 采集的主机名
+
+### 数据格式
+
+```javascript
+var ap_wireless = {
+  "AA:BB:CC:DD:EE:FF": {"rssi": -57, "name": "iPhone"},
+  "11:22:33:44:55:66": {"rssi": -72, "name": ""}
+};
+```
+
+- `rssi`：无线信号强度（dBm）
+- `name`：DHCP 主机名（已去除 `.lan` 后缀，无名称时为空字符串）
 
 ## 使用方法
 
@@ -254,6 +269,9 @@ nvram commit
 4. **mount --bind**：采集脚本用 `mount --bind` 覆盖 `/www/ap_rssi.js`，重启后自动重新挂载
 5. **去重逻辑**：前端合并时会跳过已存在的 MAC，不会重复显示
 6. **RSSI 来源限制**：只能获取各 AP 自身的无线客户端信号，无法获取有线设备或非 Padavan AP 的信号
+7. **设备名称来源**：从各 AP 的 DHCP 租约（`ipmonitor_last`）中提取主机名，无 DHCP 名称的设备显示为空
+8. **MAC 格式统一**：前端使用 `simplyMAC()` 统一 MAC 格式（去除冒号），确保跨 AP 数据正确匹配
+9. **前端自动刷新**：页面每 30 秒自动重新加载 `/ap_rssi.js`，无需手动刷新即可看到最新数据
 
 ## 故障排查
 
@@ -270,6 +288,23 @@ nvram commit
    wget --header="Authorization: Basic $(echo -n admin:admin | base64)" -qO- http://192.168.3.2/lan_clients.asp
    ```
 4. 确认 `ap_slave_ips` 配置正确且已 `nvram commit`
+
+### 其他 AP 的设备不显示名称
+
+1. 确认采集脚本版本支持名称采集（应包含 `ipmonitor_last` 解析）：
+   ```bash
+   grep -c "ipmonitor_last" /etc/storage/ap_rssi_collect.sh
+   ```
+2. 检查采集到的数据是否包含名称：
+   ```bash
+   cat /www/ap_rssi.js | grep -o '"name":"[^"]*"' | grep -v '""'
+   ```
+3. 确认设备在其他 AP 上有 DHCP 主机名（无名称的设备显示为空）
+4. 确认 `/etc/storage/ap_rssi_collect.sh` 是最新版本（cron 每分钟运行此版本）：
+   ```bash
+   ls -la /etc/storage/ap_rssi_collect.sh
+   ```
+5. 强制刷新浏览器页面（Cmd+Shift+R），或等待 30 秒自动刷新
 
 ### 采集脚本不自动运行
 
