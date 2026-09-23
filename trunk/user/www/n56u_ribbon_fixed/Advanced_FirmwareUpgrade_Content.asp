@@ -182,7 +182,7 @@ function submitInternet(v){
                                             <li><#FW_desc4#></li>
                                             <li><#FW_desc5#></li>
                                             <li><#FW_desc6#></li>
-                                            <li><#FW_desc7#><input id="bingtmp" class="btn btn-success" style="width:50px display:none;" type="button" name="bingtmp" value="<#TMP_btn#>" onclick="submitInternet('bigtmp');" /></li>
+                                            <li><#FW_desc7#></li>
                                         </ol>
                                     </div>
 
@@ -198,7 +198,8 @@ function submitInternet(v){
                                         <tr>
                                             <th><#FW_item5#></th>
                                             <td>
-                                                <input type="file" name="file" size="36" />
+                                                <input type="file" name="file" size="36" />&nbsp;&nbsp;
+                                                <input id="bingtmp" class="btn btn-success" type="button" name="bingtmp" value="<#TMP_btn#>" onclick="submitInternet('bigtmp');" />
                                             </td>
                                         </tr>
                                         <tr>
