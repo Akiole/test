@@ -633,7 +633,7 @@ menuL1_link = new Array("", "index.asp", "", "Advanced_LAN_Content.asp", "Advanc
 	found_app_aldriver() ? aldriver_array[1] : "",
 	found_app_sqm() ? sqm_array[1] : "",
 	found_app_frp() ? frp_array[1] : "");
-menuL1_icon = new Array("", "icon-home", "icon-hdd", "icon-th", "icon-globe", "icon-signal", "icon-signal", "icon-lock", "icon-wrench", "icon-wrench", "icon-cog", "icon-tasks", "icon-random", "icon-list", "icon-file", "icon-retweet", "icon-globe", "icon-hdd",
+menuL1_icon = new Array("", "icon-home", "icon-hdd", "icon-th", "icon-globe", "icon-signal", "icon-signal", "icon-lock", "icon-cog", "icon-wrench", "icon-briefcase", "icon-tasks", "icon-info-sign", "icon-list-alt", "icon-file", "icon-retweet", "icon-random", "icon-hdd",
 	"icon-education", "icon-globe", "icon-plane", "icon-education", "icon-ban-circle", "icon-tasks",
 	"icon-random", "icon-hdd", "icon-signal", "icon-random");
 
