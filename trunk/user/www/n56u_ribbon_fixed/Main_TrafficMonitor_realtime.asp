@@ -148,7 +148,7 @@ performance.now = (function() {
 
 function initial(){
 	show_banner(0);
-	show_menu(5, -1, 0);
+	show_menu(11, -1, 0);
 	show_footer();
 
 	var ifdesc = cookie.get(cprefix + 'tab');

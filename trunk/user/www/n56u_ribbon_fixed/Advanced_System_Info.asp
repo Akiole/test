@@ -249,7 +249,7 @@ $j(window).bind('hashchange', function(){
 
 function initial(){
     show_banner(0);
-    show_menu(6,-1,0);
+    show_menu(12,-1,0);
     show_footer();
 
     showChart(getHash(),0);

@@ -611,7 +611,7 @@ if (found_app_frp()){
 } else menuL2_link.push("");
 
 //Level 1 Menu in Gateway, Router mode
-menuL1_title = new Array("", "<#menu1#>", "", "<#menu2#>", "<#menu6#>", "<#menu4#>", "<#menu5_8#>", "<#menu5#>", "<#menu5_11#>", "<#menu5_12#>", "<#menu5_2#>", "<#menu5_3#>", "<#menu5_5#>", "<#menu5_4#>", "<#menu5_6#>", "<#menu5_10#>", "<#menu5_9#>", "<#menu5_7#>",
+menuL1_title = new Array("", "<#menu1#>", "", "<#menu5_2#>", "<#menu5_3#>", "<#menu5_11#>", "<#menu5_12#>", "<#menu5_5#>", "<#menu5#>", "<#menu5_10#>", "<#menu5_6#>", "<#menu4#>", "<#menu5_8#>", "<#menu5_9#>", "<#menu5_7#>", "<#menu2#>", "<#menu6#>", "<#menu5_4#>",
 	found_app_scutclient() ? "<#menu5_13#>" : "",
 	found_app_dnsforwarder() ? "<#menu5_15#>" : "",
 	found_app_shadowsocks() ? "<#menu5_16#>" : "",
@@ -622,7 +622,7 @@ menuL1_title = new Array("", "<#menu1#>", "", "<#menu2#>", "<#menu6#>", "<#menu4
 	found_app_aldriver() ? "<#menu5_36#>" : "",
 	found_app_sqm() ? "<#menu5_37#>" : "",
 	found_app_frp() ? "<#menu5_25#>" : "");
-menuL1_link = new Array("", "index.asp", "", "vpnsrv.asp", "vpncli.asp", "Main_TrafficMonitor_realtime.asp", "Advanced_System_Info.asp", "as.asp", "Advanced_Wireless2g_Content.asp", "Advanced_Wireless_Content.asp", "Advanced_LAN_Content.asp", "Advanced_WAN_Content.asp", "Advanced_BasicFirewall_Content.asp", "Advanced_AiDisk_others.asp", "Advanced_System_Content.asp", "Advanced_Tweaks_Content.asp", "Main_EStatus_Content.asp", "Main_LogStatus_Content.asp",
+menuL1_link = new Array("", "index.asp", "", "Advanced_LAN_Content.asp", "Advanced_WAN_Content.asp", "Advanced_Wireless2g_Content.asp", "Advanced_Wireless_Content.asp", "Advanced_BasicFirewall_Content.asp", "as.asp", "Advanced_Tweaks_Content.asp", "Advanced_System_Content.asp", "Main_TrafficMonitor_realtime.asp", "Advanced_System_Info.asp", "Main_EStatus_Content.asp", "Main_LogStatus_Content.asp", "vpnsrv.asp", "vpncli.asp", "Advanced_AiDisk_others.asp",
 	found_app_scutclient() ? scutclient_array[1] : "",
 	found_app_dnsforwarder() ? dns_forwarder_array[1] : "",
 	found_app_shadowsocks() ? shadowsocks_array[1] : "",
@@ -633,43 +633,43 @@ menuL1_link = new Array("", "index.asp", "", "vpnsrv.asp", "vpncli.asp", "Main_T
 	found_app_aldriver() ? aldriver_array[1] : "",
 	found_app_sqm() ? sqm_array[1] : "",
 	found_app_frp() ? frp_array[1] : "");
-menuL1_icon = new Array("", "icon-home", "icon-hdd", "icon-retweet", "icon-globe", "icon-tasks", "icon-random", "icon-wrench", "icon-signal", "icon-signal", "icon-th", "icon-globe", "icon-lock", "icon-hdd", "icon-cog", "icon-wrench", "icon-list", "icon-file",
+menuL1_icon = new Array("", "icon-home", "icon-hdd", "icon-th", "icon-globe", "icon-signal", "icon-signal", "icon-lock", "icon-wrench", "icon-wrench", "icon-cog", "icon-tasks", "icon-random", "icon-list", "icon-file", "icon-retweet", "icon-globe", "icon-hdd",
 	"icon-education", "icon-globe", "icon-plane", "icon-education", "icon-ban-circle", "icon-tasks",
 	"icon-random", "icon-hdd", "icon-signal", "icon-random");
 
 if (!found_app_vpnsvr()) {
-	menuL1_title[3] = '';
-	menuL1_link[3] = '';
-	menuL1_icon[3] = '';
+	menuL1_title[15] = '';
+	menuL1_link[15] = '';
+	menuL1_icon[15] = '';
 }
 if (!found_app_vpncli()) {
+	menuL1_title[16] = '';
+	menuL1_link[16] = '';
+	menuL1_icon[16] = '';
+}
+if (!support_2g_radio()) {
+	menuL1_title[5] = '';
+	menuL1_link[5] = '';
+	menuL1_icon[5] = '';
+}
+if (!support_5g_radio()) {
+	menuL1_title[6] = '';
+	menuL1_link[6] = '';
+	menuL1_icon[6] = '';
+}
+if (!support_storage()) {
+	menuL1_title[17] = '';
+	menuL1_link[17] = '';
+	menuL1_icon[17] = '';
+}
+if (sw_mode == '3') {
+	menuL1_link[3] = 'Advanced_APLAN_Content.asp';
 	menuL1_title[4] = '';
 	menuL1_link[4] = '';
 	menuL1_icon[4] = '';
-}
-if (!support_2g_radio()) {
-	menuL1_title[8] = '';
-	menuL1_link[8] = '';
-	menuL1_icon[8] = '';
-}
-if (!support_5g_radio()) {
-	menuL1_title[9] = '';
-	menuL1_link[9] = '';
-	menuL1_icon[9] = '';
-}
-if (!support_storage()) {
-	menuL1_title[13] = '';
-	menuL1_link[13] = '';
-	menuL1_icon[13] = '';
-}
-if (sw_mode == '3') {
-	menuL1_link[10] = 'Advanced_APLAN_Content.asp';
-	menuL1_title[11] = '';
-	menuL1_link[11] = '';
-	menuL1_icon[11] = '';
-	menuL1_title[12] = '';
-	menuL1_link[12] = '';
-	menuL1_icon[12] = '';
+	menuL1_title[7] = '';
+	menuL1_link[7] = '';
+	menuL1_icon[7] = '';
 }
 
 function show_menu(L1, L2, L3){
