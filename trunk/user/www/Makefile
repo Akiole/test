@@ -22,16 +22,6 @@ BUILDTIME_PATTERN=s/ZVBUILDTIMEVZ/$(BUILD_TIME)/g
 
 WEBUI_NAME=n56u_ribbon_fixed
 
-define Build/Prepare
-	@echo "Web UI package"
-endef
-
-define Build/Compile
-	@echo "Nothing to compile"
-endef
-
-$(eval $(call BuildPackage,$(PKG_NAME)))
-
 romfs:
 	echo "Make www romfs"
 	rm -Rf $(ROMFS_DIR)/www
