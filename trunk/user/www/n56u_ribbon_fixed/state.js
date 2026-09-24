@@ -611,7 +611,7 @@ if (found_app_frp()){
 } else menuL2_link.push("");
 
 //Level 1 Menu in Gateway, Router mode
-menuL1_title = new Array("", "<#menu1#>", "", "<#menu5_2#>", "<#menu5_3#>", "<#menu5_11#>", "<#menu5_12#>", "<#menu5_5#>", "<#menu5#>", "<#menu5_10#>", "<#menu5_6#>", "<#menu4#>", "<#menu5_8#>", "<#menu5_9#>", "<#menu5_7#>", "<#menu2#>", "<#menu6#>", "<#menu5_4#>",
+menuL1_title = new Array("", "<#menu1#>", "", "<#menu5_2#>", "<#menu5_3#>", "<#menu5_11#>", "<#menu5_12#>", "<#menu5_5#>", "<#menu5_10#>", "<#menu5#>", "<#menu5_6#>", "<#menu4#>", "<#menu5_9#>", "<#menu5_8#>", "<#menu5_7#>", "<#menu2#>", "<#menu6#>", "<#menu5_4#>",
 	found_app_scutclient() ? "<#menu5_13#>" : "",
 	found_app_dnsforwarder() ? "<#menu5_15#>" : "",
 	found_app_shadowsocks() ? "<#menu5_16#>" : "",
@@ -622,7 +622,7 @@ menuL1_title = new Array("", "<#menu1#>", "", "<#menu5_2#>", "<#menu5_3#>", "<#m
 	found_app_aldriver() ? "<#menu5_36#>" : "",
 	found_app_sqm() ? "<#menu5_37#>" : "",
 	found_app_frp() ? "<#menu5_25#>" : "");
-menuL1_link = new Array("", "index.asp", "", "Advanced_LAN_Content.asp", "Advanced_WAN_Content.asp", "Advanced_Wireless2g_Content.asp", "Advanced_Wireless_Content.asp", "Advanced_BasicFirewall_Content.asp", "as.asp", "Advanced_Tweaks_Content.asp", "Advanced_System_Content.asp", "Main_TrafficMonitor_realtime.asp", "Advanced_System_Info.asp", "Main_EStatus_Content.asp", "Main_LogStatus_Content.asp", "vpnsrv.asp", "vpncli.asp", "Advanced_AiDisk_others.asp",
+menuL1_link = new Array("", "index.asp", "", "Advanced_LAN_Content.asp", "Advanced_WAN_Content.asp", "Advanced_Wireless2g_Content.asp", "Advanced_Wireless_Content.asp", "Advanced_BasicFirewall_Content.asp", "Advanced_Tweaks_Content.asp", "as.asp", "Advanced_System_Content.asp", "Main_TrafficMonitor_realtime.asp", "Main_EStatus_Content.asp", "Advanced_System_Info.asp", "Main_LogStatus_Content.asp", "vpnsrv.asp", "vpncli.asp", "Advanced_AiDisk_others.asp",
 	found_app_scutclient() ? scutclient_array[1] : "",
 	found_app_dnsforwarder() ? dns_forwarder_array[1] : "",
 	found_app_shadowsocks() ? shadowsocks_array[1] : "",
@@ -633,7 +633,7 @@ menuL1_link = new Array("", "index.asp", "", "Advanced_LAN_Content.asp", "Advanc
 	found_app_aldriver() ? aldriver_array[1] : "",
 	found_app_sqm() ? sqm_array[1] : "",
 	found_app_frp() ? frp_array[1] : "");
-menuL1_icon = new Array("", "icon-home", "icon-hdd", "icon-th", "icon-globe", "icon-signal", "icon-signal", "icon-lock", "icon-cog", "icon-wrench", "icon-briefcase", "icon-tasks", "icon-info-sign", "icon-list-alt", "icon-file", "icon-retweet", "icon-random", "icon-hdd",
+menuL1_icon = new Array("", "icon-home", "icon-hdd", "icon-th", "icon-globe", "icon-signal", "icon-signal", "icon-lock", "icon-wrench", "icon-cog", "icon-briefcase", "icon-tasks", "icon-list-alt", "icon-info-sign", "icon-file", "icon-retweet", "icon-random", "icon-hdd",
 	"icon-education", "icon-globe", "icon-plane", "icon-education", "icon-ban-circle", "icon-tasks",
 	"icon-random", "icon-hdd", "icon-signal", "icon-random");
 
