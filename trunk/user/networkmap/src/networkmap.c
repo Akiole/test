@@ -399,6 +399,16 @@ fixup_hostname(NET_CLIENT* pnet_client)
 
 	hname[32] = '\0';
 	trim_r(hname);
+
+	/* strip lan domain suffix (e.g. "wlan0.lan" -> "wlan0") */
+	{
+		char *dot = strchr(hname, '.');
+		if (dot) {
+			const char *dom = nvram_safe_get("lan_domain");
+			if (dom && *dom && !strcmp(dot + 1, dom))
+				*dot = '\0';
+		}
+	}
 }
 
 static int
@@ -419,8 +429,17 @@ resolve_hostname(struct in_addr *dst_ip, NET_CLIENT *pnet_client)
 	strncpy(pnet_client->device_name, hname, 32);
 	fixup_hostname(pnet_client);
 
-	if (!pnet_client->device_name[0])
+	/*
+	 * Some resolvers (e.g. uClibc getnameinfo) return the numeric
+	 * address itself even with NI_NAMEREQD.  That is not a useful
+	 * hostname: report failure so the caller falls back to the static
+	 * DHCP list instead of storing the IP as the device name.
+	 */
+	if (!pnet_client->device_name[0] ||
+	    !strcmp(pnet_client->device_name, inet_ntoa(*dst_ip))) {
+		pnet_client->device_name[0] = '\0';
 		return -1;
+	}
 
 	return 0;
 }

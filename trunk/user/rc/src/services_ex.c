@@ -788,7 +788,7 @@ start_upnp(void)
 		"allow %d-%d %s/%s %d-%d\n"
 		"deny 0-65535 0.0.0.0/0.0.0.0 0-65535\n",
 		wan_ifname,
-		IFNAME_BR, /*lan_addr, lan_mask,*/
+		IFNAME_BR,
 		0,
 		proto_upnp,
 		proto_npmp,

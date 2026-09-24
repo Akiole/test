@@ -1074,7 +1074,7 @@ gen_ralink_config(int is_soc_ap, int is_aband, int disable_autoscan)
 		c_val_mbss[0] = "OWE";
 	}
 
-	//PMF Capbility and required
+	//PMF Capability and required
 	if (i_auth > 2 && i_auth != 5) {
 		i_pmfr = nvram_wlan_get_int(is_aband, "pmf");
 		fprintf(fp, "PMFMFPC=%d\n", i_pmfr ? 1 : 0);
@@ -1635,7 +1635,7 @@ gen_ralink_config(int is_soc_ap, int is_aband, int disable_autoscan)
 		fprintf(fp, "ApCliEncrypType=%s\n", "NONE");
 		fprintf(fp, "ApCliWPAPSK=%s\n", "");
 	}
-
+	
 	/* Station PMF is independent of the AP's authentication mode. */
 	i_pmfr = nvram_wlan_get_int(is_aband, "sta_pmf");
 	if (i_pmfr) {

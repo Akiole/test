@@ -44,7 +44,7 @@ function initial(){
 	showLANIPList();
 
 	change_wireless_bridge();
-	change_sta_auth_mode(1);
+	change_sta_auth_mode();
 
 	document.form.wl_channel.value = document.form.wl_channel_org.value;
 	document.form.wl_sta_ssid.value = decodeURIComponent(document.form.wl_sta_ssid_org.value);
@@ -155,7 +155,7 @@ function change_wdsapply(){
 	}
 }
 
-function change_sta_auth_mode(mflag){
+function change_sta_auth_mode(){
 	var mode = document.form.wl_sta_auth_mode.value;
 	var opts = document.form.wl_sta_auth_mode.options;
 	var m = document.form.wl_mode_x.value;
@@ -441,7 +441,7 @@ function hideClients_Block(){
                                         <tr id="row_apc_1" style="display:none;">
                                             <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this, 0, 5);"><#WLANConfig11b_AuthenticationMethod_itemname#></a></th>
                                             <td>
-                                                <select name="wl_sta_auth_mode" class="input" onChange="change_sta_auth_mode(0);">
+                                                <select name="wl_sta_auth_mode" class="input" onChange="change_sta_auth_mode();">
                                                     <option value="open" <% nvram_match_x("", "wl_sta_auth_mode", "open", "selected"); %>>Open System</option>
                                                     <option value="psk" <% nvram_double_match_x("", "wl_sta_auth_mode", "psk", "", "wl_sta_wpa_mode", "1", "selected"); %>>WPA-Personal</option>
                                                     <option value="psk" <% nvram_double_match_x("", "wl_sta_auth_mode", "psk", "", "wl_sta_wpa_mode", "2", "selected"); %>>WPA2-Personal</option>
@@ -452,7 +452,7 @@ function hideClients_Block(){
                                         <tr id="row_apc_2" style="display:none;">
                                             <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this, 0, 6);"><#WLANConfig11b_WPAType_itemname#></a></th>
                                             <td>
-                                                <select name="wl_sta_crypto" class="input" onChange="change_sta_auth_mode(0);">
+                                                <select name="wl_sta_crypto" class="input" onChange="change_sta_auth_mode();">
                                                     <option value="tkip" <% nvram_match_x("", "wl_sta_crypto", "tkip", "selected"); %>>TKIP</option>
                                                     <option value="aes" <% nvram_match_x("", "wl_sta_crypto", "aes", "selected"); %>>AES</option>
                                                 </select>

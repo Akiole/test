@@ -28,6 +28,35 @@ var m_dhcp = [<% get_nvram_list("LANHostConfig", "ManualDHCPList"); %>];
 
 var nmap_fullscan = '<% nvram_get_x("", "networkmap_fullscan"); %>';
 
+var ipv6_neigh_map = [<% ipv6_neigh_list(); %>];
+var ipv6_by_mac = {};
+function copyIPv6(addr, el){
+	var ta = document.createElement("textarea");
+	ta.value = addr;
+	ta.style.position = "fixed";
+	ta.style.opacity = "0";
+	document.body.appendChild(ta);
+	ta.select();
+	var ok = false;
+	try { ok = document.execCommand("copy"); } catch(e) {}
+	document.body.removeChild(ta);
+	var old = el.innerHTML;
+	el.innerHTML = ok ? "已复制" : addr;
+	setTimeout(function(){ el.innerHTML = old; }, 1200);
+}
+function build_ipv6_map(){
+	var i, mac, v6;
+	for(i = 0; i < ipv6_neigh_map.length; i++){
+		if(ipv6_neigh_map[i] && ipv6_neigh_map[i][0]){
+			mac = ipv6_neigh_map[i][0].replace(/:/g, "").toUpperCase();
+			v6 = ipv6_neigh_map[i][1];
+			/* prefer stable address (EUI-64 contains ff:fe), keep first otherwise */
+			if (!ipv6_by_mac[mac] || v6.indexOf("ff:fe") != -1)
+				ipv6_by_mac[mac] = v6;
+		}
+	}
+}
+
 var DEVICE_TYPE = ["", "<#Device_type_01_PC#>", "<#Device_type_02_RT#>", "<#Device_type_03_AP#>", "<#Device_type_04_NAS#>", "<#Device_type_05_IC#>", "<#Device_type_06_OD#>"];
 
 var clients = getclients(1,0);
@@ -39,6 +68,7 @@ function initial(){
 	if (sw_mode == "3") {
 		list_type = '0';
 	}
+	build_ipv6_map();
 	flash_button();
 	prepare_clients();
 	show_clients();
@@ -155,6 +185,7 @@ function update_clients(e) {
 				nmap_fullscan = window.nmap_fullscan_last;
 				clients = [];
 				clients = getclients(1,0);
+				build_ipv6_map();
 				prepare_clients();
 				merge_ap_wireless();
 				show_clients();
@@ -230,6 +261,14 @@ function add_client_row(table, atIndex, client, blocked, j){
 	nameCell.innerHTML = (client[6] == "1" && clientName) ? "<a href=http://" + clientName + " target='blank'>" + clientName + "</a>" : displayName;
 	var displayIP = (client[1] == null || client[1] == "*" || client[1].length < 1) ? "<span style='color:#999;'>-</span>" : client[1];
 	ipCell.innerHTML = (client[6] == "1" && client[1] != null && client[1] != "*") ? "<a href=http://" + client[1] + " target='blank'>" + client[1] + "</a>" : displayIP;
+	var v6 = ipv6_by_mac[client[2].replace(/:/g, "").toUpperCase()];
+	if (v6) {
+		var v6short = v6;
+		var v6parts = v6.split(":");
+		if (v6parts.length > 4)
+			v6short = v6parts[0] + ":" + v6parts[1] + ":…:" + v6parts.slice(v6parts.length - 2).join(":");
+		ipCell.innerHTML += "<br><span title='" + v6 + "' onclick='copyIPv6(\"" + v6 + "\",this)' style='font-size:11px;color:#8a87a0;cursor:pointer;'>" + v6short + "</span>";
+	}
 	macCell.innerHTML = "<a target='_blank' href='https://services13.ieee.org/RST/standards-ra-web/rest/assignments/?registry=MAC&text=" + client[2].substr(0,6) + "'>" + mac_add_delimiters(client[2]) + "</a>";
 	if (client[3] == 10 || client[3] === "10"){
 		rssiCell.innerHTML = rssi_to_bars(Number(client[4]));

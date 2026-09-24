@@ -940,3 +940,122 @@ textarea[readonly] {
     }
 }
 
+
+.btn-wps {
+    position: relative;
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    border: 1.5px solid #2FA8D8;
+    border-radius: 50%;
+    font-size: 0;
+    line-height: 26px;
+    text-shadow: none;
+    box-shadow: none;
+    background-color: transparent;
+    background-image: none;
+}
+.btn-wps::before,
+input#btn_connect {
+    -webkit-mask-image: var(--wps-mask);
+    mask-image: var(--wps-mask);
+    -webkit-mask-size: 19px 19px;
+    mask-size: 19px 19px;
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+    -webkit-mask-position: center;
+    mask-position: center;
+}
+.btn-wps::before {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 19px;
+    height: 19px;
+    transform: translate(-50%, -50%);
+    background-color: #2FA8D8;
+}
+.btn-wps:hover,
+.btn-wps:focus {
+    box-shadow: none;
+    background-color: #2FA8D8;
+}
+.btn-wps:hover::before,
+.btn-wps:focus::before {
+    background-color: #ffffff;
+}
+.btn-wps:focus-visible {
+    outline: 2px solid rgba(255,255,255,.55);
+    outline-offset: 2px;
+}
+.btn-wps[disabled],
+.btn-wps.wps-done {
+    background-color: #2FA8D8;
+}
+.btn-wps[disabled]::before,
+.btn-wps.wps-done::before {
+    background-color: #ffffff;
+}
+.btn-wps[disabled]::before {
+    animation: wps-spin 1.2s linear infinite;
+}
+.btn-wps.btn-info {
+    background-color: #E8A33D;
+}
+.btn-wps.btn-info::before {
+    background-color: #ffffff;
+}
+#wps_button td {
+    padding: 11px 8px;
+}
+input#btn_connect {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    font-size: 0;
+    color: transparent;
+    text-indent: -9999px;
+    text-shadow: none;
+    box-shadow: none;
+    background-color: #ffffff;
+}
+input#btn_connect:hover {
+    box-shadow: 0 0 0 2px rgba(14, 143, 128, 0.45);
+}
+input#btn_connect.disabled,
+input#btn_connect.wps-done {
+    background-color: #0E8F80;
+}
+input#btn_connect.disabled {
+    animation: wps-spin 1.2s linear infinite;
+}
+input#btn_connect.btn-info {
+    background-color: #E8A33D;
+    animation: none;
+}
+/* 按钮加载时的视觉样式 */
+#btn_connect.is-loading {
+    cursor: wait !important;
+    opacity: 0.7;
+    position: relative;
+}
+
+/* 如果你想在按钮上加一个旋转圆圈，可以用伪元素实现 */
+#btn_connect.is-loading::after {
+    content: "";
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border: 2px solid rgba(255,255,255,.3);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin 1s ease-in-out infinite;
+    margin-left: 5px;
+}
+@keyframes wps-spin {
+    from { transform: translate(-50%, -50%) rotate(0deg); }
+    to   { transform: translate(-50%, -50%) rotate(360deg); }
+}

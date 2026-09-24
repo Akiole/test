@@ -345,14 +345,12 @@ function rt_wep_change(){
 
 		if(mode == "psk")
 			$("rt_wpa_psk").style.display = "";
-
 		$("all_wep_key").style.display = "none";
 		$("asus_wep_key").style.display = "none";
 	}
 	else{
 		$("rt_crypto").style.display = "none";
 		$("rt_wpa_psk").style.display = "none";
-
 		if(wep == "0" || mode == "radius"){
 			$("all_wep_key").style.display = "none";
 			$("asus_wep_key").style.display = "none";

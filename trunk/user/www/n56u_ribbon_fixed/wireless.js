@@ -31,8 +31,7 @@ function nmode_limitation() {
         else if (document.form.wl_auth_mode.selectedIndex == 7) {
             alert("<#WLANConfig11n_nmode_limition_hint#>");
             document.form.wl_auth_mode.selectedIndex = 8;
-        }
-        else if ((document.form.wl_auth_mode.selectedIndex == 9 || document.form.wl_auth_mode.selectedIndex == 5)  && document.form.wl_crypto.selectedIndex == 1) {
+        } else if ((document.form.wl_auth_mode.selectedIndex == 9 || document.form.wl_auth_mode.selectedIndex == 5) && (document.form.wl_crypto.selectedIndex == 1)) {
             alert("<#WLANConfig11n_nmode_limition_hint#>");
             document.form.wl_crypto.selectedIndex = 0;
         }

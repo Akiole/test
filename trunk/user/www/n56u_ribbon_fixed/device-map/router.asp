@@ -24,9 +24,23 @@
 var $j = jQuery.noConflict();
 
 $j(document).ready(function() {
-	init_itoggle('wl_radio_x', wl_wps_change);
-	init_itoggle('wl_closed', wl_wps_change);
-	init_itoggle('wl_WPS', wl_wps_change);
+    // 包装函数，用于捕获错误
+    var safe_wps_change = function() {
+        try {
+            wl_wps_change();
+        } catch (e) {
+            console.error("wl_wps_change 执行出错，已拦截以保护UI：", e);
+            // 报错后直接返回，不再让错误继续向下影响UI渲染
+        }
+    };
+
+    // 将包装后的函数传入即可
+    init_itoggle('wl_radio_x', safe_wps_change);
+    init_itoggle('wl_closed', safe_wps_change);
+    init_itoggle('wl_WPS', safe_wps_change);
+
+    wps_status_poll();
+    setInterval(wps_status_poll, 10000);
 });
 
 </script>
@@ -146,29 +160,64 @@ function domore_create(){
 	}
 }
 
+var wpsFailUntil = 0;	// 触发失败后的显示窗口, 期间轮询不覆盖
+
 function wps_pbc(){
 	var $button = $j('#btn_connect');
-	$button.button('loading');
+	if($button.hasClass('disabled') || $button.prop('disabled')) return;	// 配对中禁止重复触发
+	$button.button('loading');	// spin (teal) via disabled state
 	$j.getJSON('/wps_action.asp',function(response){
+		var idTimeOut;
 		if(response.status == 0) {
-			$button.data('complete-text','Success')
-			       .removeClass('btn-info')
-			       .addClass('btn-success');
+			$j('#wps_status_txt').text('配对中…');
+			// trigger accepted: pairing feedback up to 30s (practical WPS window),
+			// then success (teal) for 2s and reset
+			idTimeOut = setTimeout(function(){
+				clearTimeout(idTimeOut);
+				$button.removeClass('btn-info').addClass('btn-success');
+				$button.button('reset');
+				$button.addClass('wps-done');
+				var idTimeOut2 = setTimeout(function(){
+					clearTimeout(idTimeOut2);
+					$button.removeClass('wps-done')
+					       .removeClass('btn-success')
+					       .removeClass('btn-info')
+					       .addClass('btn-success');
+				}, 2000);
+			}, 30000);
 		} else {
-			$button.data('complete-text','Error')
-			       .removeClass('btn-success')
-			       .addClass('btn-info');
+			// trigger failed: error (amber), 失败窗口内轮询不查询/不覆盖
+			wpsFailUntil = Date.now() + 4000;
+			$j('#wps_status_txt').text('配对失败');
+			$button.removeClass('btn-success').addClass('btn-info');
+			idTimeOut = setTimeout(function(){
+				clearTimeout(idTimeOut);
+				$button.button('reset');
+				$button.removeClass('btn-success')
+				       .removeClass('btn-info')
+				       .addClass('btn-success');
+			}, 2000);
 		}
-		$button.button('complete');
-
-                var idTimeOut = setTimeout(function(){
-                    clearTimeout(idTimeOut);
-                    $button.button('reset');
-		    $button.removeClass('btn-success')
-			   .removeClass('btn-info')
-			   .addClass('btn-success');
-                }, 1500);
 	})
+}
+
+function wps_status_poll(){
+	$j.getJSON('/wps_status.asp',function(res){
+		var el = $j('#wps_status_txt');
+		if(!el.length) return;
+		var btn = $j('#btn_connect');
+		var s = res.status;
+		if(Date.now() < wpsFailUntil) return;	// 触发失败窗口: 保持琥珀失败态
+		if(s >= 3){
+			el.text('配对中…');
+			if(!btn.hasClass('disabled')) btn.button('loading');
+		} else {
+			if(s == 2) el.text('配对失败');
+			else if(s == 34) el.text('已完成');
+			else el.text('空闲');
+			if(btn.hasClass('disabled')) btn.button('reset');
+		}
+	});
 }
 
 function wl_wps_change(){
@@ -232,7 +281,7 @@ function wl_auth_mode_change(isload){
 	} else if (opts[opts.selectedIndex].text == "WPA2-WPA3-Mixed") {
 		new_array = new Array("<#PMF_Capable#>");
 	} else {
-		$("rt_pmf").style.display = "none";
+		$("wl_pmf").style.display = "none";
 		new_array = new Array("<#PMF_Disabled#>");
 	}
 
@@ -381,10 +430,8 @@ function wl_wep_change(){
 	if(mode == "psk" || mode == "wpa" || mode == "wpa2" || mode == "owe"){
 		if(mode == "psk" || mode == "owe")
 			$("wl_crypto").style.display = "";
-			
 		if(mode == "psk")
 			$("wl_wpa_psk").style.display = "";
-		
 		//blocking("all_related_wep", 0);
 		$("all_related_wep").style.display = "none";
 		$("all_wep_key").style.display = "none";
@@ -427,7 +474,6 @@ function change_auth_mode(auth_mode_obj){
 	wl_auth_mode_change(0);
 	if(auth_mode_obj.value == "psk" || auth_mode_obj.value == "wpa" || auth_mode_obj.value == "owe"){
 		var opts = document.form.wl_auth_mode.options;
-
 		if(opts[opts.selectedIndex].text == "WPA-Personal")
 			document.form.wl_wpa_mode.value = "1";
 		else if(opts[opts.selectedIndex].text == "WPA2-Personal")
@@ -444,12 +490,10 @@ function change_auth_mode(auth_mode_obj){
 			document.form.wl_wpa_mode.value = "4";
 		else if(opts[opts.selectedIndex].text == "Enhanced Open")
 			document.form.wl_wpa_mode.value="7";
-
 		if(auth_mode_obj.value == "psk"){
 			document.form.wl_wpa_psk.focus();
 			document.form.wl_wpa_psk.select();
 		}
-
 	}
 	else if(auth_mode_obj.value == "shared"){
 		show_key();
@@ -659,6 +703,11 @@ window.onunload  = function(){
 </script>
 
 <style>
+/* ===== WPS circular icon button (one SVG mask + CSS colors) ===== */
+:root {
+    --wps-mask: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj48ZyBmaWxsPSIjMDAwIj48cGF0aCBkPSJNIDUyLjUgMTcuMiBDIDQ1LjIgMTcuMiAzNi44IDIwLjggMzAuNSAyNy4xIEMgMjEuMiAzNi40IDE4LjUgNDkuOCAyMi44IDYxLjUgQyAyMy44IDY0LjIgMjUuNSA2Ny44IDI4LjIgNzEuMiBDIDI5LjUgNzIuOCAzMC44IDcyLjIgMjkuOCA3MC4xIEMgMjYuMiA2Mi44IDI1LjggNTUuMiAyOC4xIDQ3LjggQyAzMS41IDM2LjggNDEuMiAyOS41IDUyLjggMjkuNSBDIDU0LjggMjkuNSA1Ni41IDI5LjggNTYuNSAyNy4yIEMgNTYuNSAyMy41IDU1LjIgMTcuMiA1Mi41IDE3LjIgWiIvPjxwYXRoIGQ9Ik0gNDQuNSAxMS4yIEMgNDQuNSAxMC4yIDQ2LjIgMTAuMiA0Ny41IDExLjUgTCA2MC41IDI0LjUgQyA2MS44IDI1LjggNjEuOCAyNy4yIDYwLjUgMjguNSBMIDQ3LjUgNDEuNSBDIDQ2LjIgNDIuOCA0NC41IDQxLjggNDQuNSA0MC44IFoiLz48cGF0aCBkPSJNIDQ3LjUgODIuOCBDIDU0LjggODIuOCA2My4yIDc5LjIgNjkuNSA3Mi45IEMgNzguOCA2My42IDgxLjUgNTAuMiA3Ny4yIDM4LjUgQyA3Ni4yIDM1LjggNzQuNSAzMi4yIDcxLjggMjguOCBDIDcwLjUgMjcuMiA2OS4yIDI3LjggNzAuMiAyOS45IEMgNzMuOCAzNy4yIDc0LjIgNDQuOCA3MS45IDUyLjIgQyA2OC41IDYzLjIgNTguOCA3MC41IDQ3LjIgNzAuNSBDIDQ1LjIgNzAuNSA0My41IDcwLjIgNDMuNSA3Mi44IEMgNDMuNSA3Ni41IDQ0LjggODIuOCA0Ny41IDgyLjggWiIvPjxwYXRoIGQ9Ik0gNTUuNSA4OC44IEMgNTUuNSA4OS44IDUzLjggODkuOCA1Mi41IDg4LjUgTCAzOS41IDc1LjUgQyAzOC4yIDc0LjIgMzguMiA3Mi44IDM5LjUgNzEuNSBMIDUyLjUgNTguNSBDIDUzLjggNTcuMiA1NS41IDU4LjIgNTUuNSA1OS4yIFoiLz48L2c+PC9zdmc+");
+}
+
     .table th{vertical-align: middle;}
     .table input, .table select{margin-bottom: 0px;}
 </style>
@@ -837,7 +886,8 @@ window.onunload  = function(){
   <tr id="wps_button">
     <th width="50%"><#WPSControl#></th>
     <td>
-      <input type="button" id="btn_connect" class="btn btn-success" data-loading-text="WPS" value="<#WPS_Trigger#>" onclick="wps_pbc()" />
+      <button type="button" id="btn_connect" class="btn btn-success btn-wps" title="<#WPS_Trigger#>" onclick="wps_pbc()"></button>
+      <span id="wps_status_txt" style="margin-left:10px;font-size:12px;color:#8FD4EF;vertical-align:middle"></span>
     </td>
   </tr>
   <tr>

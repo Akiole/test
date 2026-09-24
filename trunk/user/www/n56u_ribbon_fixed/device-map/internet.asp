@@ -276,10 +276,10 @@ function submitInternet(v){
 <body class="body_iframe" onload="initial();">
 <table width="100%" align="center" cellpadding="4" cellspacing="0" class="table" id="tbl_info">
   <tr>
-    <th width="50%" style="border-top: 0 none;"><#InetControl#></th>
+    <th style="border-top: 0 none;"><#InetControl#></th>
     <td style="border-top: 0 none;" colspan="3">
-      <input type="button" id="btn_connect_1" class="btn btn-info" value="<#Connect#>" onclick="submitInternet('Connect');">
-      <input type="button" id="btn_connect_0" class="btn btn-danger" value="<#Disconnect#>" onclick="submitInternet('Disconnect');">
+      <button type="button" id="btn_connect_1" class="btn btn-info" onclick="submitInternet('Connect');"><i class="icon-refresh icon-white"></i> <#Connect#></button>
+      <button type="button" id="btn_connect_0" class="btn btn-danger" onclick="submitInternet('Disconnect');"><i class="icon-off icon-white"></i> <#Disconnect#></button>
     </td>
   </tr>
   <tr id="row_modem_prio" style="display:none">
@@ -298,8 +298,7 @@ function submitInternet(v){
   </tr>
   <tr id="row_link_apcli" style="display:none">
     <th><#InetStateWISP#></th>
-    <td colspan="2"><span id="WANAPCli"></span></td>
-    <td width="40px" style="text-align: right; padding: 6px 8px"><button type="button" class="btn btn-mini" style="height: 21px; outline:0;" title="<#Connect#>" onclick="submitInternet('WispReassoc');"><i class="icon icon-refresh"></i></button></td>
+    <td colspan="3"><span id="WANAPCli"></span><button type="button" class="btn btn-reassoc" style="margin-left:30px;" title="<#Connect#>" onclick="submitInternet('WispReassoc');"><i class="icon-refresh"></i></button></td>
   </tr>
   <tr>
     <th><#ConnectionStatus#></th>

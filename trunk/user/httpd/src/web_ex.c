@@ -1751,10 +1751,14 @@ wanlink_hook(int eid, webs_t wp, int argc, char **argv)
 			
 			if (get_ifaddr6(wan6_ifname, 0, addr6_wan))
 				wan_ip6 = addr6_wan;
+			else if (get_ifaddr6(wan6_ifname, 1, addr6_wan))
+				wan_ip6 = addr6_wan;
 			else
 				wan_ip6 = "---";
 			
 			if (get_ifaddr6(IFNAME_BR, 0, addr6_lan))
+				lan_ip6 = addr6_lan;
+			else if (get_ifaddr6(IFNAME_BR, 1, addr6_lan))
 				lan_ip6 = addr6_lan;
 			else
 				lan_ip6 = "---";
@@ -2376,6 +2380,39 @@ wps_action_hook(int eid, webs_t wp, int argc, char **argv)
 
 exit:
 	websWrite(wp, "{\"status\": \"%d\"}", sys_result);
+	return 0;
+}
+
+static int
+get_wsc_status(const char *ifname)
+{
+	FILE *fp = NULL;
+	char buf[128];
+	int status = -1;
+
+	doSystem("/bin/iwpriv %s get_wsc_status > /tmp/wsc_status 2>&1", ifname);
+	fp = fopen("/tmp/wsc_status", "r");
+	if (fp) {
+		while (fgets(buf, sizeof(buf), fp)) {
+			char *p = strstr(buf, "WSC_Status=");
+			if (p && sscanf(p, "WSC_Status=%d", &status) == 1)
+				break;
+		}
+		fclose(fp);
+	}
+	return status;
+}
+
+static int
+wps_status_hook(int eid, webs_t wp, int argc, char **argv)
+{
+	int status;
+
+	/* Check 5G first, then 2.4G; return non-idle status if either is active */
+	status = get_wsc_status(IFNAME_5G_MAIN);
+	if (status <= 1)
+		status = get_wsc_status(IFNAME_2G_MAIN);
+	websWrite(wp, "{\"status\": %d}", status);
 	return 0;
 }
 
@@ -3183,6 +3220,41 @@ static int ej_get_static_client(int eid, webs_t wp, int argc, char **argv)
 
 	file_unlock(lock);
 
+	return 0;
+}
+
+static int ej_ipv6_neigh_list(int eid, webs_t wp, int argc, char **argv)
+{
+	FILE *fp;
+	char line[256], addr[128], ll[16], mac[32];
+	int first;
+
+	/* actively refresh IPv6 neighbors (multicast NS to all nodes) */
+	system("ping6 -c 1 -W 1 -I br0 ff02::1 >/dev/null 2>&1");
+
+	first = 1;
+	fp = popen("ip -6 neigh show dev br0 2>/dev/null", "r");
+	if (fp) {
+		while (fgets(line, sizeof(line), fp)) {
+			/* format: ADDR lladdr MAC STATE */
+			if (sscanf(line, "%127s %15s %31s", addr, ll, mac) == 3
+				&& strcmp(ll, "lladdr") == 0) {
+				if (first)
+					first = 0;
+				else
+					websWrite(wp, ",");
+				websWrite(wp, "[\"%s\",\"%s\"]", mac, addr);
+			}
+		}
+		pclose(fp);
+	}
+
+	return 0;
+}
+
+static int ej_wol_maclist(int eid, webs_t wp, int argc, char **argv)
+{
+	websWrite(wp, "%s", nvram_safe_get("wol_maclist"));
 	return 0;
 }
 
@@ -4515,11 +4587,15 @@ struct ej_handler ej_handlers[] =
 	{ "lanlink", lanlink_hook},
 	{ "wan_action", wan_action_hook},
 	{ "wol_action", wol_action_hook},
+	{ "wps_action", wps_action_hook},
+	{ "wps_status", wps_status_hook},
 	{ "nf_values", nf_values_hook},
 	{ "get_parameter", ej_get_parameter},
 	{ "get_nvram_list", ej_get_nvram_list},
 	{ "get_flash_time", ej_get_flash_time},
 	{ "get_static_client", ej_get_static_client},
+	{ "ipv6_neigh_list", ej_ipv6_neigh_list},
+	{ "wol_maclist", ej_wol_maclist},
 	{ "get_static_ccount", ej_get_static_ccount},
 #ifndef WEBUI_HIDE_VPN
 	{ "get_vpns_client", ej_get_vpns_client},
