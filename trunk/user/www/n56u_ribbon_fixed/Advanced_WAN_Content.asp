@@ -395,6 +395,15 @@ function change_wan_type(wan_type, flag){
 	showhide_div("row_dns_toggle", !is_static);
 	showhide_div("tbl_vpn_control", is_pppoe||is_pptp||is_l2tp);
 	showhide_div("row_auth_type", is_static||is_dhcp);
+	/* Multi-dial only applies to PPPoE */
+	showhide_div("pppoemwan4", is_pppoe);
+	if (!is_pppoe) {
+		showhide_div("pppoemwan3", 0);
+		showhide_div("pppoemwan2", 0);
+		showhide_div("pppoemwan1", 0);
+		showhide_div("pppoemwan0", 0);
+		showhide_div("row_static_wrapper", 0);
+	}
 
 	if(is_pppoe||is_pptp||is_l2tp){
 		$("dhcp_sect_desc").innerHTML = "<#WAN_MAN_desc#>";
@@ -760,9 +769,7 @@ function setClientMAC(num){
 
 function change_pppoemwan_rules_enabled(){
 	var v = document.form.pppoemwan_rules_x[0].checked;
-	showhide_div('row_static_caption', v);
-	showhide_div('row_static_header', v);
-	showhide_div('row_static_body', v);
+	showhide_div('row_static_wrapper', v);
 }
 
 function change_pppoemwan_enabled(){
@@ -771,15 +778,12 @@ function change_pppoemwan_enabled(){
 	showhide_div('pppoemwan2', v);
 	showhide_div('pppoemwan1', v);
 	showhide_div('pppoemwan0', v);
-	if (v == "0"){
-	showhide_div('row_static_caption', 0);
-	showhide_div('row_static_header', 0);
-	showhide_div('row_static_body', 0);}
-	else
-	{var v = document.form.pppoemwan_rules_x[0].checked;
-	showhide_div('row_static_caption', v);
-	showhide_div('row_static_header', v);
-	showhide_div('row_static_body', v);}
+	if (!v) {
+		showhide_div('row_static_wrapper', 0);
+	} else {
+		var rules_v = document.form.pppoemwan_rules_x[0].checked;
+		showhide_div('row_static_wrapper', rules_v);
+	}
 }
 
 function markGroupMDHCP(o, c, b) {
@@ -1135,8 +1139,24 @@ function simplyMAC(fullMAC){
                                         </tr>
                                         <tr id="pppoemwan2" >
                                             <th><#pppoemwan2#></th>
-                                            <td>
-                                            <input type="text" class="input" name="pppoe_num" id="pppoe_num" style="width: 200px" value="<% nvram_get_x("","pppoe_num"); %>" />
+                                            <td style="text-align: right;">
+                                            <select name="pppoe_num" id="pppoe_num" class="input" style="width: 70px; margin-right: 0px;">
+                                            </select>
+                                            <script>
+                                            (function(){
+                                                var sel = document.getElementById('pppoe_num');
+                                                var cur = parseInt('<% nvram_get_x("","pppoe_num"); %>') || 1;
+                                                if (cur < 1) cur = 1;
+                                                if (cur > 20) cur = 20;
+                                                for (var i = 1; i <= 20; i++) {
+                                                    var opt = document.createElement('option');
+                                                    opt.value = i;
+                                                    opt.text = i;
+                                                    if (i == cur) opt.selected = true;
+                                                    sel.appendChild(opt);
+                                                }
+                                            })();
+                                            </script>
 											</td>
                                         </tr>
                                         <tr id="pppoemwan1" >
@@ -1153,52 +1173,9 @@ function simplyMAC(fullMAC){
                                                 </div>
                                             </td>
                                        </tr>
-                                       <tr id="row_static_caption" style="display:none">
-                                            <th width="25%">
-                                                <#LANHostConfig_ManualMac_itemname#> <a href="javascript:sortbyMAC();" style="outline:0;"><i class="icon-circle-arrow-down"></i></a>
-                                            </th>
-                                            <th width="25%">
-                                                <#LANHostConfig_ManualIP_itemname#> <a href="javascript:sortbyIP();" style="outline:0;"><i class="icon-circle-arrow-down"></i></a>
-                                            </th>
-                                            <th width="25%">
-                                                <#LANHostConfig_ManualName_itemname#> <a href="javascript:sortbyName();" style="outline:0;"><i class="icon-circle-arrow-down"></i></a>
-                                            </th>
-                                            <th width="20%">
-                                                <#pppoemwan1_1#> <a href="javascript:sortbyName();" style="outline:0;"><i class="icon-circle-arrow-down"></i></a>
-                                            </th>
-                                            <th width="5%">
-                                                <center><a href="javascript:sortbyId();" style="outline:0;"><i class="icon-th-list"></i></a></center>
-                                            </th>
-                                        </tr>
-                                        <tr id="row_static_header" style="display:none">
-                                            <td width="25%">
-                                                <div id="ClientList_Block" class="alert alert-info ddown-list" style="width: 400px;"></div>
-                                                <div class="input-append">
-                                                    <input type="text" maxlength="12" class="span12" size="12" name="pppoemwan_mac_x_0" value="<% nvram_get_x("", "pppoemwan_mac_x_0"); %>" onkeypress="return is_hwaddr(event);" style="float:left; width: 110px"/>
-                                                    <button class="btn btn-chevron" id="chevron" type="button" onclick="pullLANIPList(this);" title="Select the MAC of LAN clients."><i class="icon icon-chevron-down"></i></button>
-                                                </div>
-                                            </td>
-                                            <td width="25%">
-                                                <input type="text" maxlength="15" class="span12" size="15" name="pppoemwan_ip_x_0" value="<% nvram_get_x("", "pppoemwan_ip_x_0"); %>" onkeypress="return is_ipaddr(this,event);"/>
-                                            </td>
-                                            <td width="25%">
-                                                <input type="text" maxlength="24" class="span12" size="20" name="pppoemwan_name_x_0" value="<% nvram_get_x("", "pppoemwan_name_x_0"); %>" onKeyPress="return is_string(this,event);"/>
-                                            </td>
-                                            <td width="20%">
-                                                <input type="text" maxlength="24" class="span12" size="20" name="pppoemwan_interface_x_0" value="<% nvram_get_x("", "pppoemwan_interface_x_0"); %>" onKeyPress="return is_string(this,event);"/>
-                                            </td>
-                                            <td width="5%">
-                                                <button class="btn" style="max-width: 219px" type="submit" onclick="return markGroupMDHCP(this, 64, ' Add ');" name="ManualDHCPList2" value="<#CTL_add#>" size="12"><i class="icon icon-plus"></i></button>
-                                            </td>
-                                        </tr>
-                                        <tr id="row_static_body" style="display:none">
-                                            <td colspan="5" style="border-top: 0 none; padding: 0px;">
-                                                <div id="MDHCPList_Block"></div>
-                                            </td>
-                                        </tr>
                                         <tr id="pppoemwan0">
-                                        	<th width="50%" style="border-top: 0 none;"><#pppoemwan0#></th>
-			                                <td style="border-top: 0 none;">
+                                            <th width="50%" style="border-top: 0 none;"><#pppoemwan0#></th>
+                                            <td style="border-top: 0 none;">
                                             <div class="main_itoggle">
                                                     <div id="pppoemwan_443_on_of">
                                                     	<input type="checkbox" id="pppoemwan_443_fake" <% nvram_match_x("", "pppoemwan_443", "1", "value=1 checked"); %><% nvram_match_x("", "pppoemwan_443", "0", "value=0"); %>  />
@@ -1208,6 +1185,55 @@ function simplyMAC(fullMAC){
                                                     <input type="radio" value="1" name="pppoemwan_443" id="pppoemwan_443_1" class="input" value="1" <% nvram_match_x("", "pppoemwan_443", "1", "checked"); %> /><#checkbox_Yes#>
                                                     <input type="radio" value="0" name="pppoemwan_443" id="pppoemwan_443_0" class="input" value="0" <% nvram_match_x("", "pppoemwan_443", "0", "checked"); %> /><#checkbox_No#>
                                             </div>
+                                            </td>
+                                        </tr>
+                                        <tr id="row_static_wrapper" style="display:none">
+                                            <td colspan="2" style="border-top: 0 none; padding: 0px;">
+                                                <table width="100%" cellspacing="0" cellpadding="0" class="table table-condensed" style="margin-bottom: 0px;">
+                                                    <tr id="row_static_caption">
+                                                        <th width="24%">
+                                                            <#LANHostConfig_ManualMac_itemname#> <a href="javascript:sortbyMAC();" style="outline:0;"><i class="icon-circle-arrow-down"></i></a>
+                                                        </th>
+                                                        <th width="24%">
+                                                            <#LANHostConfig_ManualIP_itemname#> <a href="javascript:sortbyIP();" style="outline:0;"><i class="icon-circle-arrow-down"></i></a>
+                                                        </th>
+                                                        <th width="24%">
+                                                            <#LANHostConfig_ManualName_itemname#> <a href="javascript:sortbyName();" style="outline:0;"><i class="icon-circle-arrow-down"></i></a>
+                                                        </th>
+                                                        <th width="18%" style="white-space: nowrap;">
+                                                            <#pppoemwan1_1#> <a href="javascript:sortbyName();" style="outline:0;"><i class="icon-circle-arrow-down"></i></a>
+                                                        </th>
+                                                        <th width="10%">
+                                                            <center><a href="javascript:sortbyId();" style="outline:0;"><i class="icon-th-list"></i></a></center>
+                                                        </th>
+                                                    </tr>
+                                                    <tr id="row_static_header">
+                                                        <td width="24%" style="position: relative;">
+                                                            <div id="ClientList_Block" class="alert alert-info ddown-list" style="width: 100%; min-width: 300px;"></div>
+                                                            <div class="input-append">
+                                                                <input type="text" maxlength="12" class="input" size="12" name="pppoemwan_mac_x_0" value="<% nvram_get_x("", "pppoemwan_mac_x_0"); %>" onkeypress="return is_hwaddr(event);" style="width: 150px;"/>
+                                                                <button class="btn btn-chevron" id="chevron" type="button" onclick="pullLANIPList(this);" title="Select the MAC of LAN clients."><i class="icon icon-chevron-down"></i></button>
+                                                            </div>
+                                                        </td>
+                                                        <td width="24%">
+                                                            <input type="text" maxlength="15" class="span12" size="15" name="pppoemwan_ip_x_0" value="<% nvram_get_x("", "pppoemwan_ip_x_0"); %>" onkeypress="return is_ipaddr(this,event);"/>
+                                                        </td>
+                                                        <td width="24%">
+                                                            <input type="text" maxlength="24" class="span12" size="20" name="pppoemwan_name_x_0" value="<% nvram_get_x("", "pppoemwan_name_x_0"); %>" onKeyPress="return is_string(this,event);"/>
+                                                        </td>
+                                                        <td width="18%">
+                                                            <input type="text" maxlength="24" class="span12" size="20" name="pppoemwan_interface_x_0" value="<% nvram_get_x("", "pppoemwan_interface_x_0"); %>" onKeyPress="return is_string(this,event);"/>
+                                                        </td>
+                                                        <td width="10%">
+                                                            <button class="btn" style="max-width: 219px" type="submit" onclick="return markGroupMDHCP(this, 64, ' Add ');" name="ManualDHCPList2" value="<#CTL_add#>" size="12"><i class="icon icon-plus"></i></button>
+                                                        </td>
+                                                    </tr>
+                                                    <tr id="row_static_body">
+                                                        <td colspan="5" style="border-top: 0 none; padding: 0px;">
+                                                            <div id="MDHCPList_Block"></div>
+                                                        </td>
+                                                    </tr>
+                                                </table>
                                             </td>
                                         </tr>
                                         <tr>
