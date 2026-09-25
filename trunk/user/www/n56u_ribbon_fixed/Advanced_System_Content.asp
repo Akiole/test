@@ -46,8 +46,14 @@ function initial(){
 		document.form.reboot_date_x_Thu.checked = getDateCheck(document.form.reboot_schedule.value, 4);
 		document.form.reboot_date_x_Fri.checked = getDateCheck(document.form.reboot_schedule.value, 5);
 		document.form.reboot_date_x_Sat.checked = getDateCheck(document.form.reboot_schedule.value, 6);
-		document.form.reboot_time_x_hour.value = getrebootTimeRange(document.form.reboot_schedule.value, 0);
-		document.form.reboot_time_x_min.value = getrebootTimeRange(document.form.reboot_schedule.value, 1);
+		var rebootSchedVal = document.form.reboot_schedule.value;
+		if (rebootSchedVal == "00000000000") {
+			document.form.reboot_time_x_hour.value = "04";
+			document.form.reboot_time_x_min.value = "00";
+		} else {
+			document.form.reboot_time_x_hour.value = rebootSchedVal.substring(7,9);
+			document.form.reboot_time_x_min.value = rebootSchedVal.substring(9,11);
+		}
 		document.getElementById('reboot_schedule_enable_tr').style.display = "";
 		change_on();
 
@@ -221,36 +227,25 @@ function check_Timefield_checkbox(){	// To check Date checkbox checked or not an
 	}
 }
 
-function getrebootTimeRange(str, pos)
-{
-	if (pos == 0)
-		return str.substring(7,9);
-	else if (pos == 1)
-		return str.substring(9,11);
-}
-
-function setrebootTimeRange(rd, rh, rm)
-{
-	return(rd.value+rh.value+rm.value);
-}
-
 function updateDateTime()
 {
 	if(document.form.reboot_schedule_enable_x[0].checked){
 		document.form.reboot_schedule_enable.value = "1";
 		document.form.reboot_schedule.disabled = false;
-		document.form.reboot_schedule.value = setDateCheck(
-		document.form.reboot_date_x_Sun,
-		document.form.reboot_date_x_Mon,
-		document.form.reboot_date_x_Tue,
-		document.form.reboot_date_x_Wed,
-		document.form.reboot_date_x_Thu,
-		document.form.reboot_date_x_Fri,
-		document.form.reboot_date_x_Sat);
-		document.form.reboot_schedule.value = setrebootTimeRange(
-		document.form.reboot_schedule,
-		document.form.reboot_time_x_hour,
-		document.form.reboot_time_x_min);
+		// 按 Sun(0),Mon(1),Tue(2),Wed(3),Thu(4),Fri(5),Sat(6) 顺序构建，与后端 timecheck_reboot 一致
+		var rebootDateStr = "";
+		rebootDateStr += document.form.reboot_date_x_Sun.checked ? "1" : "0";
+		rebootDateStr += document.form.reboot_date_x_Mon.checked ? "1" : "0";
+		rebootDateStr += document.form.reboot_date_x_Tue.checked ? "1" : "0";
+		rebootDateStr += document.form.reboot_date_x_Wed.checked ? "1" : "0";
+		rebootDateStr += document.form.reboot_date_x_Thu.checked ? "1" : "0";
+		rebootDateStr += document.form.reboot_date_x_Fri.checked ? "1" : "0";
+		rebootDateStr += document.form.reboot_date_x_Sat.checked ? "1" : "0";
+		var rh = document.form.reboot_time_x_hour.value;
+		var rm = document.form.reboot_time_x_min.value;
+		if (rh.length < 2) rh = "0" + rh;
+		if (rm.length < 2) rm = "0" + rm;
+		document.form.reboot_schedule.value = rebootDateStr + rh + rm;
 	}
 	else
 		document.form.reboot_schedule_enable.value = "0";
@@ -518,8 +513,8 @@ function updateDateTime()
                                         <tr id="reboot_schedule_time_tr">
                                             <th style="border-top: 0 none;"><#Reboot_Schedule_Time#></th>
                                             <td style="border-top: 0 none;">
-                                                <input type="text" maxlength="2" style="width: 20px;" size="2" name="reboot_time_x_hour" onKeyPress="return validator.isNumber(this,event);" onblur="validator.timeRange(this, 0);" autocorrect="off" autocapitalize="off"><#Hour#>:
-                                                <input type="text" maxlength="2" style="width: 20px;" size="2" name="reboot_time_x_min" onKeyPress="return validator.isNumber(this,event);" onblur="validator.timeRange(this, 1);" autocorrect="off" autocapitalize="off"><#Minute#>
+                                                <input type="text" maxlength="2" style="width: 20px;" size="2" name="reboot_time_x_hour" value="04" onKeyPress="return validator.isNumber(this,event);" onblur="validator.timeRange(this, 0);" autocorrect="off" autocapitalize="off"><#Hour#>:
+                                                <input type="text" maxlength="2" style="width: 20px;" size="2" name="reboot_time_x_min" value="00" onKeyPress="return validator.isNumber(this,event);" onblur="validator.timeRange(this, 1);" autocorrect="off" autocapitalize="off"><#Minute#>
                                             </td>
                                         </tr>
                                         <tr>

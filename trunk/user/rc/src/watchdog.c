@@ -255,6 +255,19 @@ inet_handler(int is_ap_mode)
 	}
 }
 
+/* Check if schedule string is valid: 11 chars and at least one weekday selected */
+static int schedule_valid(char *s)
+{
+	int i;
+	if (strlen(s) != 11)
+		return 0;
+	for (i = 0; i < 7; i++) {
+		if (s[i] == '1')
+			return 1;
+	}
+	return 0;
+}
+
 int timecheck_reboot(char *activeSchedule)
 {
 	int active, current_time, current_date, Time2Active, Date2Active;
@@ -382,7 +395,7 @@ svc_timecheck(void)
 		if (nvram_match("ntp_ready", "1"))
 		{
 			snprintf(reboot_schedule, sizeof(reboot_schedule), "%s", nvram_safe_get("reboot_schedule"));
-			if (strlen(reboot_schedule) == 11 && atoi(reboot_schedule) > 2359)
+			if (schedule_valid(reboot_schedule))
 			{
 				if (timecheck_reboot(reboot_schedule))
 				{
@@ -401,7 +414,7 @@ svc_timecheck(void)
 		if (nvram_match("ntp_ready", "1"))
 		{
 			snprintf(ss_schedule, sizeof(ss_schedule), "%s", nvram_safe_get("ss_schedule"));
-			if (strlen(ss_schedule) == 11 && atoi(ss_schedule) > 2359)
+			if (schedule_valid(ss_schedule))
 			{
 				if (timecheck_reboot(ss_schedule))
 				{
