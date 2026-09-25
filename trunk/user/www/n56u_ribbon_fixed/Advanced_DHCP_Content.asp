@@ -465,7 +465,7 @@ function changeBgColor(obj, num){
                                         <tr>
                                             <th style="padding-bottom: 0px;"><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this,5,6);"><#LANHostConfig_x_LGateway_itemname#></a></th>
                                             <td style="padding-bottom: 0px;">
-                                                <input type="text" maxlength="15" class="input" size="15" name="dhcp_gateway_x" value="<% nvram_get_x("", "dhcp_gateway_x"); %>" onKeyPress="return is_ipaddr(this,event);">
+                                                <input type="text" maxlength="15" class="input" size="15" name="dhcp_gateway_x" value="<% nvram_get_x("", "dhcp_gateway_x"); %>" placeholder="<% nvram_get_x("", "lan_ipaddr"); %>" onKeyPress="return is_ipaddr(this,event);">
                                             </td>
                                         </tr>
                                     </table>
@@ -477,37 +477,37 @@ function changeBgColor(obj, num){
                                         <tr>
                                             <th width="50%"><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this,5,7);"><#LANHostConfig_x_LDNSServer1_itemname#> 1:</a></th>
                                             <td>
-                                                <input type="text" maxlength="15" class="input" size="15" name="dhcp_dns1_x" value="<% nvram_get_x("", "dhcp_dns1_x"); %>" onKeyPress="return is_ipaddr(this,event);" />
+                                                <input type="text" maxlength="15" class="input" size="15" name="dhcp_dns1_x" value="<% nvram_get_x("", "dhcp_dns1_x"); %>" placeholder="<% nvram_get_x("", "lan_ipaddr"); %>" onKeyPress="return is_ipaddr(this,event);" />
                                             </td>
                                         </tr>
                                         <tr>
                                             <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this,5,8);"><#LANHostConfig_x_LDNSServer1_itemname#> 2:</a></th>
                                             <td>
-                                                <input type="text" maxlength="15" class="input" size="15" name="dhcp_dns2_x" value="<% nvram_get_x("", "dhcp_dns2_x"); %>" onKeyPress="return is_ipaddr(this,event);" />
+                                                <input type="text" maxlength="15" class="input" size="15" name="dhcp_dns2_x" value="<% nvram_get_x("", "dhcp_dns2_x"); %>" placeholder="<% nvram_get_x("", "lan_ipaddr"); %>" onKeyPress="return is_ipaddr(this,event);" />
                                             </td>
                                         </tr>
                                         <tr>
                                             <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this,5,9);"><#LANHostConfig_x_LDNSServer1_itemname#> 3:</a></th>
                                             <td>
-                                                <input type="text" maxlength="15" class="input" size="15" name="dhcp_dns3_x" value="<% nvram_get_x("", "dhcp_dns3_x"); %>" onKeyPress="return is_ipaddr(this,event);" />
+                                                <input type="text" maxlength="15" class="input" size="15" name="dhcp_dns3_x" value="<% nvram_get_x("", "dhcp_dns3_x"); %>" placeholder="<% nvram_get_x("", "lan_ipaddr"); %>" onKeyPress="return is_ipaddr(this,event);" />
                                             </td>
                                         </tr>
                                         <tr>
                                             <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this,5,10);"><#LANHostConfig_x_LDNSServer6_itemname#> :</th>
                                             <td>
-                                                <input type="text" maxlength="40" class="input" size="15" name="dhcp_dnsv6_x" value="<% nvram_get_x("", "dhcp_dnsv6_x"); %>" onKeyPress="return is_string(this,event);" />
+                                                <input type="text" maxlength="40" class="input" size="15" name="dhcp_dnsv6_x" value="<% nvram_get_x("", "dhcp_dnsv6_x"); %>" placeholder="<% nvram_get_x("", "ip6_lan_addr"); %>" onKeyPress="return is_string(this,event);" />
                                             </td>
                                         </tr>
                                         <tr>
                                             <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this,5,10);"><#LANHostConfig_x_LDNSServer61_itemname#> :</th>
                                             <td>
-                                                <input type="text" maxlength="40" class="input" size="15" name="dhcp_dnsv61_x" value="<% nvram_get_x("", "dhcp_dnsv61_x"); %>" onKeyPress="return is_string(this,event);" />
+                                                <input type="text" maxlength="40" class="input" size="15" name="dhcp_dnsv61_x" value="<% nvram_get_x("", "dhcp_dnsv61_x"); %>" placeholder="<% nvram_get_x("", "ip6_lan_addr"); %>" onKeyPress="return is_string(this,event);" />
                                             </td>
                                         </tr>
                                         <tr>
                                             <th style="padding-bottom: 0px;"><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this,5,11);"><#LANHostConfig_x_WINSServer_itemname#></a></th>
                                             <td style="padding-bottom: 0px;">
-                                                <input type="text" maxlength="15" class="input" size="15" name="dhcp_wins_x" value="<% nvram_get_x("", "dhcp_wins_x"); %>" onkeypress="return is_ipaddr(this,event);" />
+                                                <input type="text" maxlength="15" class="input" size="15" name="dhcp_wins_x" value="<% nvram_get_x("", "dhcp_wins_x"); %>" placeholder="<% nvram_get_x("", "lan_ipaddr"); %>" onkeypress="return is_ipaddr(this,event);" />
                                             </td>
                                         </tr>
                                         <tr id="row_redirect_all_dns">
