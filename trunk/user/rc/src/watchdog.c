@@ -56,6 +56,7 @@ static int svcStatus[ACTIVEITEMS] = {-1, -1, -1, -1};
 static int ntpc_timer = -1;
 static int ntpc_server_idx = 0;
 static int ntpc_tries = 0;
+static int wan_was_connected = 0;
 
 static int httpd_missing = 0;
 static int dnsmasq_missing = 0;
@@ -216,14 +217,15 @@ ntpc_handler(void)
 		setenv_tz();
 		refresh_ntp();
 	} else if (!is_ntpc_updated()) {
-		int ntp_skip = 3;	// update every 30s
-		
+		/* Not yet synced: keep retrying.
+		 * First 3 minutes: every 30s (every 3 calls).
+		 * After that: every 5 minutes (every 30 calls).
+		 * Never give up until sync succeeds. */
+		int ntp_skip;
+
 		ntpc_tries++;
-		if (ntpc_tries > 10)
-			ntp_skip = 180;	// update every 30m
-		else if (ntpc_tries > 3)
-			ntp_skip = 30;	// update every 5m
-		
+		ntp_skip = (ntpc_tries <= 18) ? 3 : 30;
+
 		if (!(ntpc_tries % ntp_skip))
 			refresh_ntp();
 	}
@@ -244,8 +246,16 @@ inet_handler(int is_ap_mode)
 		
 		if (has_wan_ip4(0) && has_wan_gw4())
 		{
+			/* WAN just came up: reset retry counter for fast NTP retry */
+			if (!wan_was_connected && !is_ntpc_updated()) {
+				ntpc_tries = 0;
+				ntpc_timer = -1;
+			}
+			wan_was_connected = 1;
 			/* sync time to ntp server if necessary */
 			ntpc_handler();
+		} else {
+			wan_was_connected = 0;
 		}
 	}
 	else
