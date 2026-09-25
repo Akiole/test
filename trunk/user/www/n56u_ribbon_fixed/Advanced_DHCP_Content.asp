@@ -22,6 +22,7 @@
 <script type="text/javascript" src="/client_function.js"></script>
 <script type="text/javascript" src="/help.js"></script>
 <script>
+<% wanlink(); %>
 var $j = jQuery.noConflict();
 
 $j(document).ready(function() {
@@ -90,6 +91,32 @@ function initial(){
 		document.form.dhcp_verbose.remove(2);
 		document.form.dhcp_verbose.remove(2);
 	}
+
+	// 获取 WAN 口真实 DNS 并设置到 placeholder（区分 IPv4/IPv6）
+	try {
+		var wanDnsStr = wanlink_dns();
+		if (wanDnsStr && wanDnsStr !== '---') {
+			var wanDnsList = wanDnsStr.split('<br/>');
+			var ipv4Dns = [], ipv6Dns = [];
+			for (var di = 0; di < wanDnsList.length; di++) {
+				if (wanDnsList[di].indexOf(':') !== -1)
+					ipv6Dns.push(wanDnsList[di]);
+				else
+					ipv4Dns.push(wanDnsList[di]);
+			}
+			var dns1 = document.getElementsByName('dhcp_dns1_x')[0];
+			var dns2 = document.getElementsByName('dhcp_dns2_x')[0];
+			var dns3 = document.getElementsByName('dhcp_dns3_x')[0];
+			if (dns1) dns1.placeholder = ipv4Dns[0] || '';
+			if (dns2) dns2.placeholder = ipv4Dns[1] || '';
+			if (dns3) dns3.placeholder = ipv4Dns[2] || '';
+			var dnsv6 = document.getElementsByName('dhcp_dnsv6_x')[0];
+			var dnsv61 = document.getElementsByName('dhcp_dnsv61_x')[0];
+			var lanIpv6 = '<% nvram_get_x("", "ip6_lan_addr"); %>';
+			if (dnsv6) dnsv6.placeholder = ipv6Dns[0] || lanIpv6 || '';
+			if (dnsv61) dnsv61.placeholder = ipv6Dns[1] || '';
+		}
+	} catch(e) {}
 
 	load_body();
 }
