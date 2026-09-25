@@ -31,6 +31,8 @@
 #include <sys/time.h>
 #include <sys/ioctl.h>
 #include <net/ethernet.h>
+#include <netdb.h>
+#include <arpa/inet.h>
 
 #include "rc.h"
 
@@ -434,6 +436,45 @@ start_dns_dhcpd(int is_ap_mode)
 		else if (nvram_get_int("wins_enable"))
 			fprintf(fp, "dhcp-option=tag:%s,%d,%s\n", DHCPD_RANGE_DEF_TAG, 44, ipaddr);
 #endif
+		/* NTP servers (option 42) - must be IP addresses, resolve hostnames */
+		{
+			const char *ntp_servers[] = {
+				nvram_safe_get("ntp_server0"),
+				nvram_safe_get("ntp_server1"),
+				NULL
+			};
+			char ntp_all[128] = {0};
+			int i;
+			
+			for (i = 0; ntp_servers[i] && *ntp_servers[i]; i++) {
+				char ip[64] = {0};
+				const char *server = ntp_servers[i];
+				
+				/* Skip duplicates */
+				if (i > 0 && strcmp(server, ntp_servers[i-1]) == 0)
+					continue;
+				
+				if (is_valid_ipv4(server)) {
+					/* Already an IP address */
+					strncpy(ip, server, sizeof(ip) - 1);
+				} else {
+					/* Resolve hostname to IP address */
+					struct hostent *he = gethostbyname(server);
+					if (he && he->h_addr_list[0]) {
+						struct in_addr **addr_list = (struct in_addr **)he->h_addr_list;
+						strncpy(ip, inet_ntoa(*addr_list[0]), sizeof(ip) - 1);
+					}
+				}
+				
+				if (strlen(ip) > 0 && is_valid_ipv4(ip)) {
+					if (strlen(ntp_all) > 0)
+						strcat(ntp_all, ",");
+					strcat(ntp_all, ip);
+				}
+			}
+			if (strlen(ntp_all) > 0)
+				fprintf(fp, "dhcp-option=tag:%s,%d,%s\n", DHCPD_RANGE_DEF_TAG, 42, ntp_all);
+		}
 #if defined(APP_VLMCSD)
 		int vlmcsd_mode = nvram_get_int("vlmcsd_enable");
 		if ( vlmcsd_mode == 1)	
