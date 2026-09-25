@@ -296,7 +296,7 @@ start_dns_dhcpd(int is_ap_mode)
 {
 	FILE *fp;
 	int i_verbose, i_dhcp_enable, is_dhcp_used, is_dns_used;
-	char dhcp_start[32], dhcp_end[32], dns_all[64], dnsv6[40];
+	char dhcp_start[32], dhcp_end[32], dns_all[64], dnsv6[96];
 	char *ipaddr, *netmask, *gw, *dns1, *dns2, *dns3, *wins, *domain, *dns6, *dns61;
 	const char *storage_dir = "/etc/storage/dnsmasq";
 
@@ -529,16 +529,28 @@ start_dns_dhcpd(int is_ap_mode)
 					DHCPD_RANGE_DEF_TAG, i_sfps, i_sfpe, IFNAME_BR, range_mode, 64, i_sflt);
 			}
 			
-			/* DNS server */
+			/* DNS server (IPv6 addresses must be enclosed in brackets for dnsmasq) */
 			memset(dnsv6, 0, sizeof(dnsv6));
 			dns6 = nvram_safe_get("dhcp_dnsv6_x");
+			dns61 = nvram_safe_get("dhcp_dnsv61_x");
+			
 			if (is_valid_ipv6(dns6)) {
-				strcpy(dnsv6, dns6);
-				fprintf(fp, "dhcp-option=tag:%s,option6:%d,%s\n", DHCPD_RANGE_DEF_TAG, 23, dnsv6);
-			} else {
-				// strcpy(dnsv6, "[::]");
-				fprintf(fp, "dhcp-option=tag:%s,option6:%d\n", DHCPD_RANGE_DEF_TAG, 23);
+				strcat(dnsv6, "[");
+				strcat(dnsv6, dns6);
+				strcat(dnsv6, "]");
 			}
+			if (is_valid_ipv6(dns61) && strcmp(dns61, dns6) != 0) {
+				if (strlen(dnsv6) > 0)
+					strcat(dnsv6, ",");
+				strcat(dnsv6, "[");
+				strcat(dnsv6, dns61);
+				strcat(dnsv6, "]");
+			}
+			
+			if (strlen(dnsv6) > 0)
+				fprintf(fp, "dhcp-option=tag:%s,option6:%d,%s\n", DHCPD_RANGE_DEF_TAG, 23, dnsv6);
+			else
+				fprintf(fp, "dhcp-option=tag:%s,option6:%d\n", DHCPD_RANGE_DEF_TAG, 23);
 			
 			/* DOMAIN search */
 			if (strlen(domain) > 0)
