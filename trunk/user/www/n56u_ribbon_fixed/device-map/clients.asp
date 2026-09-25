@@ -183,13 +183,18 @@ function update_clients(e) {
 			if (typeof window.ipmonitor_last != 'undefined' && window.ipmonitor_last != null) {
 				ipmonitor = window.ipmonitor_last;
 				nmap_fullscan = window.nmap_fullscan_last;
-				clients = [];
-				clients = getclients(1,0);
-				build_ipv6_map();
-				prepare_clients();
-				merge_ap_wireless();
-				show_clients();
-				check_full_scan_done();
+				ipv6_neigh_map = (typeof window.ipv6_neigh_map != 'undefined') ? window.ipv6_neigh_map : [];
+				try {
+					clients = [];
+					clients = getclients(1,0);
+					build_ipv6_map();
+					prepare_clients();
+					merge_ap_wireless();
+					show_clients();
+					check_full_scan_done();
+				} catch(err) {
+					;
+				}
 			}
 		}
 	});
@@ -498,6 +503,9 @@ function load_ap_wireless(){
 
 // 每 30 秒刷新一次跨 AP 数据
 setInterval(load_ap_wireless, 30000);
+
+// 每 60 秒自动刷新客户端列表（断开的设备自动移除，新设备自动出现）
+setInterval(update_clients, 60000);
 
 </script>
 
