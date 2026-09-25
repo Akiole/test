@@ -1139,9 +1139,11 @@ function simplyMAC(fullMAC){
                                         </tr>
                                         <tr id="pppoemwan2" >
                                             <th><#pppoemwan2#></th>
-                                            <td style="text-align: right;">
-                                            <select name="pppoe_num" id="pppoe_num" class="input" style="width: 70px; margin-right: 0px;">
+                                            <td>
+                                            <div class="main_itoggle">
+                                            <select name="pppoe_num" id="pppoe_num" class="input" style="width: 70px;">
                                             </select>
+                                            </div>
                                             <script>
                                             (function(){
                                                 var sel = document.getElementById('pppoe_num');
