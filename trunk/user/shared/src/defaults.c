@@ -224,6 +224,7 @@ struct nvram_pair router_defaults[] = {
 	{ "wl_macnum_x", "0" },
 	{ "wl_wdslist_x", "" },
 	{ "wl_maclist_x", "" },
+	{ "wl_macdesc_x", "" },
 	{ "wl_wpa_mode", "2" },
 	{ "wl_stream_tx", STR(BOARD_NUM_ANT_5G_TX) },
 	{ "wl_stream_rx", STR(BOARD_NUM_ANT_5G_RX) },
@@ -337,6 +338,7 @@ struct nvram_pair router_defaults[] = {
 	{ "rt_macnum_x", "0" },
 	{ "rt_wdslist_x", "" },
 	{ "rt_maclist_x", "" },
+	{ "rt_macdesc_x", "" },
 	{ "rt_wpa_mode", "2" },
 	{ "rt_stream_tx", STR(BOARD_NUM_ANT_2G_TX) },
 	{ "rt_stream_rx", STR(BOARD_NUM_ANT_2G_RX) },
@@ -1252,15 +1254,6 @@ struct nvram_pair tables_defaults[] = {
 	{ "vpns_addr_x", "" },
 	{ "vpns_rnet_x", "" },
 	{ "vpns_rmsk_x", "" },
-
-	{ "wl_maclist_x", "" },
-	{ "wl_macdesc_x", "" },
-
-	{ "rt_maclist_x", "" },
-	{ "rt_macdesc_x", "" },
-
-	{ "wl_wdslist_x", "" },
-	{ "rt_wdslist_x", "" },
 
 	{ 0, 0 }
 };
