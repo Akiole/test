@@ -27,7 +27,6 @@ $j(document).ready(function() {
 	init_itoggle('telnetd');
 	init_itoggle('wins_enable', change_wins_enabled);
 	init_itoggle('lltd_enable');
-	init_itoggle('adsc_enable');
 	init_itoggle('crond_enable', change_crond_enabled);
 	init_itoggle('ttyd_enable', change_ttyd_enabled);
 	init_itoggle('vlmcsd_enable');
@@ -580,20 +579,6 @@ function on_ttyd_link(){
                                                 <div style="position: absolute; margin-left: -10000px;">
                                                     <input type="radio" name="lltd_enable" id="lltd_enable_1" class="input" value="1" <% nvram_match_x("", "lltd_enable", "1", "checked"); %>/><#checkbox_Yes#>
                                                     <input type="radio" name="lltd_enable" id="lltd_enable_0" class="input" value="0" <% nvram_match_x("", "lltd_enable", "0", "checked"); %>/><#checkbox_No#>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                        <tr>
-                                            <th><#Adm_Svc_adsc#></th>
-                                            <td>
-                                                <div class="main_itoggle">
-                                                    <div id="adsc_enable_on_of">
-                                                        <input type="checkbox" id="adsc_enable_fake" <% nvram_match_x("", "adsc_enable", "1", "value=1 checked"); %><% nvram_match_x("", "adsc_enable", "0", "value=0"); %>>
-                                                    </div>
-                                                </div>
-                                                <div style="position: absolute; margin-left: -10000px;">
-                                                    <input type="radio" name="adsc_enable" id="adsc_enable_1" class="input" value="1" <% nvram_match_x("", "adsc_enable", "1", "checked"); %>/><#checkbox_Yes#>
-                                                    <input type="radio" name="adsc_enable" id="adsc_enable_0" class="input" value="0" <% nvram_match_x("", "adsc_enable", "0", "checked"); %>/><#checkbox_No#>
                                                 </div>
                                             </td>
                                         </tr>

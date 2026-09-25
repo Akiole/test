@@ -1002,7 +1002,6 @@ struct nvram_pair router_defaults[] = {
 	{ "sshd_enable", "1" },
 	{ "wins_enable", "0" },
 	{ "lltd_enable", "1" },
-	{ "adsc_enable", "0" },
 	{ "crond_enable", "1" },
 	{ "crond_log", "0" },
 

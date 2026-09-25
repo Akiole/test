@@ -42,7 +42,6 @@
 #define RCN_RESTART_SSHD		"restart_sshd"
 #define RCN_RESTART_WINS		"restart_wins"
 #define RCN_RESTART_LLTD		"restart_lltd"
-#define RCN_RESTART_ADSC		"restart_adsc"
 #define RCN_RESTART_CROND		"restart_crond"
 #define RCN_RESTART_IPTV		"restart_iptv"
 #define RCN_RESTART_SYSCTL		"restart_sysctl"

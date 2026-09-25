@@ -81,29 +81,6 @@ start_klogd(void)
 }
 
 void
-stop_infosvr(void)
-{
-	char* svcs[] = { "infosvr", NULL };
-	kill_services(svcs, 3, 1);
-}
-
-int
-start_infosvr(void)
-{
-	if (nvram_invmatch("adsc_enable", "1"))
-		return 1;
-
-	return eval("/usr/sbin/infosvr", IFNAME_BR);
-}
-
-void
-restart_infosvr(void)
-{
-	stop_infosvr();
-	start_infosvr();
-}
-
-void
 stop_crond(void)
 {
 	char* svcs[] = { "crond", NULL };
@@ -764,7 +741,6 @@ start_services_once(int is_ap_mode)
 	start_vpn_server();
 	start_watchdog();
 	start_gpio_btn();
-	start_infosvr();
 
 	if (!is_ap_mode) {
 		if (!is_upnp_run())
@@ -885,7 +861,6 @@ stop_services(int stopall)
 	stop_lltd();
 	stop_detect_internet();
 	stop_rstats();
-	stop_infosvr();
 	stop_crond();
 	stop_igmpproxy(NULL);
 }

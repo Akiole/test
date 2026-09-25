@@ -225,7 +225,6 @@ Adm_System_logf_item2=Последние 100 строк
 Adm_Svc_desc=Управление различными сервисами маршрутизатора.
 Adm_Svc_wins=Сервис WINS?
 Adm_Svc_lltd=Сервис LLTD (Link Layer Topology Discovery)?
-Adm_Svc_adsc=Сервис ASUS Info Discovery?
 Adm_Svc_crond=Сервис Cron (планировщик)?
 Adm_Svc_crontabs=Задания планировщика (Crontab)
 Adm_System_webs=HTTP веб-сервер

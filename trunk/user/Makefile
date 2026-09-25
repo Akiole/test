@@ -238,7 +238,6 @@ dir_$(STORAGE_ENABLED) += libdisk
 # -----------------------------------------------------------------------------
 dir_y += dnsmasq
 dir_y += igmpproxy
-dir_y += infosvr
 dir_y += inadyn
 dir_y += miniupnpd
 

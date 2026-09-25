@@ -697,7 +697,6 @@ full_restart_lan(void)
 		stop_logger();
 
 	stop_lltd();
-	stop_infosvr();
 	stop_networkmap();
 	stop_upnp();
 	stop_vpn_server();
@@ -758,7 +757,6 @@ full_restart_lan(void)
 	reload_nmbd();
 #endif
 
-	start_infosvr();
 	start_lltd();
 
 	/* start ARP network scanner */

@@ -1252,10 +1252,6 @@ handle_notifications(void)
 		{
 			restart_lltd();
 		}
-		else if (strcmp(entry->d_name, RCN_RESTART_ADSC) == 0)
-		{
-			restart_infosvr();
-		}
 		else if (strcmp(entry->d_name, RCN_RESTART_CROND) == 0)
 		{
 			restart_crond();

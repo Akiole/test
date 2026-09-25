@@ -68,7 +68,6 @@ typedef uint8_t u8;
 #define EVM_RESTART_SSHD		(1ULL << 22)
 #define EVM_RESTART_WINS		(1ULL << 23)
 #define EVM_RESTART_LLTD		(1ULL << 24)
-#define EVM_RESTART_ADSC		(1ULL << 25)
 #define EVM_RESTART_IPTV		(1ULL << 26)
 #define EVM_RESTART_CROND		(1ULL << 27)
 #define EVM_RESTART_SYSCTL		(1ULL << 28)
@@ -136,7 +135,6 @@ typedef uint8_t u8;
 #define EVT_RESTART_SSHD		1
 #define EVT_RESTART_WINS		2
 #define EVT_RESTART_LLTD		1
-#define EVT_RESTART_ADSC		1
 #define EVT_RESTART_CROND		1
 #define EVT_RESTART_IPTV		1
 #define EVT_RESTART_SYSCTL		1
