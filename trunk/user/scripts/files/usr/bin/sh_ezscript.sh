@@ -215,7 +215,7 @@ connect_to_ap() {
 		# 强制 20MHz 提高中继兼容性
 		nvram set rt_HT_BW=0
 		nvram commit
-		radio2_restart
+		rc radio2_restart
 	else
 		nvram set wl_channel="$channel"
 		iwpriv "$radio5_apcli" set Channel="$channel" 2>/dev/null
@@ -227,7 +227,7 @@ connect_to_ap() {
 		nvram set wl_sta_crypto="$crypto"
 		nvram set wl_sta_wpa_psk="$psk"
 		nvram commit
-		radio5_restart
+		rc radio2_restart
 	fi
 }
 
@@ -240,19 +240,48 @@ connAPSite () {
 	logger -t "【连接 AP】" "10秒后自动搜寻 AP"
 	sleep 10
 
-	# ---- 初始化接口名 ----
+	# ---- 初始化接口名（自动检测） ----
 	ap_fenge=$(nvram get ap_fenge)
 	radio2_apcli=$(nvram get radio2_apcli)
-	[ -z "$radio2_apcli" ] && radio2_apcli="apcli0"
 	radio5_apcli=$(nvram get radio5_apcli)
-	[ -z "$radio5_apcli" ] && radio5_apcli="apclii0"
-
 	radio2_main=$(nvram get radio2_main)
-	[ -z "$radio2_main" ] && radio2_main="ra0"
 	radio5_main=$(nvram get radio5_main)
-	[ -z "$radio5_main" ] && radio5_main="rai0"
 
-	# 加载配置
+	# 自动检测 2.4G 主接口
+	if [ -z "$radio2_main" ]; then
+		if iwpriv rax0 get_site_survey >/dev/null 2>&1; then
+			radio2_main="rax0"
+		else
+			radio2_main="ra0"
+		fi
+	fi
+	# 自动检测 5G 主接口
+	if [ -z "$radio5_main" ]; then
+		if iwpriv ra0 get_site_survey >/dev/null 2>&1 && [ "$radio2_main" != "ra0" ]; then
+			radio5_main="ra0"
+		else
+			radio5_main="rai0"
+		fi
+	fi
+	# 自动检测 2.4G AP-Client 接口
+	if [ -z "$radio2_apcli" ]; then
+		if [ "$radio2_main" = "rax0" ]; then
+			radio2_apcli="apclix0"
+		else
+			radio2_apcli="apcli0"
+		fi
+	fi
+	# 自动检测 5G AP-Client 接口
+	if [ -z "$radio5_apcli" ]; then
+		if [ "$radio5_main" = "ra0" ]; then
+			radio5_apcli="apcli0"
+		else
+			radio5_apcli="apclii0"
+		fi
+	fi
+
+	# 加载配置（优先从 nvram 同步到临时文件）
+	load_config 2>/dev/null
 	cat /tmp/ap2g5g.txt 2>/dev/null | grep -v '^#' | grep -v "^$" > /tmp/ap2g5g
 
 	# ---- 检查 lock 和配置 ----

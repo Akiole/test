@@ -125,6 +125,74 @@ function toggle_quality_check(){
 	$j('.quality-field').prop('disabled', !enabled);
 	$j('.quality-field').closest('tr').find('td').css('opacity', enabled ? '1' : '0.5');
 }
+
+// 扫描附近 AP
+var ap_scan_list = [];
+var scan_band = '5';
+
+function scan_nearby_ap(band){
+	scan_band = band;
+	ap_scan_list = [];
+	document.getElementById('APScanList').style.display = 'block';
+	document.getElementById('APScanList').innerHTML = '<div style="width: 207px"><center><img style="padding-top: 4px; display: block;" src="/bootstrap/img/ajax-loader.gif"></center></div>';
+	var url = (band == '2') ? '/wds_aplist_2g.asp' : '/wds_aplist.asp';
+	$j.ajax({
+		url: url,
+		dataType: 'script',
+		error: function(xhr){
+			setTimeout(function(){ scan_nearby_ap(band); }, 1000);
+		},
+		success: function(response){
+			ap_scan_list = wds_aplist;
+			show_scan_list();
+		}
+	});
+}
+
+function show_scan_list(){
+	var code = "";
+	var show_name = "";
+
+	if(ap_scan_list && ap_scan_list.length > 0 && ap_scan_list[0][0] != ""){
+		for(var i = 0; i < ap_scan_list.length; i++){
+			try {
+				ap_scan_list[i][0] = decodeURIComponent(ap_scan_list[i][0]);
+			} catch (e) {}
+			if(ap_scan_list[i][0] && ap_scan_list[i][0].length > 16)
+				show_name = ap_scan_list[i][0].substring(0, 14) + "..";
+			else
+				show_name = ap_scan_list[i][0];
+
+			if(ap_scan_list[i][1] && ap_scan_list[i][1].length > 0){
+				code += '<a href="javascript:void(0)"><div onclick="select_ap('+i+',\''+scan_band+'\');"><strong>'+show_name+'</strong>';
+				code += ' ['+ap_scan_list[i][1]+']';
+				code += ', Ch.'+ap_scan_list[i][2];
+				code += ', '+ap_scan_list[i][3]+'%';
+				code += ' </div></a>';
+			}
+		}
+		code += '<div style="font-weight:bold;cursor:pointer;" onclick="scan_nearby_ap(\''+scan_band+'\');"><#AP_survey#>&nbsp;</div>';
+	}
+	else{
+		code += '<div style="padding: 10px; text-align: center; color: #999;">未扫描到 AP</div>';
+	}
+
+	document.getElementById("APScanList").innerHTML = code;
+}
+
+function select_ap(num, band){
+	var ssid = ap_scan_list[num][0];
+	var bssid = ap_scan_list[num][1];
+	if(!band) band = '5';
+	// 格式：频段@工作模式@客户端角色@SSID@密码@BSSID
+	var line = band + "@3@0@" + ssid + "@@" + bssid;
+	var ta = document.form.ap_relay_list;
+	if(ta.value && ta.value.trim() != "")
+		ta.value += "\n" + line;
+	else
+		ta.value = line;
+	document.getElementById('APScanList').style.display = 'none';
+}
 </script>
 </head>
 
@@ -240,6 +308,12 @@ function toggle_quality_check(){
                             <p style="font-size: 12px; color: #666;">
                                 频段：2=2.4GHz 5=5GHz | 模式：3=AP-Client 4=AP-Client+AP | 角色：0=LAN bridge 1=WAN
                             </p>
+                            <div style="margin-bottom: 10px;">
+                                <button type="button" class="btn btn-mini btn-info" onclick="scan_nearby_ap('5');">扫描 5G AP</button>
+                                <button type="button" class="btn btn-mini btn-info" onclick="scan_nearby_ap('2');">扫描 2.4G AP</button>
+                                <span style="font-size: 11px; color: #999; margin-left: 10px;">点击扫描结果自动添加到列表（密码需手动填写）</span>
+                            </div>
+                            <div id="APScanList" class="alert alert-info ddown-list" style="display: none; margin-bottom: 10px;"></div>
                             <textarea name="ap_relay_list" rows="10" style="width: 98%; font-family: monospace; font-size: 12px;"><% nvram_get_x("", "ap_relay_list"); %></textarea>
                         </fieldset>
 

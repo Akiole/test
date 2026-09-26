@@ -186,11 +186,34 @@ while [ -s /tmp/ap2g5g ]; do
         rm -f /tmp/apc.lock
     fi
 
-    # 获取 AP-Client 接口名
+    # 获取 AP-Client 接口名（自动检测）
     radio2_apcli=$(nvram get radio2_apcli)
-    [ -z "$radio2_apcli" ] && radio2_apcli="apcli0"
     radio5_apcli=$(nvram get radio5_apcli)
-    [ -z "$radio5_apcli" ] && radio5_apcli="apclii0"
+    radio2_main=$(nvram get radio2_main)
+    radio5_main=$(nvram get radio5_main)
+    # 自动检测 2.4G 主接口
+    if [ -z "$radio2_main" ]; then
+        if iwpriv rax0 get_site_survey >/dev/null 2>&1; then
+            radio2_main="rax0"
+        else
+            radio2_main="ra0"
+        fi
+    fi
+    # 自动检测 5G 主接口
+    if [ -z "$radio5_main" ]; then
+        if iwpriv ra0 get_site_survey >/dev/null 2>&1 && [ "$radio2_main" != "ra0" ]; then
+            radio5_main="ra0"
+        else
+            radio5_main="rai0"
+        fi
+    fi
+    # 自动检测 AP-Client 接口名
+    if [ -z "$radio2_apcli" ]; then
+        [ "$radio2_main" = "rax0" ] && radio2_apcli="apclix0" || radio2_apcli="apcli0"
+    fi
+    if [ -z "$radio5_apcli" ]; then
+        [ "$radio5_main" = "ra0" ] && radio5_apcli="apcli0" || radio5_apcli="apclii0"
+    fi
 
     ap_check=$(nvram get ap_check)
 
@@ -273,6 +296,7 @@ DAEMON_EOF
 # 主流程
 # ============================================================
 
+main() {
 # 1. 初始化默认参数
 init_nvram_defaults
 
@@ -313,3 +337,9 @@ echo $$ > "$PID_FILE"
 # 9. 等待守护进程结束后清理 PID
 wait
 rm -f "$PID_FILE"
+}
+
+# 仅在直接执行时运行主流程，被 source 时只定义函数
+case "$0" in
+    *ap_script.sh) main "$@" ;;
+esac
