@@ -36,6 +36,7 @@
 #include "rc.h"
 
 #define WD_NORMAL_PERIOD	10		/* 10s */
+#define WD_TICKS_PER_HOUR	(3600 / WD_NORMAL_PERIOD)	/* ticks per hour */
 
 #define WD_NOTIFY_ID_WIFI2	1
 #define WD_NOTIFY_ID_WIFI5	2
@@ -220,7 +221,7 @@ ntpc_handler(void)
 	if (ntp_period > 336)
 		ntp_period = 336; // max two weeks
 
-	ntp_period = ntp_period * 360;
+	ntp_period = ntp_period * WD_TICKS_PER_HOUR;
 
 	// update ntp every period time
 	ntpc_timer = (ntpc_timer + 1) % ntp_period;
