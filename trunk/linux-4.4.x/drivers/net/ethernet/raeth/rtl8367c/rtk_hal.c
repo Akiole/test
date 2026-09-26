@@ -1,5 +1,6 @@
 #include <linux/kernel.h>
 #include <linux/delay.h>
+#include <linux/string.h>
 #include  "./include/rtk_switch.h"
 #include  "./include/vlan.h"
 #include  "./include/port.h"
