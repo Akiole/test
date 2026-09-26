@@ -896,6 +896,10 @@ struct nvram_pair router_defaults[] = {
 	{ "dhcp_all_servers", "1" },
 	{ "dhcp_strict_order", "0" },
 	{ "dhcp_stop_dns_rebind", "1" },
+	{ "ap_rssi_enable", "0" },
+	{ "ap_slave_ips", "" },
+	{ "ap_slave_user", "admin" },
+	{ "ap_slave_pass", "admin" },
 	{ "dhcp_proxy_dnssec", "0" },
 	{ "dhcp_verbose", "0" },		/* 0 : quiet, 1: verbose DHCP, 2: verbose DHCPv6, 3: verbose all */
 	{ "dhcp_static_x", "0" },

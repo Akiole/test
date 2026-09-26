@@ -110,8 +110,8 @@ logger -t "自动启动" "正在启动 frp client..."
 /usr/bin/frp.sh start
 fi
 
-# 跨 AP 无线客户端 RSSI 采集（配置了 ap_slave_ips 才启用）
-if [ -n "$(nvram get ap_slave_ips)" ] ; then
+# 跨 AP 无线客户端 RSSI 采集（启用且配置了 ap_slave_ips）
+if [ "$(nvram get ap_rssi_enable)" = "1" ] && [ -n "$(nvram get ap_slave_ips)" ] ; then
 	logger -t "自动启动" "正在配置跨 AP RSSI 采集定时任务..."
 	/sbin/check_crontab.sh a/1 a a a a ap_rssi_collect.sh
 	/usr/bin/ap_rssi_collect.sh &

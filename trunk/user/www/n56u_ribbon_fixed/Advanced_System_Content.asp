@@ -26,6 +26,7 @@ var $j = jQuery.noConflict();
 
 $j(document).ready(function() {
 	init_itoggle('reboot_schedule_enable',change_on);
+	init_itoggle('ap_rssi_enable',change_ap_rssi);
 	init_itoggle('help_enable');
 });
 
@@ -63,6 +64,7 @@ function initial(){
 		document.getElementById('reboot_schedule_date_tr').style.display = "none";
 		document.getElementById('reboot_schedule_time_tr').style.display = "none";
 	}
+	change_ap_rssi();
 
 	if(document.form.computer_name2.value != "")
 		document.form.computer_name.value = decodeURIComponent(document.form.computer_name2.value);
@@ -103,6 +105,12 @@ var v = document.form.reboot_schedule_enable_x.value;
 	if ( v == 1 )
 		check_Timefield_checkbox();
 
+}
+function change_ap_rssi(){
+	var v = document.form.ap_rssi_enable_x.value;
+	showhide_div('ap_rssi_ips_tr', v);
+	showhide_div('ap_rssi_user_tr', v);
+	showhide_div('ap_rssi_pass_tr', v);
 }
 function validForm(){
 	if(!validate_string(document.form.http_username))
@@ -515,6 +523,38 @@ function updateDateTime()
                                             <td style="border-top: 0 none;">
                                                 <input type="text" maxlength="2" style="width: 20px;" size="2" name="reboot_time_x_hour" value="04" onKeyPress="return validator.isNumber(this,event);" onblur="validator.timeRange(this, 0);" autocorrect="off" autocapitalize="off"><#Hour#>:
                                                 <input type="text" maxlength="2" style="width: 20px;" size="2" name="reboot_time_x_min" value="00" onKeyPress="return validator.isNumber(this,event);" onblur="validator.timeRange(this, 1);" autocorrect="off" autocapitalize="off"><#Minute#>
+                                            </td>
+                                        </tr>
+                                        <tr id="ap_rssi_enable_tr">
+                                            <th width="50%" style="border-top: 0 none;">跨 AP 无线客户端 RSSI 显示</th>
+                                            <td style="border-top: 0 none;">
+                                                <div class="main_itoggle">
+                                                    <div id="ap_rssi_enable_on_of">
+                                                        <input type="checkbox" id="ap_rssi_enable_fake" <% nvram_match_x("", "ap_rssi_enable", "1", "value=1 checked"); %><% nvram_match_x("", "ap_rssi_enable", "0", "value=0"); %>>
+                                                    </div>
+                                                </div>
+                                                <div style="position: absolute; margin-left: -10000px;">
+                                                    <input type="radio" name="ap_rssi_enable_x" id="ap_rssi_enable_1" class="input" value="1" <% nvram_match_x("", "ap_rssi_enable", "1", "checked"); %>/><#checkbox_Yes#>
+                                                    <input type="radio" name="ap_rssi_enable_x" id="ap_rssi_enable_0" class="input" value="0" <% nvram_match_x("", "ap_rssi_enable", "0", "checked"); %>/><#checkbox_No#>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                        <tr id="ap_rssi_ips_tr" style="display:none">
+                                            <th>其他 AP IP 列表</th>
+                                            <td>
+                                                <input type="text" maxlength="200" class="input" size="40" name="ap_slave_ips" value="<% nvram_get_x("", "ap_slave_ips"); %>" placeholder="192.168.1.2 192.168.1.3（空格分隔）"/>
+                                            </td>
+                                        </tr>
+                                        <tr id="ap_rssi_user_tr" style="display:none">
+                                            <th>登录用户名</th>
+                                            <td>
+                                                <input type="text" maxlength="30" class="input" size="15" name="ap_slave_user" value="<% nvram_get_x("", "ap_slave_user"); %>" placeholder="admin"/>
+                                            </td>
+                                        </tr>
+                                        <tr id="ap_rssi_pass_tr" style="display:none">
+                                            <th>登录密码</th>
+                                            <td>
+                                                <input type="password" maxlength="30" class="input" size="15" name="ap_slave_pass" value="<% nvram_get_x("", "ap_slave_pass"); %>" placeholder="admin"/>
                                             </td>
                                         </tr>
                                         <tr>
