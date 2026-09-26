@@ -19,7 +19,7 @@
 var $j = jQuery.noConflict();
 <% bandwidth("history", ""); %>
 var scale = 2;
-var dateFormat = 2;
+var dateFormat = 0;
 var cprefix = "hist_";
 var idTimerPoll = 0;
 
@@ -149,7 +149,7 @@ function changeScale(e){
 }
 
 function initDate(){
-	dateFormat = fixInt(cookie.get(cprefix + 'ymd'), 0, 6, 2);
+	dateFormat = fixInt(cookie.get(cprefix + 'ymd'), 0, 6, 0);
 	E('dafm').value = dateFormat;
 }
 
