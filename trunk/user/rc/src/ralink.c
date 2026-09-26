@@ -159,30 +159,101 @@ static const struct cc_t {
 	{ "DB",  5,  7,  0 }
 };
 
+/* 判断 MAC 地址是否为有效真实 MAC（非全0/全FF/组播/Padavan默认前缀） */
+static int
+is_valid_real_mac(const unsigned char *mac)
+{
+	if (mac[0] & 0x01)
+		return 0;
+	if (mac[0] == 0x00 && mac[1] == 0x00 && mac[2] == 0x00 &&
+	    mac[3] == 0x00 && mac[4] == 0x00 && mac[5] == 0x00)
+		return 0;
+	if (mac[0] == 0xFF && mac[1] == 0xFF && mac[2] == 0xFF &&
+	    mac[3] == 0xFF && mac[4] == 0xFF && mac[5] == 0xFF)
+		return 0;
+	/* Padavan 默认 MAC 前缀 00:11:22:33:44:xx（未初始化的假MAC） */
+	if (mac[0] == 0x00 && mac[1] == 0x11 && mac[2] == 0x22 &&
+	    mac[3] == 0x33 && mac[4] == 0x44)
+		return 0;
+	return 1;
+}
+
+/* 自动探测 Factory 分区中 LAN MAC 的偏移（缓存结果，只探测一次） */
+static int
+detect_lan_mac_offset(void)
+{
+	static int s_detected_offset = -1;
+	static const int s_candidate_offsets[] = {
+		0xe000,   /* 最常见 (MT7621 default: R2100 / FCJ / K2P / MI-R3G 等) */
+		0x3FFFA,  /* 新一代 NAND 板子 (CR660x / 360 / JCG / CMCC 等) */
+		0xe006,   /* 部分板子 */
+		0x018E,   /* N14U / N11P */
+	};
+	unsigned char mac[6];
+	int i;
+
+	if (s_detected_offset >= 0)
+		return s_detected_offset;
+
+	for (i = 0; i < (int)(sizeof(s_candidate_offsets) / sizeof(s_candidate_offsets[0])); i++) {
+		if (flash_mtd_read(MTD_PART_NAME_FACTORY, s_candidate_offsets[i], mac, sizeof(mac)) == 0) {
+			if (is_valid_real_mac(mac)) {
+				s_detected_offset = s_candidate_offsets[i];
+				return s_detected_offset;
+			}
+		}
+	}
+
+	/* 兜底：使用默认偏移 */
+	s_detected_offset = OFFSET_MAC_GMAC0;
+	return s_detected_offset;
+}
+
 inline int
 get_wired_mac_is_single(void)
 {
-#if defined (BOARD_N14U) || defined (BOARD_N11P) || defined (BOARD_MZ_R13) || defined (BOARD_MZ_R13P) || defined (BOARD_CR660x) || defined (BOARD_Q20) || defined (BOARD_RM2100) || defined (BOARD_RE_CP_02) || defined (BOARD_360_T6M)
-	return 1;
-#else
-	return 0;
-#endif
+	/*
+	 * 运行时自动探测单/双 MAC，不依赖编译宏 USE_SINGLE_MAC。
+	 * USE_SINGLE_MAC 编译宏控制网络接口名（eth2.1/eth2.2 vs eth2/eth3），
+	 * 而本函数控制 WAN MAC 来源（派生 vs 从EEPROM读取），两者独立。
+	 * FCJ/R2100/K2P 等 WAN 口在 GMAC2(eth3) 上的板子：USE_SINGLE_MAC 未定义，
+	 * 但 Factory 中可能只有一个 MAC（WAN MAC 需派生），本函数应返回 1。
+	 */
+	static int s_is_single = -1;
+	unsigned char lan_mac[6], wan_mac[6];
+	int lan_offset, wan_offset;
+
+	if (s_is_single >= 0)
+		return s_is_single;
+
+	lan_offset = detect_lan_mac_offset();
+	wan_offset = lan_offset + 6;  /* WAN MAC 通常在 LAN MAC 后 6 字节 */
+
+	if (flash_mtd_read(MTD_PART_NAME_FACTORY, lan_offset, lan_mac, sizeof(lan_mac)) != 0 ||
+	    flash_mtd_read(MTD_PART_NAME_FACTORY, wan_offset, wan_mac, sizeof(wan_mac)) != 0) {
+		s_is_single = 1;  /* 读取失败，默认单 MAC（WAN MAC 派生） */
+		return s_is_single;
+	}
+
+	/*
+	 * WAN MAC 无效（全0/全FF/组播/默认前缀），或与 LAN MAC OUI 前3字节不同
+	 * -> 单 MAC 板子，WAN MAC 由 LAN MAC 派生（最后一字节 | 0x03）
+	 */
+	if (!is_valid_real_mac(wan_mac) || memcmp(wan_mac, lan_mac, 3) != 0) {
+		s_is_single = 1;
+	} else {
+		s_is_single = 0;
+	}
+
+	return s_is_single;
 }
 
 inline int
 get_wired_mac_e2p_offset(int is_wan)
 {
-#if defined (BOARD_N14U) || defined (BOARD_N11P)
-	return 0x018E;
-#elif defined (BOARD_MZ_R13) || defined (BOARD_MZ_R13P) || defined (BOARD_MIR3G)
-	return 0xe000;
-#elif defined (BOARD_RM2100) || defined (BOARD_NEWIFI) 
-	return 0xe006;	
-#elif defined (BOARD_CR660x) || defined (BOARD_Q20) || defined (BOARD_RE_CP_02) || defined (BOARD_360_T6M)
-	return 0x3FFFA;
-#else
-	return (is_wan) ? OFFSET_MAC_GMAC2 : OFFSET_MAC_GMAC0;
-#endif
+	/* 统一自动探测：LAN MAC 偏移自动探测，WAN MAC = LAN 偏移 + 6 */
+	int lan_offset = detect_lan_mac_offset();
+	return (is_wan) ? lan_offset + 6 : lan_offset;
 }
 
 int
