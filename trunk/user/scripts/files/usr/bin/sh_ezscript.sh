@@ -227,7 +227,7 @@ connect_to_ap() {
 		nvram set wl_sta_crypto="$crypto"
 		nvram set wl_sta_wpa_psk="$psk"
 		nvram commit
-		rc radio2_restart
+		rc radio5_restart
 	fi
 }
 
@@ -577,16 +577,45 @@ smart_switch_eval() {
 	. /etc/storage/ap_script.sh >/dev/null 2>&1
 	[ ! -s /tmp/ap2g5g ] && return
 
-	# 初始化接口名
-	radio2_apcli=$(nvram get radio2_apcli)
-	[ -z "$radio2_apcli" ] && radio2_apcli="apcli0"
-	radio5_apcli=$(nvram get radio5_apcli)
-	[ -z "$radio5_apcli" ] && radio5_apcli="apclii0"
-	radio2_main=$(nvram get radio2_main)
-	[ -z "$radio2_main" ] && radio2_main="ra0"
-	radio5_main=$(nvram get radio5_main)
-	[ -z "$radio5_main" ] && radio5_main="rai0"
+	# 初始化接口名（自动检测，与 connAPSite 一致）
 	ap_fenge=$(nvram get ap_fenge)
+	radio2_apcli=$(nvram get radio2_apcli)
+	radio5_apcli=$(nvram get radio5_apcli)
+	radio2_main=$(nvram get radio2_main)
+	radio5_main=$(nvram get radio5_main)
+
+	# 自动检测 2.4G 主接口
+	if [ -z "$radio2_main" ]; then
+		if iwpriv rax0 get_site_survey >/dev/null 2>&1; then
+			radio2_main="rax0"
+		else
+			radio2_main="ra0"
+		fi
+	fi
+	# 自动检测 5G 主接口
+	if [ -z "$radio5_main" ]; then
+		if iwpriv ra0 get_site_survey >/dev/null 2>&1 && [ "$radio2_main" != "ra0" ]; then
+			radio5_main="ra0"
+		else
+			radio5_main="rai0"
+		fi
+	fi
+	# 自动检测 2.4G AP-Client 接口
+	if [ -z "$radio2_apcli" ]; then
+		if [ "$radio2_main" = "rax0" ]; then
+			radio2_apcli="apclix0"
+		else
+			radio2_apcli="apcli0"
+		fi
+	fi
+	# 自动检测 5G AP-Client 接口
+	if [ -z "$radio5_apcli" ]; then
+		if [ "$radio5_main" = "ra0" ]; then
+			radio5_apcli="apcli0"
+		else
+			radio5_apcli="apclii0"
+		fi
+	fi
 
 	# 获取当前信号
 	local cur_signal=$(get_current_signal_dbm)
