@@ -361,6 +361,10 @@
 			{"usb3_disable", "", NULL, EVM_RESTART_REBOOT},
 #endif
 			{"Storage_UserList", "Group", ARGV((char*)variables_Storage_UserList, "16", "79", "acc_num"), EVM_RESTART_FTPD|EVM_RESTART_SMBD},
+			{"ap_rssi_enable", "", NULL, FALSE},
+			{"ap_slave_ips", "", NULL, FALSE},
+			{"ap_slave_user", "", NULL, FALSE},
+			{"ap_slave_pass", "", NULL, FALSE},
 			{0,0,0,0}
 		};
 
@@ -1340,6 +1344,7 @@
 
 	/* AP Relay auto-daemon 配置组 */
 	struct variable variables_APRelayConfig[] = {
+			{"ap_relay_enable", "", NULL, FALSE},
 			{"ap_check", "", NULL, FALSE},
 			{"ap_inet_check", "", NULL, FALSE},
 			{"ap_time_check", "", NULL, FALSE},
