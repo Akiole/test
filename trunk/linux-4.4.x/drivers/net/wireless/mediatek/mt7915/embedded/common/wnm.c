@@ -2128,10 +2128,7 @@ static VOID BTMReqTimeout(IN PRTMP_ADAPTER pAd, IN MLME_QUEUE_ELEM * Elem)
 			("%s receive btm req and set btm rsp timer no need to delete BTMPeerEntry\n",
 			__func__));
 	} else {
-		/*timeout; need delete BTMPeerEntry*/
-		MTWF_LOG(DBG_CAT_PROTO, CATPROTO_WNM, DBG_LVL_OFF,
-				("%s receive btm req timeout the uplayer does not send btm req in time\n",
-				 __func__));
+		/*timeout; need delete BTMPeerEntry - client did not respond to BTM request*/
 		RTMP_SEM_EVENT_WAIT(&pWNMCtrl->BTMPeerListLock, Ret);
 		DlListDel(&BTMPeerEntry->List);
 		RTMP_SEM_EVENT_UP(&pWNMCtrl->BTMPeerListLock);
