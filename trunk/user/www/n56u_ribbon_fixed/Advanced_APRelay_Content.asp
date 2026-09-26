@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-<title><#Web_Title#> - AP 中继自动守护</title>
+<title><#Web_Title#> - <#menu5_1_7#></title>
 <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="-1">
@@ -10,18 +10,27 @@
 <link rel="icon" href="images/favicon.png">
 <link rel="stylesheet" type="text/css" href="/bootstrap/css/bootstrap.min.css">
 <link rel="stylesheet" type="text/css" href="/bootstrap/css/main.css">
+<link rel="stylesheet" type="text/css" href="/bootstrap/css/engage.itoggle.css">
 
 <script type="text/javascript" src="/jquery.js"></script>
 <script type="text/javascript" src="/bootstrap/js/bootstrap.min.js"></script>
+<script type="text/javascript" src="/bootstrap/js/engage.itoggle.min.js"></script>
 <script type="text/javascript" src="/state.js"></script>
+<script type="text/javascript" src="/itoggle.js"></script>
 <script type="text/javascript" src="/general.js"></script>
 <script type="text/javascript" src="/popup.js"></script>
 <script>
 var $j = jQuery.noConflict();
 
+$j(document).ready(function() {
+	init_itoggle('ap_relay_enable');
+	toggle_smart_switch();
+	toggle_quality_check();
+});
+
 function initial(){
 	show_banner(1);
-	show_menu(5,2,4);
+	show_menu(5,2,7);
 	show_footer();
 	load_body();
 	refresh_status();
@@ -82,7 +91,7 @@ function do_restart(){
 	$j.ajax({
 		url: '/start_apply.htm',
 		type: 'POST',
-		data: { action_mode: 'SystemCmd', SystemCmd: 'killall sh_apauto.sh; if [ -x /etc/storage/ap_script.sh ]; then /etc/storage/ap_script.sh & else /usr/bin/ap_script.sh & fi', current_page: '/Advanced_APRelay_Content.asp' },
+		data: { action_mode: 'SystemCmd', SystemCmd: 'killall sh_apauto.sh 2>/dev/null; if [ -x /etc/storage/ap_script.sh ]; then /etc/storage/ap_script.sh; else /usr/bin/ap_script.sh; fi &', current_page: '/Advanced_APRelay_Content.asp' },
 		complete: function(){
 			hideLoading();
 			setTimeout(refresh_status, 3000);
@@ -159,7 +168,35 @@ function toggle_quality_check(){
             <div class="span9">
                 <div class="row-fluid">
                     <div class="span12">
-                        <h3>AP 中继自动守护</h3>
+                        <div class="box well grad_colour_dark_blue">
+                            <h2 class="box_head round_top"><#menu5_1#> - <#menu5_1_7#> (5GHz)</h2>
+                            <div class="round_bottom">
+                                <div class="row-fluid">
+                        <div id="tabMenu" class="submenuBlock"></div>
+                        <div class="alert alert-info" style="margin: 10px;">
+                          注意:启用后设备开机时会自动运行 ap_script.sh，根据配置的 AP 列表自动扫描并连接最优 AP。</br>
+                          搜寻时无线网络会瞬断一下，请耐心等待。</br>
+                          各参数用 @ 分隔，多个 AP 换行填写（第一行最优先）。</br>
+                          格式：频段@工作模式@客户端角色@SSID@密码@BSSID
+                        </div>
+
+                        <!-- 启用开关 -->
+                        <table width="100%" align="center" cellpadding="4" cellspacing="0" class="table" style="margin-top: 10px;">
+                            <tr>
+                                <th width="50%" style="border-top: 0 none;">启用开机自动启动</th>
+                                <td style="border-top: 0 none;">
+                                    <div class="main_itoggle">
+                                        <div id="ap_relay_enable_on_of">
+                                            <input type="checkbox" id="ap_relay_enable_fake" <% nvram_match_x("", "ap_relay_enable", "1", "value=1 checked"); %><% nvram_match_x("", "ap_relay_enable", "0", "value=0"); %>>
+                                        </div>
+                                    </div>
+                                    <div style="position: absolute; margin-left: -10000px;">
+                                        <input type="radio" name="ap_relay_enable_x" id="ap_relay_enable_1" class="input" value="1" <% nvram_match_x("", "ap_relay_enable", "1", "checked"); %>/><#checkbox_Yes#>
+                                        <input type="radio" name="ap_relay_enable_x" id="ap_relay_enable_0" class="input" value="0" <% nvram_match_x("", "ap_relay_enable", "0", "checked"); %>/><#checkbox_No#>
+                                    </div>
+                                </td>
+                            </tr>
+                        </table>
 
                         <!-- 状态显示 -->
                         <fieldset>
@@ -201,11 +238,9 @@ function toggle_quality_check(){
                         <fieldset>
                             <legend>AP 列表配置</legend>
                             <p style="font-size: 12px; color: #666;">
-                                各参数用 @ 分隔，多个 AP 换行填写（第一行最优先）。搜寻时无线网络会瞬断一下。<br>
-                                格式：频段@工作模式@客户端角色@SSID@密码@BSSID<br>
                                 频段：2=2.4GHz 5=5GHz | 模式：3=AP-Client 4=AP-Client+AP | 角色：0=LAN bridge 1=WAN
                             </p>
-                            <textarea name="ap_relay_list" rows="8" style="width: 100%; font-family: monospace; font-size: 12px;"><% nvram_get_x("", "ap_relay_list"); %></textarea>
+                            <textarea name="ap_relay_list" rows="10" style="width: 98%; font-family: monospace; font-size: 12px;"><% nvram_get_x("", "ap_relay_list"); %></textarea>
                         </fieldset>
 
                         <!-- 基础参数 -->
@@ -218,6 +253,15 @@ function toggle_quality_check(){
                                         <select name="ap_check">
                                             <option value="0" <% nvram_match_x("", "ap_check", "0", "selected"); %>>Internet 断线后搜寻</option>
                                             <option value="1" <% nvram_match_x("", "ap_check", "1", "selected"); %>>信号断开时搜寻</option>
+                                        </select>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th>连接成功条件</th>
+                                    <td>
+                                        <select name="ap_inet_check">
+                                            <option value="0" <% nvram_match_x("", "ap_inet_check", "0", "selected"); %>>连上即可</option>
+                                            <option value="1" <% nvram_match_x("", "ap_inet_check", "1", "selected"); %>>连上且能联网</option>
                                         </select>
                                     </td>
                                 </tr>
@@ -251,7 +295,7 @@ function toggle_quality_check(){
 
                         <!-- 智能切换参数 -->
                         <fieldset>
-                            <legend>智能切换（第二阶段）</legend>
+                            <legend>智能切换</legend>
                             <table class="table table-bordered table-condensed" style="table-layout: fixed;">
                                 <tr>
                                     <th style="width: 30%;">智能切换</th>
@@ -315,6 +359,9 @@ function toggle_quality_check(){
                             <button type="reset" class="btn">重置</button>
                         </div>
 
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -322,14 +369,6 @@ function toggle_quality_check(){
     </div>
     </form>
 </div>
-
-<script>
-// 页面加载后初始化开关联动状态
-$j(document).ready(function(){
-	toggle_smart_switch();
-	toggle_quality_check();
-});
-</script>
 
 </body>
 </html>

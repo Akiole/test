@@ -929,6 +929,7 @@ menu5_1_3=无线桥接
 menu5_1_4=MAC过滤
 menu5_1_5=RADIUS 设置
 menu5_1_6=高级设置
+menu5_1_7=AP 中继
 menu5_2_1=内网设置
 menu5_2_2=DHCP 服务器
 menu5_2_3=路由设置

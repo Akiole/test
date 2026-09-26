@@ -12,11 +12,13 @@ if [ ! -x /etc/storage/sh_ezscript.sh ]; then
 	cp /usr/bin/sh_ezscript.sh /etc/storage/sh_ezscript.sh
 	chmod +x /etc/storage/sh_ezscript.sh
 fi
-if [ ! -x /etc/storage/ap_script.sh ]; then
-	cp /usr/bin/ap_script.sh /etc/storage/ap_script.sh
-	chmod +x /etc/storage/ap_script.sh
+if [ "$(nvram get ap_relay_enable)" = "1" ]; then
+	if [ ! -x /etc/storage/ap_script.sh ]; then
+		cp /usr/bin/ap_script.sh /etc/storage/ap_script.sh
+		chmod +x /etc/storage/ap_script.sh
+	fi
+	/etc/storage/ap_script.sh >/dev/null 2>&1 &
 fi
-/etc/storage/ap_script.sh >/dev/null 2>&1 &
 smartdns_conf="/etc/storage/smartdns_custom.conf"
 dnsmasq_Conf="/etc/storage/dnsmasq/dnsmasq.conf"
 smartdns_Ini="/etc/storage/smartdns_conf.ini"
