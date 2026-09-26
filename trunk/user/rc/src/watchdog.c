@@ -189,6 +189,17 @@ refresh_ntp(void)
 	result = eval("/usr/sbin/ntpd", "-q", "-S", NTPC_DONE_SCRIPT, "-p", ntp_server);
 
 	logmessage("NTP Client", "Synchronizing time to %s.", ntp_server);
+
+	/* ntpd -S script only runs when time is stepped. If system time
+	 * is already correct, the script never runs and ntpc_counter
+	 * stays 0, causing endless fast retries and rstats history
+	 * never being recorded. Mark as updated after a successful run. */
+	if (result == 0 && !is_ntpc_updated()) {
+		nvram_set_int_temp("ntpc_counter", 1);
+		nvram_set_int("ntp_ready", 1);
+		logmessage("NTP Client", "Time synchronized.");
+	}
+
 	return result;
 }
 
