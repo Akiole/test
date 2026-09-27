@@ -118,3 +118,16 @@
 &pcie {
 	status = "okay";
 };
+
+/* FCJ NAND hangs off SDHCI pins (nand2).  The shared nand_pins in
+   mt7621.dtsi also tries to mux spi->nand1, which this SoC does not
+   support and triggers "Error applying setting, reverse things back".
+   Override with only the sdhci-nand group that FCJ actually uses. */
+&pinctrl {
+	nand_pins: nand {
+		sdhci-nand {
+			mtk,group = "sdhci";
+			mtk,function = "nand2";
+		};
+	};
+};
