@@ -704,11 +704,19 @@ NDIS_STATUS load_dev_l1profile(IN RTMP_ADAPTER *pAd)
 
 	/* The mt7915 driver is built-in and the first call happens during
 	   driver probe (~2s), before the NAND squashfs rootfs is mounted
-	   (~4.5s), so /etc_ro/Wireless/l1profile.dat is not yet accessible.
-	   Delay the first load by 5s so rootfs is ready; subsequent calls
-	   (interface up) are not delayed. */
+	   (~8s on some boards), so /etc_ro/Wireless/l1profile.dat is not
+	   yet accessible.  Poll for the file every 100ms for up to 10s on
+	   the first call; subsequent calls (interface up) are not delayed. */
 	if (!first_load_done) {
-		msleep(5000);
+		int retry;
+		for (retry = 0; retry < 100; retry++) {
+			srcf = os_file_open(L1_PROFILE_PATH, O_RDONLY, 0);
+			if (!srcf.Status) {
+				os_file_close(srcf);
+				break;
+			}
+			msleep(100);
+		}
 		first_load_done = 1;
 	}
 
