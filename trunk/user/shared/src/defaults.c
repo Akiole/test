@@ -127,8 +127,8 @@ struct nvram_pair router_defaults[] = {
 	{ "wan_pppoe_man", "1" },		/* PPPoE & MAN */
 	{ "pppoemwan_staticnum_x", "0" },
 	{ "pppoemwan_443", "0" },
-	{ "wan_pppoe_mtu", "1492" },	/* Negotiate MTU to the smaller of this value or the peer MRU */
-	{ "wan_pppoe_mru", "1492" },	/* Negotiate MRU to this value */
+	{ "wan_pppoe_mtu", "1500" },	/* Negotiate MTU to the smaller of this value or the peer MRU */
+	{ "wan_pppoe_mru", "1500" },	/* Negotiate MRU to this value */
 	{ "wan_pptp_mtu", "1400" },		/* Negotiate MTU to the smaller of this value or the peer MRU */
 	{ "wan_pptp_mru", "1400" },		/* Negotiate MRU to this value */
 	{ "wan_l2tp_mtu", "1460" },		/* Negotiate MTU to the smaller of this value or the peer MRU */
