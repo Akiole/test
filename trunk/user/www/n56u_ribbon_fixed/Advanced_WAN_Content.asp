@@ -239,8 +239,8 @@ function validForm(){
 	}
 
 	if(wan_proto == "pppoe"){
-		if(!validate_range(document.form.wan_pppoe_mtu, 1000, 1492)
-				|| !validate_range(document.form.wan_pppoe_mru, 1000, 1492))
+		if(!validate_range(document.form.wan_pppoe_mtu, 1000, 1500)
+				|| !validate_range(document.form.wan_pppoe_mru, 1000, 1500))
 			return false;
 
 		if(!validate_string(document.form.wan_pppoe_service)
@@ -369,10 +369,10 @@ function change_wan_type(wan_type, flag){
 	if(is_pppoe){
 		o_mtu = document.form.wan_pppoe_mtu;
 		o_mru = document.form.wan_pppoe_mru;
-		if (parseInt(o_mtu.value) > 1492)
-			o_mtu.value = "1492";
-		if (parseInt(o_mru.value) > 1492)
-			o_mru.value = "1492";
+		if (parseInt(o_mtu.value) > 1500)
+			o_mtu.value = "1500";
+		if (parseInt(o_mru.value) > 1500)
+			o_mru.value = "1500";
 	}else if(is_pptp){
 		o_mtu = document.form.wan_pptp_mtu;
 		o_mru = document.form.wan_pptp_mru;
@@ -1279,14 +1279,14 @@ function simplyMAC(fullMAC){
                                             <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this,7,7);"><#PPPConnection_x_PPPoEMTU_itemname#></a></th>
                                             <td>
                                                 <input type="text" maxlength="4" size="5" name="wan_pppoe_mtu" class="input" value="<% nvram_get_x("", "wan_pppoe_mtu"); %>" onkeypress="return is_number(this,event);"/>
-                                                &nbsp;<span style="color:#888;">[1000..1492]</span>
+                                                &nbsp;<span style="color:#888;">[1000..1500]</span>
                                             </td>
                                         </tr>
                                         <tr id="row_pppoe_mru">
                                             <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this,7,8);"><#PPPConnection_x_PPPoEMRU_itemname#></a></th>
                                             <td>
                                                 <input type="text" maxlength="4" size="5" name="wan_pppoe_mru" class="input" value="<% nvram_get_x("", "wan_pppoe_mru"); %>" onkeypress="return is_number(this,event);"/>
-                                                &nbsp;<span style="color:#888;">[1000..1492]</span>
+                                                &nbsp;<span style="color:#888;">[1000..1500]</span>
                                             </td>
                                         </tr>
                                         <tr id="row_pptp_mtu" style="display:none">

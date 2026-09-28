@@ -316,6 +316,10 @@ launch_wan_pppd(int unit, int wan_proto)
 		int demand;
 		char *pppoe_ac, *pppoe_sv;
 		
+		// Allow RFC 4638 baby jumbo frames: PPPoE MTU up to 1500
+		mtu_max = 1500;
+		mru_max = 1500;
+
 		mtu = get_wan_unit_value_int(unit, "pppoe_mtu");
 		mru = get_wan_unit_value_int(unit, "pppoe_mru");
 		
