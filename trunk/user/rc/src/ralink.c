@@ -1344,6 +1344,7 @@ gen_ralink_config(int is_soc_ap, int is_aband, int disable_autoscan)
 			case 116:
 			case 124:
 			case 132:
+			case 140:
 			case 149:
 			case 157:
 				i_EXTCHA = 1;
@@ -1357,6 +1358,7 @@ gen_ralink_config(int is_soc_ap, int is_aband, int disable_autoscan)
 			case 120:
 			case 128:
 			case 136:
+			case 144:
 			case 153:
 			case 161:
 				i_EXTCHA = 0;
@@ -1455,23 +1457,43 @@ gen_ralink_config(int is_soc_ap, int is_aband, int disable_autoscan)
 			i_VHTBW_MAX = 1;
 		//VHT_BW
 		i_val = nvram_wlan_get_int(is_aband, "HT_BW");
+		{
+			/* Bandwidth negotiation: user's HT_BW sets the upper bound,
+			 * we negotiate down based on PHY mode, hardware and channel.
+			 * VHT_BW dat file values: 0=20/40MHz, 1=80MHz, 2=160MHz
+			 * HT_BW nvram values: 0=20, 1=20/40, 2=20/40/80, 3=20/40/80/160 */
+			int i_vht_bw = 0;
+
+			if (i_val >= 2 && i_VHTBW_MAX == 1 && i_HTBW_MAX == 1) {
+				/* 80MHz requires the primary channel within a valid 80MHz block:
+				 * 36-48, 52-64, 100-112, 116-128, 132-144, 149-161.
+				 * Auto channel (0) lets the driver choose. */
+				int ch80_ok = (i_channel == 0) ||
+					((i_channel >= 36  && i_channel <= 48)  ||
+					 (i_channel >= 52  && i_channel <= 64)  ||
+					 (i_channel >= 100 && i_channel <= 112) ||
+					 (i_channel >= 116 && i_channel <= 128) ||
+					 (i_channel >= 132 && i_channel <= 144) ||
+					 (i_channel >= 149 && i_channel <= 161));
+
+				if (ch80_ok) {
+					i_vht_bw = 1; // 80MHz
+
 #if (USE_WID_5G==7615 && !defined (BOARD_MT7615_DBDC)) || (USE_WID_5G==7915 && !defined (BOARD_MT7915_DBDC))
-		if (i_val == 3 && i_VHTBW_MAX == 1) //160MHz, only valid in VHT/AX mode
-		{
-			/* 160MHz requires a contiguous 160MHz block: channels 36-64 (center 50)
-			 * or 100-128 (center 114). For fixed channel outside these ranges,
-			 * fall back to 80MHz to avoid driver startup failure. */
-			if (i_channel != 0 && !((i_channel >= 36 && i_channel <= 64) || (i_channel >= 100 && i_channel <= 128)))
-				fprintf(fp, "VHT_BW=%d\n", 1); // fall back to 80MHz
-			else
-				fprintf(fp, "VHT_BW=%d\n", 2); // 160MHz
-		}
-		else
+					/* 160MHz requires contiguous 160MHz block:
+					 * 36-64 (center 50) or 100-128 (center 114). */
+					if (i_val >= 3) {
+						int ch160_ok = (i_channel == 0) ||
+							((i_channel >= 36  && i_channel <= 64)  ||
+							 (i_channel >= 100 && i_channel <= 128));
+						if (ch160_ok)
+							i_vht_bw = 2; // 160MHz
+					}
 #endif
-		{
-			i_val = (i_val > 1) ? 1 : 0;
-			if (i_HTBW_MAX == 0 || i_VHTBW_MAX == 0) i_val = 0;
-			fprintf(fp, "VHT_BW=%d\n", i_val);
+				}
+			}
+
+			fprintf(fp, "VHT_BW=%d\n", i_vht_bw);
 		}
 		
 		//VHT_SGI
