@@ -38,10 +38,11 @@ function initial(){
 	show_footer();
 
 	if (typeof(support_5g_wid) === 'function'){
-		wid = support_5g_wid();
+		var wid = support_5g_wid();
 		if (wid==7612){
 			showhide_div("row_vga_clamp", 1);
 			showhide_div("row_ldpc", 1);
+			showhide_div("row_stbc_1", 1);
 		} else if (wid==7615 || wid==7915){
 			showhide_div("row_ldpc", 1);
 			showhide_div("row_stbc_1", 1);
@@ -67,6 +68,21 @@ function initial(){
 		document.form.wl_stream_rx.remove(2);
 	if (support_5g_stream_rx()<2)
 		document.form.wl_stream_rx.remove(1);
+
+	if (typeof(support_5g_160mhz) === 'function' && support_5g_160mhz()) {
+		var rates160 = {"1":"867Mbps","2":"1733Mbps","3":"2600Mbps","4":"3466Mbps"};
+		var si;
+		for (si = 0; si < document.form.wl_stream_tx.options.length; si++) {
+			var sv = document.form.wl_stream_tx.options[si].value;
+			if (rates160[sv])
+				document.form.wl_stream_tx.options[si].text = sv + "T (" + rates160[sv] + ")";
+		}
+		for (si = 0; si < document.form.wl_stream_rx.options.length; si++) {
+			var sv = document.form.wl_stream_rx.options[si].value;
+			if (rates160[sv])
+				document.form.wl_stream_rx.options[si].text = sv + "R (" + rates160[sv] + ")";
+		}
+	}
 
 	if (support_5g_txbf())
 		showhide_div("row_txbf", 1);
@@ -339,7 +355,7 @@ function done_validating(action){
                                                 </select>
                                             </td>
                                         </tr>
-                                        <tr id="row_80211kv">
+                                        <tr id="row_80211kv" style="display:none">
                                             <th><#WLANConfig11n_80211kv#></th>
                                             <td>
                                                 <select name="wl_HT_80211KV" class="input">
@@ -348,7 +364,7 @@ function done_validating(action){
                                                 </select>
                                             </td>
                                         </tr>
-                                        <tr id="row_80211r">
+                                        <tr id="row_80211r" style="display:none">
                                             <th><#WLANConfig11n_80211r#></th>
                                             <td>
                                                 <select name="wl_HT_80211R" class="input">
