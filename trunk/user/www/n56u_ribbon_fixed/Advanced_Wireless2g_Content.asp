@@ -445,6 +445,14 @@ function validate_wlphrase(s, v, obj){
                                             <td>
                                                 <select name="rt_mcs_mode" class="input">
                                                     <option value="0" <% nvram_match_x("", "rt_mcs_mode", "0", "selected"); %>><#checkbox_No#> (*)</option>
+                                                    <option value="17" <% nvram_match_x("", "rt_mcs_mode", "17", "selected"); %>>HTMIX (2S) 300 Mbps</option>
+                                                    <option value="18" <% nvram_match_x("", "rt_mcs_mode", "18", "selected"); %>>HTMIX (2S) 270 Mbps</option>
+                                                    <option value="19" <% nvram_match_x("", "rt_mcs_mode", "19", "selected"); %>>HTMIX (2S) 240 Mbps</option>
+                                                    <option value="20" <% nvram_match_x("", "rt_mcs_mode", "20", "selected"); %>>HTMIX (2S) 180 Mbps</option>
+                                                    <option value="21" <% nvram_match_x("", "rt_mcs_mode", "21", "selected"); %>>HTMIX (2S) 120 Mbps</option>
+                                                    <option value="22" <% nvram_match_x("", "rt_mcs_mode", "22", "selected"); %>>HTMIX (2S) 90 Mbps</option>
+                                                    <option value="23" <% nvram_match_x("", "rt_mcs_mode", "23", "selected"); %>>HTMIX (2S) 60 Mbps</option>
+                                                    <option value="24" <% nvram_match_x("", "rt_mcs_mode", "24", "selected"); %>>HTMIX (2S) 30 Mbps</option>
                                                     <option value="1" <% nvram_match_x("", "rt_mcs_mode", "1", "selected"); %>>HTMIX (1S) 45 Mbps</option>
                                                     <option value="2" <% nvram_match_x("", "rt_mcs_mode", "2", "selected"); %>>HTMIX (1S) 30 Mbps</option>
                                                     <option value="3" <% nvram_match_x("", "rt_mcs_mode", "3", "selected"); %>>HTMIX (1S) 15 Mbps</option>

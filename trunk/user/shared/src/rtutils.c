@@ -271,6 +271,39 @@ calc_fixed_tx_mode(int i_val, int is_aband, int i_phy_mode, int *p_mcs)
 		i_mcs = 9;
 		i_phy = FIXED_TXMODE_VHT;
 		break;
+	/* HT 2S MCS 7-0 (MCS 15-8) */
+	case 17:
+		i_mcs = 15;
+		i_phy = FIXED_TXMODE_HT;
+		break;
+	case 18:
+		i_mcs = 14;
+		i_phy = FIXED_TXMODE_HT;
+		break;
+	case 19:
+		i_mcs = 13;
+		i_phy = FIXED_TXMODE_HT;
+		break;
+	case 20:
+		i_mcs = 12;
+		i_phy = FIXED_TXMODE_HT;
+		break;
+	case 21:
+		i_mcs = 11;
+		i_phy = FIXED_TXMODE_HT;
+		break;
+	case 22:
+		i_mcs = 10;
+		i_phy = FIXED_TXMODE_HT;
+		break;
+	case 23:
+		i_mcs = 9;
+		i_phy = FIXED_TXMODE_HT;
+		break;
+	case 24:
+		i_mcs = 8;
+		i_phy = FIXED_TXMODE_HT;
+		break;
 	}
 
 	*p_mcs = i_mcs;
