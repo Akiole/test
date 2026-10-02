@@ -358,7 +358,7 @@ function done_validating(action){
                                                 </select>
                                             </td>
                                         </tr>
-                                        <tr id="row_80211kv">
+                                        <tr id="row_80211kv" style="display:none">
                                             <th><#WLANConfig11n_80211kv#></th>
                                             <td>
                                                 <select name="rt_HT_80211KV" class="input">
@@ -367,7 +367,7 @@ function done_validating(action){
                                                 </select>
                                             </td>
                                         </tr>
-                                        <tr id="row_80211r">
+                                        <tr id="row_80211r" style="display:none">
                                             <th><#WLANConfig11n_80211r#></th>
                                             <td>
                                                 <select name="rt_HT_80211R" class="input">

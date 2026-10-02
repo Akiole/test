@@ -246,7 +246,7 @@ struct nvram_pair router_defaults[] = {
 	{ "wl_HT_AMSDU", "0" },                        /* HT AMSDU */
 	{ "wl_HT_BAWinSize", "64" },                   /* HT BA window size */
 #endif
-	{ "wl_HT_80211KV", "0" },                      /* 802.11k/v roaming */
+	{ "wl_HT_80211KV", "1" },                      /* 802.11k/v roaming */
 	{ "wl_HT_80211R", "0" },                       /* 802.11r FT */
 	{ "wl_HT_MpduDensity", "5" },                  /* HT MPDU density */
 	{ "wl_HT_AutoBA", "1" },                       /* HT auto BA */
@@ -348,7 +348,7 @@ struct nvram_pair router_defaults[] = {
 	{ "rt_sta_pmf", "0" },                         /* Station PMF */
 	{ "rt_HT_RDG", "0" },                          /* HT RDG */
 	{ "rt_HT_AMSDU", "1" },                        /* HT AMSDU */
-	{ "rt_HT_80211KV", "0" },                      /* 802.11k/v roaming */
+	{ "rt_HT_80211KV", "1" },                      /* 802.11k/v roaming */
 	{ "rt_HT_80211R", "0" },                       /* 802.11r FT */
 	{ "rt_HT_MpduDensity", "5" },                  /* HT MPDU density */
 	{ "rt_band_steering", "1" },                   /* band steering AP 2.4Ghz */
