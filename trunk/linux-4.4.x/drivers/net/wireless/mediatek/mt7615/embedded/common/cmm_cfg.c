@@ -155,7 +155,7 @@ static UCHAR CFG_WMODE_MAP[] = {
 	PHY_11VHT_N_AG_MIXED, (WMODE_G | WMODE_GN | WMODE_A | WMODE_AN | WMODE_AC), /* 13 => G/GN/A/AN/AC mixed , no B mode */
 	PHY_11VHT_N_A_MIXED, (WMODE_A | WMODE_AN | WMODE_AC), /* 14 => A/AC/AN mixed */
 	PHY_11VHT_N_MIXED, (WMODE_AN | WMODE_AC), /* 15 => AC/AN mixed, but no A mode */
-	PHY_11VHT, WMODE_AC, /* 22 => AC only */
+	PHY_11VHT, (WMODE_A | WMODE_AN | WMODE_AC), /* 22 => AC only (VHT_DisallowNonVHT rejects non-VHT clients) */
 #endif /* DOT11_VHT_AC */
 	PHY_MODE_MAX, WMODE_INVALID /* default phy mode if not match */
 };
