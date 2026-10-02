@@ -348,7 +348,7 @@ function wl_wep_change() {
             $("row_wep1").style.display = "";
         }
 
-        if (wep != "0") {
+        if (mode != "owe" && wep != "0") {
             inputCtrl(document.form.wl_phrase_x, 1);
             inputCtrl(document.form.wl_key1, 1);
             inputCtrl(document.form.wl_key2, 1);
@@ -401,7 +401,7 @@ function change_wep_type(mode, isload) {
 
     add_options_x2(document.form.wl_wep_x, wep_type_array, value_array, cur_wep);
 
-    if (mode == "psk" || mode == "wpa" || mode == "wpa2" || mode == "radius")
+    if (mode == "psk" || mode == "wpa" || mode == "wpa2" || mode == "radius" || mode == "owe")
         document.form.wl_wep_x.value = "0";
 
     change_wlweptype(document.form.wl_wep_x, "WLANConfig11a", isload);

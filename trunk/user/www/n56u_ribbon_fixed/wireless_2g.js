@@ -341,13 +341,14 @@ function rt_wep_change() {
         $("row_wpa3").style.display = "none";
 	if (mode == "owe") {
 		inputCtrl(document.form.rt_crypto, 1);
+		inputCtrl(document.form.rt_wep_x, 0);
 		$("row_wep1").style.display = "none";
 	} else {
 		inputCtrl(document.form.rt_crypto, 0);
 		$("row_wep1").style.display = "";
 	}
 
-        if (wep != "0") {
+        if (mode != "owe" && wep != "0") {
             inputCtrl(document.form.rt_phrase_x, 1);
             inputCtrl(document.form.rt_key1, 1);
             inputCtrl(document.form.rt_key2, 1);
@@ -400,7 +401,7 @@ function change_wep_type(mode, isload) {
 
     add_options_x2(document.form.rt_wep_x, wep_type_array, value_array, cur_wep);
 
-    if (mode == "psk" || mode == "wpa" || mode == "wpa2" || mode == "radius")
+    if (mode == "psk" || mode == "wpa" || mode == "wpa2" || mode == "radius" || mode == "owe")
         document.form.rt_wep_x.value = "0";
 
     change_wlweptype(document.form.rt_wep_x, "WLANConfig11b", isload);
