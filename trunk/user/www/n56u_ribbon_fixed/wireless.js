@@ -197,74 +197,13 @@ function changeWEPType() {
     inputCtrl(document.form.wl_key, wflag);
 }
 
-function changeAuthType() {
-    if (document.form.wl_auth_mode.value == "shared") {
-        inputCtrl(document.form.wl_crypto, 0);
-        inputCtrl(document.form.wl_wpa_psk, 0);
-        inputCtrl(document.form.wl_wep, 1);
-        inputCtrl(document.form.wl_phrase_x, 1);
-        inputCtrl(document.form.wl_key1, 1);
-        inputCtrl(document.form.wl_key2, 1);
-        inputCtrl(document.form.wl_key3, 1);
-        inputCtrl(document.form.wl_key4, 1);
-        inputCtrl(document.form.wl_key, 1);
-        inputCtrl(document.form.wl_wpa_gtk_rekey, 0);
-    }
-    else if (document.form.wl_auth_mode.value == "psk") {
-        inputCtrl(document.form.wl_crypto, 1);
-        inputCtrl(document.form.wl_wpa_psk, 1);
-        inputCtrl(document.form.wl_wep, 1);
-        inputCtrl(document.form.wl_phrase_x, 1);
-        inputCtrl(document.form.wl_key1, 1);
-        inputCtrl(document.form.wl_key2, 1);
-        inputCtrl(document.form.wl_key3, 1);
-        inputCtrl(document.form.wl_key4, 1);
-        inputCtrl(document.form.wl_key, 1);
-        inputCtrl(document.form.wl_wpa_gtk_rekey, 0);
-    }
-    else if (document.form.wl_auth_mode.value == "wpa") {
-        inputCtrl(document.form.wl_crypto, 0);
-        inputCtrl(document.form.wl_wpa_psk, 0);
-        inputCtrl(document.form.wl_wep, 0);
-        inputCtrl(document.form.wl_phrase_x, 0);
-        inputCtrl(document.form.wl_key1, 0);
-        inputCtrl(document.form.wl_key2, 0);
-        inputCtrl(document.form.wl_key3, 0);
-        inputCtrl(document.form.wl_key4, 0);
-        inputCtrl(document.form.wl_key, 0);
-        inputCtrl(document.form.wl_wpa_gtk_rekey, 0);
-    }
-    else if (document.form.wl_auth_mode.value == "radius") {
-        inputCtrl(document.form.wl_crypto, 1);
-        inputCtrl(document.form.wl_wpa_psk, 1);
-        inputCtrl(document.form.wl_wep, 1);
-        inputCtrl(document.form.wl_phrase_x, 1);
-        inputCtrl(document.form.wl_key1, 1);
-        inputCtrl(document.form.wl_key2, 1);
-        inputCtrl(document.form.wl_key3, 1);
-        inputCtrl(document.form.wl_key4, 1);
-        inputCtrl(document.form.wl_key, 1);
-        inputCtrl(document.form.wl_wpa_gtk_rekey, 0);
-    }
-    else {
-        inputCtrl(document.form.wl_crypto, 0);
-        inputCtrl(document.form.wl_wpa_psk, 0);
-        inputCtrl(document.form.wl_wep, 1);
-        inputCtrl(document.form.wl_phrase_x, 1);
-        inputCtrl(document.form.wl_key1, 1);
-        inputCtrl(document.form.wl_key1, 1);
-        inputCtrl(document.form.wl_key1, 1);
-        inputCtrl(document.form.wl_key1, 1);
-        inputCtrl(document.form.wl_key1, 1);
-        inputCtrl(document.form.wl_key, 1);
-        inputCtrl(document.form.wl_wpa_gtk_rekey, 0);
-    }
-}
 /* input : s: service id, v: value name, o: current value */
 /* output: wep key1~4       */
 function is_wlphrase(s, v, o) {
     var pseed = new Array;
     var wep_key = new Array(5);
+    var wepType, wepKey1, wepKey2, wepKey3, wepKey4;
+    var phrase, randNumber, password, ch;
 
     if (v == 'wl_wpa_psk')
         return(valid_WPAPSK(o));
@@ -778,7 +717,7 @@ function wl_auth_mode_change(isload) {
         }
 	document.form.wl_pmf.value = 1;
     } else
-	document.form.wl_pmf.value = 0;;
+	document.form.wl_pmf.value = 0;
 
     change_wep_type(mode, isload);
 
