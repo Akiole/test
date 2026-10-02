@@ -38,8 +38,9 @@ function initial(){
 	show_menu(5,1,1);
 	show_footer();
 
+	var o1 = document.form.rt_gmode;
+
 	if (!support_2g_11ax()){
-		var o1 = document.form.rt_gmode;
 		o1.remove(0);
 	}
 
