@@ -206,7 +206,7 @@ struct nvram_pair router_defaults[] = {
 	{ "wl_pmf", "1" },                             /* PMF (1=optional, required for WPA3) */
 	{ "wl_sta_pmf", "0" },                         /* Station PMF */
 #if BOARD_HAS_5G_11AC
-	{ "wl_HT_BW", "2" },                           /* HT BW (0=20MHz,1=20/40MHz,2=20/40/80MHz,3=20/40/80/160MHz) */
+	{ "wl_HT_BW", "3" },                           /* HT BW (0=20MHz,1=20/40MHz,2=20/40/80MHz,3=20/40/80/160MHz) */
 #else
 	{ "wl_HT_BW", "1" },                           /* HT BW (0=20MHz,1=20/40MHz) */
 #endif
