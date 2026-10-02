@@ -401,9 +401,16 @@ function change_guest_auth_mode(mflag) {
                                             <td>
                                                 <select name="wl_guest_mcs_mode" class="input">
                                                     <option value="0" <% nvram_match_x("", "wl_guest_mcs_mode", "0", "selected"); %>><#checkbox_No#> (*)</option>
-                                                    <option value="7" <% nvram_match_x("", "wl_guest_mcs_mode", "7", "selected"); %>>VHT (1S) 98 Mbps</option>
-                                                    <option value="8" <% nvram_match_x("", "wl_guest_mcs_mode", "8", "selected"); %>>VHT (1S) 65 Mbps</option>
-                                                    <option value="9" <% nvram_match_x("", "wl_guest_mcs_mode", "9", "selected"); %>>VHT (1S) 33 Mbps</option>
+                                                    <option value="16" <% nvram_match_x("", "wl_guest_mcs_mode", "16", "selected"); %>>VHT MCS9 (780 Mbps)</option>
+                                                    <option value="15" <% nvram_match_x("", "wl_guest_mcs_mode", "15", "selected"); %>>VHT MCS8 (702 Mbps)</option>
+                                                    <option value="14" <% nvram_match_x("", "wl_guest_mcs_mode", "14", "selected"); %>>VHT MCS7 (585 Mbps)</option>
+                                                    <option value="13" <% nvram_match_x("", "wl_guest_mcs_mode", "13", "selected"); %>>VHT MCS6 (526 Mbps)</option>
+                                                    <option value="12" <% nvram_match_x("", "wl_guest_mcs_mode", "12", "selected"); %>>VHT MCS5 (468 Mbps)</option>
+                                                    <option value="11" <% nvram_match_x("", "wl_guest_mcs_mode", "11", "selected"); %>>VHT MCS4 (351 Mbps)</option>
+                                                    <option value="10" <% nvram_match_x("", "wl_guest_mcs_mode", "10", "selected"); %>>VHT MCS3 (234 Mbps)</option>
+                                                    <option value="7" <% nvram_match_x("", "wl_guest_mcs_mode", "7", "selected"); %>>VHT MCS2 (175 Mbps)</option>
+                                                    <option value="8" <% nvram_match_x("", "wl_guest_mcs_mode", "8", "selected"); %>>VHT MCS1 (117 Mbps)</option>
+                                                    <option value="9" <% nvram_match_x("", "wl_guest_mcs_mode", "9", "selected"); %>>VHT MCS0 (58 Mbps)</option>
                                                     <option value="1" <% nvram_match_x("", "wl_guest_mcs_mode", "1", "selected"); %>>HTMIX (1S) 45 Mbps</option>
                                                     <option value="2" <% nvram_match_x("", "wl_guest_mcs_mode", "2", "selected"); %>>HTMIX (1S) 30 Mbps</option>
                                                     <option value="3" <% nvram_match_x("", "wl_guest_mcs_mode", "3", "selected"); %>>HTMIX (1S) 15 Mbps</option>

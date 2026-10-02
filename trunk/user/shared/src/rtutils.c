@@ -242,6 +242,35 @@ calc_fixed_tx_mode(int i_val, int is_aband, int i_phy_mode, int *p_mcs)
 		else
 			i_phy = FIXED_TXMODE_HT;
 		break;
+	/* VHT MCS 3-9 (2S on 2x2 hardware) */
+	case 10:
+		i_mcs = 3;
+		i_phy = FIXED_TXMODE_VHT;
+		break;
+	case 11:
+		i_mcs = 4;
+		i_phy = FIXED_TXMODE_VHT;
+		break;
+	case 12:
+		i_mcs = 5;
+		i_phy = FIXED_TXMODE_VHT;
+		break;
+	case 13:
+		i_mcs = 6;
+		i_phy = FIXED_TXMODE_VHT;
+		break;
+	case 14:
+		i_mcs = 7;
+		i_phy = FIXED_TXMODE_VHT;
+		break;
+	case 15:
+		i_mcs = 8;
+		i_phy = FIXED_TXMODE_VHT;
+		break;
+	case 16:
+		i_mcs = 9;
+		i_phy = FIXED_TXMODE_VHT;
+		break;
 	}
 
 	*p_mcs = i_mcs;
