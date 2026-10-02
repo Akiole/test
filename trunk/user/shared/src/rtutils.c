@@ -74,6 +74,7 @@ is_phy_mode_can_vht(int i_phy_mode)
 	case PHY_11VHT_N_AG_MIXED:
 	case PHY_11VHT_N_A_MIXED:
 	case PHY_11VHT_N_MIXED:
+	case PHY_11VHT:
 	case PHY_11AX_24G:
 	case PHY_11AX_5G:
 	case PHY_11AX_6G:
@@ -155,6 +156,9 @@ calc_phy_mode(int i_val, int is_aband)
 			break;
 		case 4:  // A/N/AC
 			i_phy_mode = PHY_11VHT_N_A_MIXED;
+			break;
+		case 6:  // AC only
+			i_phy_mode = PHY_11VHT;
 			break;
 #endif
 #if defined(BOARD_HAS_5G_11AX) && BOARD_HAS_5G_11AX

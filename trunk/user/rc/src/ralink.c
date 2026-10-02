@@ -1471,7 +1471,7 @@ gen_ralink_config(int is_soc_ap, int is_aband, int disable_autoscan)
 	if (is_aband) {
 		int i_VHTBW_MAX = 0;
 		
-		if (i_phy_mode == PHY_11VHT_N_A_MIXED || i_phy_mode == PHY_11VHT_N_MIXED || i_phy_mode == PHY_11AX_5G)
+		if (i_phy_mode == PHY_11VHT_N_A_MIXED || i_phy_mode == PHY_11VHT_N_MIXED || i_phy_mode == PHY_11VHT || i_phy_mode == PHY_11AX_5G)
 			i_VHTBW_MAX = 1;
 		//VHT_BW
 		i_val = nvram_wlan_get_int(is_aband, "HT_BW");

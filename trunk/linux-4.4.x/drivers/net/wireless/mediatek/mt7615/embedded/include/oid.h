@@ -1229,6 +1229,7 @@ typedef enum _RT_802_11_PHY_MODE {
 	PHY_11VHT_N_AG_MIXED = 13, /* 13 -> AC/A/AN/G/GN mixed  */
 	PHY_11VHT_N_A_MIXED = 14, /* 14 -> AC/AN/A mixed in 5G band */
 	PHY_11VHT_N_MIXED = 15, /* 15 -> AC/AN mixed in 5G band */
+	PHY_11VHT = 22, /* 22 -> AC only in 5G band */
 #endif /* DOT11_VHT_AC */
 	PHY_MODE_MAX,
 } RT_802_11_PHY_MODE;
@@ -1242,7 +1243,8 @@ typedef enum _RT_802_11_PHY_MODE {
 	 (__Mode == PHY_11AGN_MIXED) ||	\
 	 (__Mode == PHY_11N_5G) ||\
 	 (__Mode == PHY_11VHT_N_MIXED) ||\
-	 (__Mode == PHY_11VHT_N_A_MIXED))
+	 (__Mode == PHY_11VHT_N_A_MIXED) ||\
+	 (__Mode == PHY_11VHT))
 #elif defined(DOT11_N_SUPPORT)
 #define PHY_MODE_IS_5G_BAND(__Mode)	\
 	((__Mode == PHY_11A) ||			\

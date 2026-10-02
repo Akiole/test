@@ -2,7 +2,7 @@ var wep1, wep2, wep3, wep4;
 
 function automode_hint() {
     var gmode = document.form.wl_gmode.value;
-    if ((gmode == "2" || gmode == "3" || gmode == "4" || gmode == "5") &&
+    if ((gmode == "2" || gmode == "3" || gmode == "4" || gmode == "5" || gmode == "6") &&
        (document.form.wl_wep_x.value == 1 || document.form.wl_wep_x.value == 2 || document.form.wl_auth_mode.value == "radius" ||
             (document.form.wl_crypto.value.indexOf("tkip") == 0 && !document.form.wl_crypto.disabled)))
         $("wl_gmode_hint").style.display = "block";
@@ -12,7 +12,7 @@ function automode_hint() {
 
 function nmode_limitation() {
     var gmode = document.form.wl_gmode.value;
-    if (gmode == "1" || gmode == "3") {
+    if (gmode == "1" || gmode == "3" || gmode == "6") {
         if (document.form.wl_auth_mode.selectedIndex == 0 && (document.form.wl_wep_x.selectedIndex == "1" || document.form.wl_wep_x.selectedIndex == "2")) {
             alert("<#WLANConfig11n_nmode_limition_hint#>");
             document.form.wl_auth_mode.selectedIndex = 0;
@@ -415,7 +415,7 @@ function enableExtChRows(o) {
         $("row_HT_BW").style.display = "";
         $("row_HT_EXTCHA").style.display = "";
     }
-    if (o.value == "3" || o.value == "4" || o.value == "5")
+    if (o.value == "3" || o.value == "4" || o.value == "5" || o.value == "6")
         insert_vht_bw(1);
     else
         insert_vht_bw(0);
