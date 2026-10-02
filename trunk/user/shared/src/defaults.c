@@ -225,7 +225,7 @@ struct nvram_pair router_defaults[] = {
 	{ "wl_wdslist_x", "" },                        /* WDS list */
 	{ "wl_maclist_x", "" },                        /* MAC filter list */
 	{ "wl_macdesc_x", "" },                        /* MAC description list */
-	{ "wl_wpa_mode", "2" },                        /* WPA mode */
+	{ "wl_wpa_mode", "6" },                        /* WPA mode (6=WPA2-WPA3-Mixed) */
 	{ "wl_stream_tx", STR(BOARD_NUM_ANT_5G_TX) },
 	{ "wl_stream_rx", STR(BOARD_NUM_ANT_5G_RX) },
 	{ "wl_preamble", "1" },                        /* Preamble type */
@@ -339,7 +339,7 @@ struct nvram_pair router_defaults[] = {
 	{ "rt_wdslist_x", "" },                        /* WDS list */
 	{ "rt_maclist_x", "" },                        /* MAC filter list */
 	{ "rt_macdesc_x", "" },                        /* MAC description list */
-	{ "rt_wpa_mode", "2" },                        /* WPA mode */
+	{ "rt_wpa_mode", "6" },                        /* WPA mode (6=WPA2-WPA3-Mixed) */
 	{ "rt_stream_tx", STR(BOARD_NUM_ANT_2G_TX) },
 	{ "rt_stream_rx", STR(BOARD_NUM_ANT_2G_RX) },
 	{ "rt_preamble", "1" },                        /* Preamble type */
