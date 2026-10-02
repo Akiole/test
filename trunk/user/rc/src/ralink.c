@@ -1153,16 +1153,6 @@ gen_ralink_config(int is_soc_ap, int is_aband, int disable_autoscan)
 		fprintf(fp, "PMFSHA256=%d\n", i_pmfr ? 1 : 0);
 	}
 
-	//WPA3 support (WPA3PSK or WPA2PSKWPA3PSK)
-	if (i_auth == 9 || i_auth == 10) {
-		fprintf(fp, "Wpa3Support=1\n");
-		fprintf(fp, "SAEEnable=1\n");
-	}
-	//OWE support
-	if (i_auth == 11) {
-		fprintf(fp, "OWEEnable=1\n");
-	}
-
 	i_val = nvram_wlan_get_int(is_aband, "guest_wpa_mode");
 	p_str = nvram_wlan_get(is_aband, "guest_auth_mode");
 	if (!strcmp(p_str, "psk"))
