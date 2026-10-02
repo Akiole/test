@@ -41,15 +41,11 @@ function nmode_limitation() {
 }
 
 function RefreshRateSetList(gmode, chg) {
-    orig = document.form.WLANConfig11b_DataRate.value;
+    var orig = document.form.WLANConfig11b_DataRate.value;
+    var items;
     free_options(document.form.WLANConfig11b_DataRate);
     if (gmode != "3") {
-        if (gmode == "1") {
-            items = new Array("1 & 2 Mbps", "Default", "All");
-        }
-        else {
-            items = new Array("1 & 2 Mbps", "Default", "All");
-        }
+        items = new Array("1 & 2 Mbps", "Default", "All");
         if (chg) orig = 1;
     }
     else {
@@ -155,6 +151,7 @@ function change_common_rt(o, s, v) {
 }
 
 function change_wlweptype(o, s, isload) {
+    var wflag, wep;
     if (o.value == "0") {
         wflag = 0;
         wep = "";
@@ -182,6 +179,7 @@ function change_wlweptype(o, s, isload) {
 }
 
 function change_wlkey(o, s) {
+    var wep;
     if (document.form.current_page.value == "Advanced_WirelessGuest_Content.asp")
         wep = document.form.rt_guest_wep_x_1.value;
     else
@@ -199,90 +197,13 @@ function change_wlkey(o, s) {
     return true;
 }
 
-/* Used when WEP is changed */
-function changeWEPType() {
-    if (document.form.rt_wep.value == "0") {
-        flag = 0;
-    }
-    else {
-        flag = 1;
-    }
-    inputCtrl(document.form.rt_phrase_x, flag);
-    inputCtrl(document.form.rt_key1, flag);
-    inputCtrl(document.form.rt_key2, flag);
-    inputCtrl(document.form.rt_key3, flag);
-    inputCtrl(document.form.rt_key4, flag);
-    inputCtrl(document.form.rt_key, flag);
-}
-/* Used when Authenication Method is changed */
-function changeAuthType() {
-    if (document.form.rt_auth_mode.value == "shared") {
-        inputCtrl(document.form.rt_crypto, 0);
-        inputCtrl(document.form.rt_wpa_psk, 0);
-        inputCtrl(document.form.rt_wep, 1);
-        inputCtrl(document.form.rt_phrase_x, 1);
-        inputCtrl(document.form.rt_key1, 1);
-        inputCtrl(document.form.rt_key2, 1);
-        inputCtrl(document.form.rt_key3, 1);
-        inputCtrl(document.form.rt_key4, 1);
-        inputCtrl(document.form.rt_key, 1);
-        inputCtrl(document.form.rt_wpa_gtk_rekey, 0);
-    }
-    else if (document.form.rt_auth_mode.value == "psk") {
-        inputCtrl(document.form.rt_crypto, 1);
-        inputCtrl(document.form.rt_wpa_psk, 1);
-        inputCtrl(document.form.rt_wep, 1);
-        inputCtrl(document.form.rt_phrase_x, 1);
-        inputCtrl(document.form.rt_key1, 1);
-        inputCtrl(document.form.rt_key2, 1);
-        inputCtrl(document.form.rt_key3, 1);
-        inputCtrl(document.form.rt_key4, 1);
-        inputCtrl(document.form.rt_key, 1);
-        inputCtrl(document.form.rt_wpa_gtk_rekey, 0);
-    }
-    else if (document.form.rt_auth_mode.value == "wpa") {
-        inputCtrl(document.form.rt_crypto, 0);
-        inputCtrl(document.form.rt_wpa_psk, 0);
-        inputCtrl(document.form.rt_wep, 0);
-        inputCtrl(document.form.rt_phrase_x, 0);
-        inputCtrl(document.form.rt_key1, 0);
-        inputCtrl(document.form.rt_key2, 0);
-        inputCtrl(document.form.rt_key3, 0);
-        inputCtrl(document.form.rt_key4, 0);
-        inputCtrl(document.form.rt_key, 0);
-        inputCtrl(document.form.rt_wpa_gtk_rekey, 0);
-    }
-    else if (document.form.rt_auth_mode.value == "radius") {
-        inputCtrl(document.form.rt_crypto, 1);
-        inputCtrl(document.form.rt_wpa_psk, 1);
-        inputCtrl(document.form.rt_wep, 1);
-        inputCtrl(document.form.rt_phrase_x, 1);
-        inputCtrl(document.form.rt_key1, 1);
-        inputCtrl(document.form.rt_key2, 1);
-        inputCtrl(document.form.rt_key3, 1);
-        inputCtrl(document.form.rt_key4, 1);
-        inputCtrl(document.form.rt_key, 1);
-        inputCtrl(document.form.rt_wpa_gtk_rekey, 0);
-    }
-    else {
-        inputCtrl(document.form.rt_crypto, 0);
-        inputCtrl(document.form.rt_wpa_psk, 0);
-        inputCtrl(document.form.rt_wep, 1);
-        inputCtrl(document.form.rt_phrase_x, 1);
-        inputCtrl(document.form.rt_key1, 1);
-        inputCtrl(document.form.rt_key1, 1);
-        inputCtrl(document.form.rt_key1, 1);
-        inputCtrl(document.form.rt_key1, 1);
-        inputCtrl(document.form.rt_key1, 1);
-        inputCtrl(document.form.rt_key, 1);
-        inputCtrl(document.form.rt_wpa_gtk_rekey, 0);
-    }
-}
 /* input : s: service id, v: value name, o: current value */
 /* output: wep key1~4       */
 function is_wlphrase(s, v, o) {
     var pseed = new Array;
     var wep_key = new Array(5);
+    var wepType, wepKey1, wepKey2, wepKey3, wepKey4;
+    var phrase, randNumber, password, ch;
 
     if (v == 'rt_wpa_psk')
         return(valid_WPAPSK(o));
