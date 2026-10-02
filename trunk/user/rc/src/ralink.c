@@ -763,7 +763,7 @@ gen_ralink_config(int is_soc_ap, int is_aband, int disable_autoscan)
 	fprintf(fp, "VOW_Airtime_Ctrl_En=%d\n", 0);
 	fprintf(fp, "VOW_Rate_Ctrl_En=%d\n", 0);
 	fprintf(fp, "VOW_WATF_Enable=%d\n", 0);
-	fprintf(fp, "BandSteering=%d\n", 0);
+	fprintf(fp, "BandSteering=%d\n", nvram_wlan_get_int(is_aband, "band_steering"));
 	fprintf(fp, "BFBACKOFFenable=%d\n", 0);
 	fprintf(fp, "DfsCalibration=%d\n", 0);
 	fprintf(fp, "ITxBfTimeout=%d\n", 0);
@@ -828,11 +828,6 @@ gen_ralink_config(int is_soc_ap, int is_aband, int disable_autoscan)
 			fprintf(fp, "MuMimoDlEnable=%d\n", 0);
 			fprintf(fp, "MuMimoUlEnable=%d\n", 0);
 		}
-		/* 5g bandsteering configs */
-		if (nvram_wlan_get_int(1, "band_steering"))
-			fprintf(fp, "BandSteering=%d\n", 1);
-		else
-			fprintf(fp, "BandSteering=%d\n", 0);
 #if defined(BOARD_HAS_5G_11AX) && BOARD_HAS_5G_11AX
 		if (i_phy_mode == PHY_11AX_5G) {
 			/* 5g wifi6 mode */

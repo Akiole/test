@@ -241,7 +241,7 @@ struct nvram_pair router_defaults[] = {
 	{ "wl_HT_AMSDU", "1" },                        /* HT AMSDU */
 	{ "wl_HT_BAWinSize", "256" },                  /* HT BA window size */
 	{ "wl_mumimo", "1" },                          /* MU-MIMO */
-	{ "wl_band_steering", "0" },                   /* band steering AP 5Ghz */
+	{ "wl_band_steering", "1" },                   /* band steering AP 5Ghz */
 #else
 	{ "wl_HT_AMSDU", "0" },                        /* HT AMSDU */
 	{ "wl_HT_BAWinSize", "64" },                   /* HT BA window size */
@@ -351,7 +351,7 @@ struct nvram_pair router_defaults[] = {
 	{ "rt_HT_80211KV", "0" },                      /* 802.11k/v roaming */
 	{ "rt_HT_80211R", "0" },                       /* 802.11r FT */
 	{ "rt_HT_MpduDensity", "5" },                  /* HT MPDU density */
-	{ "rt_band_steering", "0" },                   /* band steering AP 2.4Ghz */
+	{ "rt_band_steering", "1" },                   /* band steering AP 2.4Ghz */
 #if defined (USE_WID_2G) && (USE_WID_2G==7615 || USE_WID_2G==7915)
 	{ "rt_HT_BAWinSize", "256" },                  /* HT BA window size */
 	{ "rt_ldpc", "1" },                            /* LDPC */
