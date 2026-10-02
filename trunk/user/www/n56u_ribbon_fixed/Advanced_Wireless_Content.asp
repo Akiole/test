@@ -231,7 +231,7 @@ function validForm(){
 	}
 	else{
 		var cur_wep_key = eval('document.form.wl_key'+document.form.wl_key.value);
-		if(auth_mode != "radius" && !validate_wlkey(cur_wep_key))
+		if(auth_mode != "radius" && auth_mode != "owe" && !validate_wlkey(cur_wep_key))
 			return false;
 	}
 

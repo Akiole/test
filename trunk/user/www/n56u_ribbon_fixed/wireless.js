@@ -336,16 +336,17 @@ function wl_wep_change() {
     else {
         inputCtrl(document.form.wl_wpa_psk, 0);
         inputCtrl(document.form.wl_wpa_gtk_rekey, 0);
-        inputCtrl(document.form.wl_wep_x, 1);
 
         $("row_wpa3").style.display = "none";
-	if (mode == "owe") {
-		inputCtrl(document.form.wl_crypto, 1);
-		$("row_wep1").style.display = "none";
-	} else {
-		inputCtrl(document.form.wl_crypto, 0);
-		$("row_wep1").style.display = "";
-	}
+        if (mode == "owe") {
+            inputCtrl(document.form.wl_crypto, 1);
+            inputCtrl(document.form.wl_wep_x, 0);
+            $("row_wep1").style.display = "none";
+        } else {
+            inputCtrl(document.form.wl_crypto, 0);
+            inputCtrl(document.form.wl_wep_x, 1);
+            $("row_wep1").style.display = "";
+        }
 
         if (wep != "0") {
             inputCtrl(document.form.wl_phrase_x, 1);
@@ -670,13 +671,12 @@ function wl_auth_mode_change(isload) {
             if (algos[i].toLowerCase() == cur)
                 document.form.wl_crypto[i].selected = true;
         }
-		
-	if (opts[opts.selectedIndex].text == "WPA3-Personal" || opts[opts.selectedIndex].text == "Enhanced Open")
-		document.form.wl_pmf.value = 2;
-	else if (opts[opts.selectedIndex].text == "WPA2-Personal" && document.form.wl_crypto[0].selected == true)
-		document.form.wl_pmf.value = 1;
-	else
-		document.form.wl_pmf.value = 0;
+        if (opts[opts.selectedIndex].text == "WPA3-Personal" || opts[opts.selectedIndex].text == "Enhanced Open")
+            document.form.wl_pmf.value = 2;
+        else if (opts[opts.selectedIndex].text == "WPA2-Personal")
+            document.form.wl_pmf.value = 1;
+        else
+            document.form.wl_pmf.value = 0;
     }
     else if (mode == "wpa") {
         for (var i = 0; i < document.form.wl_crypto.length; i++) {
