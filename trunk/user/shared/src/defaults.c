@@ -203,7 +203,7 @@ struct nvram_pair router_defaults[] = {
 	{ "wl_PktAggregate", "1" },                    /* Packet aggregation */
 	{ "wl_APSDCapable", "0" },                     /* APSD */
 	{ "wl_HT_OpMode", "1" },                       /* HT op mode */
-	{ "wl_pmf", "0" },                             /* PMF */
+	{ "wl_pmf", "1" },                             /* PMF (1=optional, required for WPA3) */
 	{ "wl_sta_pmf", "0" },                         /* Station PMF */
 #if BOARD_HAS_5G_11AC
 	{ "wl_HT_BW", "2" },                           /* HT BW (0=20MHz,1=20/40MHz,2=20/40/80MHz,3=20/40/80/160MHz) */
@@ -225,7 +225,7 @@ struct nvram_pair router_defaults[] = {
 	{ "wl_wdslist_x", "" },                        /* WDS list */
 	{ "wl_maclist_x", "" },                        /* MAC filter list */
 	{ "wl_macdesc_x", "" },                        /* MAC description list */
-	{ "wl_wpa_mode", "6" },                        /* WPA mode (6=WPA2-WPA3-Mixed) */
+	{ "wl_wpa_mode", "2" },                        /* WPA mode (2=WPA2-Personal) */
 	{ "wl_stream_tx", STR(BOARD_NUM_ANT_5G_TX) },
 	{ "wl_stream_rx", STR(BOARD_NUM_ANT_5G_RX) },
 	{ "wl_preamble", "1" },                        /* Preamble type */
@@ -339,12 +339,12 @@ struct nvram_pair router_defaults[] = {
 	{ "rt_wdslist_x", "" },                        /* WDS list */
 	{ "rt_maclist_x", "" },                        /* MAC filter list */
 	{ "rt_macdesc_x", "" },                        /* MAC description list */
-	{ "rt_wpa_mode", "6" },                        /* WPA mode (6=WPA2-WPA3-Mixed) */
+	{ "rt_wpa_mode", "2" },                        /* WPA mode (2=WPA2-Personal) */
 	{ "rt_stream_tx", STR(BOARD_NUM_ANT_2G_TX) },
 	{ "rt_stream_rx", STR(BOARD_NUM_ANT_2G_RX) },
 	{ "rt_preamble", "1" },                        /* Preamble type */
 	{ "rt_greenap", "0" },                         /* 2.4GHz GreenAP */
-	{ "rt_pmf", "0" },                             /* PMF */
+	{ "rt_pmf", "1" },                             /* PMF (1=optional, required for WPA3) */
 	{ "rt_sta_pmf", "0" },                         /* Station PMF */
 	{ "rt_HT_RDG", "0" },                          /* HT RDG */
 	{ "rt_HT_AMSDU", "1" },                        /* HT AMSDU */

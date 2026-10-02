@@ -743,9 +743,11 @@ function wl_auth_mode_change(isload) {
     }
 
     /* Define new network key indices */
-    if (mode == "wpa" || mode == "wpa2" || mode == "psk" || mode == "radius")
+    if (mode == "wpa" || mode == "wpa2" || mode == "psk" || mode == "radius") {
         algos = new Array("2", "3");
-    else {
+        if (!isload)
+            cur = "2";
+    } else {
         algos = new Array("1", "2", "3", "4");
         if (!isload)
             cur = "1";
@@ -759,6 +761,9 @@ function wl_auth_mode_change(isload) {
         if (algos[i] == cur)
             document.form.wl_key[i].selected = true;
     }
+    /* Ensure at least one option is selected */
+    if (document.form.wl_key.selectedIndex < 0)
+        document.form.wl_key.selectedIndex = 0;
 
     wl_wep_change();
 }
