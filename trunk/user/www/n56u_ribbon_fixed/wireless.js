@@ -455,7 +455,6 @@ function insertChannelOption() {
         country == "PA" ||
         country == "PR" ||
         country == "QA" ||
-        country == "CN" ||
         country == "RO" ||
         country == "SA" ||
         country == "SG" ||
@@ -467,6 +466,9 @@ function insertChannelOption() {
         country == "YE" ||
         country == "ZW")
         channels = new Array(0, 36, 40, 44, 48, 52, 56, 60, 64, 149, 153, 157, 161, 165); //Region 0
+
+    else if (country == "CN")
+        channels = new Array(0, 36, 40, 44, 48, 52, 56, 60, 64, 100, 104, 108, 112, 116, 120, 124, 128, 132, 136, 140, 144, 149, 153, 157, 161, 165); //China (MIIT 2021: +100-144)
 
     else if (country == "AT" ||
         country == "BE" ||
@@ -541,6 +543,9 @@ function insertChannelOption() {
 
     else if(country == "RU")
         channels = new Array(0, 36, 40, 44, 48, 52, 56, 60, 64, 132, 136, 140, 144, 149, 153, 157, 161, 165); //Region 36
+
+    else if(country == "DB")
+        channels = new Array(0, 36, 40, 44, 48, 52, 56, 60, 64, 68, 72, 76, 80, 84, 88, 92, 96, 100, 104, 108, 112, 116, 120, 124, 128, 132, 136, 140, 144, 149, 153, 157, 161, 165, 169, 173, 177, 181); //Debug: all 5G channels
 
     else
         channels = new Array(0, 36, 40, 44, 48, 52, 56, 60, 64, 100, 104, 108, 112, 116, 120, 124, 128, 132, 136, 140, 149, 153, 157, 161, 165); //Region 7

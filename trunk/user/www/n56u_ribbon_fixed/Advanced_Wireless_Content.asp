@@ -580,7 +580,7 @@ function validate_wlphrase(s, v, obj){
                                                 <select name="wl_country_code" class="input" onChange="return change_common_wl(this, 'WLANConfig11a', 'wl_country_code')">
                                                     <option value="AU" <% nvram_match_x("", "wl_country_code", "AU","selected"); %>>Australia (Region 0, channels 36-64,149-165)</option>
                                                     <option value="BY" <% nvram_match_x("", "wl_country_code", "BY","selected"); %>>Belarus (Region 34, channels 36-64,132-144)</option>
-                                                    <option value="CN" <% nvram_match_x("", "wl_country_code", "CN","selected"); %>>China (Region 0, channels 36-64,149-165)</option>
+                                                    <option value="CN" <% nvram_match_x("", "wl_country_code", "CN","selected"); %>>China (channels 36-64,100-144,149-165)</option>
                                                     <option value="FR" <% nvram_match_x("", "wl_country_code", "FR","selected"); %>>France (Region 2, channels 36-64)</option>
                                                     <option value="GB" <% nvram_match_x("", "wl_country_code", "GB","selected"); %>>Europe (Region 1, channels 36-64,100-140)</option>
                                                     <option value="JP" <% nvram_match_x("", "wl_country_code", "JP","selected"); %>>Japan (Region 9, channels 36-64,100-116,132-140,149-165)</option>
