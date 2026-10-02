@@ -671,9 +671,13 @@ function wl_auth_mode_change(isload) {
             if (algos[i].toLowerCase() == cur)
                 document.form.wl_crypto[i].selected = true;
         }
+        /* Ensure at least one option is selected */
+        if (document.form.wl_crypto.selectedIndex < 0)
+            document.form.wl_crypto.selectedIndex = 0;
+
         if (opts[opts.selectedIndex].text == "WPA3-Personal" || opts[opts.selectedIndex].text == "Enhanced Open")
             document.form.wl_pmf.value = 2;
-        else if (opts[opts.selectedIndex].text == "WPA2-Personal")
+        else if (opts[opts.selectedIndex].text == "WPA2-Personal" || opts[opts.selectedIndex].text == "WPA2-WPA3-Mixed")
             document.form.wl_pmf.value = 1;
         else
             document.form.wl_pmf.value = 0;
@@ -700,7 +704,9 @@ function wl_auth_mode_change(isload) {
             if (algos[i].toLowerCase() == cur)
                 document.form.wl_crypto[i].selected = true;
         }
-	document.form.wl_pmf.value = 0;
+        if (document.form.wl_crypto.selectedIndex < 0)
+            document.form.wl_crypto.selectedIndex = 0;
+        document.form.wl_pmf.value = 0;
     }
     else if (mode == "wpa2") {
         for (var i = 0; i < document.form.wl_crypto.length; i++) {
@@ -720,7 +726,9 @@ function wl_auth_mode_change(isload) {
             if (algos[i].toLowerCase() == cur)
                 document.form.wl_crypto[i].selected = true;
         }
-	document.form.wl_pmf.value = 1;
+        if (document.form.wl_crypto.selectedIndex < 0)
+            document.form.wl_crypto.selectedIndex = 0;
+        document.form.wl_pmf.value = 1;
     } else
 	document.form.wl_pmf.value = 0;
 
