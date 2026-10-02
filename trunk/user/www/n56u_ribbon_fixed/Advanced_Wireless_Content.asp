@@ -40,9 +40,21 @@ function initial(){
 
 	var o1 = document.form.wl_gmode;
 	var o2 = document.form.wl_mcs_mode;
+	var bwSel = document.form.wl_HT_BW;
 
 	if (!support_5g_11ax()){
 		o1.remove(0);
+	}
+
+	/* Remove 160MHz option if hardware doesn't support it.
+	 * Use by-value lookup instead of fixed index for robustness. */
+	if (!support_5g_160mhz()){
+		for (var i = 0; i < bwSel.options.length; i++) {
+			if (bwSel.options[i].value == "3") {
+				bwSel.remove(i);
+				break;
+			}
+		}
 	}
 
 	if (!support_5g_11ac()){
@@ -53,10 +65,6 @@ function initial(){
 		o2.remove(1);
 		o2.remove(1);
 		o2.remove(1);
-	}
-
-	if (!support_5g_160mhz()){
-		document.form.wl_HT_BW.remove(3);
 	}
 
 	document.form.wl_radio_date_x_Sun.checked = getDateCheck(document.form.wl_radio_date_x.value, 0);
