@@ -2759,14 +2759,13 @@ ej_firmware_caps_hook(int eid, webs_t wp, int argc, char **argv)
 #if defined (USE_WID_5G) && (USE_WID_5G==7612 || USE_WID_5G==7615 || USE_WID_5G==7915)
 	int has_5g_mumimo = 1;
 	int has_5g_txbf = 1;
-#if defined (BOARD_MT7615_DBDC) || defined (BOARD_MT7915_DBDC)
-	int has_5g_160mhz = 0;
-#else
-	int has_5g_160mhz = 1;
-#endif
 #else
 	int has_5g_mumimo = 0;
 	int has_5g_txbf = 0;
+#endif
+#if defined (USE_WID_5G) && (USE_WID_5G==7615 || USE_WID_5G==7915) && !defined (BOARD_MT7615_DBDC) && !defined (BOARD_MT7915_DBDC)
+	int has_5g_160mhz = 1;
+#else
 	int has_5g_160mhz = 0;
 #endif
 #if defined (USE_WID_2G) && (USE_WID_2G==7615 || USE_WID_2G==7915)

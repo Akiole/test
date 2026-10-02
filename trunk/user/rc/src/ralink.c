@@ -1456,8 +1456,16 @@ gen_ralink_config(int is_soc_ap, int is_aband, int disable_autoscan)
 		//VHT_BW
 		i_val = nvram_wlan_get_int(is_aband, "HT_BW");
 #if (USE_WID_5G==7615 && !defined (BOARD_MT7615_DBDC)) || (USE_WID_5G==7915 && !defined (BOARD_MT7915_DBDC))
-		if (i_val == 3) //160Mhz
-			fprintf(fp, "VHT_BW=%d\n", 2);
+		if (i_val == 3 && i_VHTBW_MAX == 1) //160MHz, only valid in VHT/AX mode
+		{
+			/* 160MHz requires a contiguous 160MHz block: channels 36-64 (center 50)
+			 * or 100-128 (center 114). For fixed channel outside these ranges,
+			 * fall back to 80MHz to avoid driver startup failure. */
+			if (i_channel != 0 && !((i_channel >= 36 && i_channel <= 64) || (i_channel >= 100 && i_channel <= 128)))
+				fprintf(fp, "VHT_BW=%d\n", 1); // fall back to 80MHz
+			else
+				fprintf(fp, "VHT_BW=%d\n", 2); // 160MHz
+		}
 		else
 #endif
 		{

@@ -622,19 +622,53 @@ function insertExtChannelOption() {
 function insert_vht_bw(ins){
     var o = document.form.wl_HT_BW;
     var v = o.value;
-    var l = o.options.length;
+    var i, has80 = 0, has160 = 0;
+
+    /* detect existing options by value */
+    for (i = 0; i < o.options.length; i++) {
+        if (o.options[i].value == "2") has80 = 1;
+        if (o.options[i].value == "3") has160 = 1;
+    }
 
     if (!ins){
-        if (l < 3)
-            return;
-        o.remove(2);
-        if (v == "2")
-            o.options[1].selected = 1;
+        /* remove 80MHz option */
+        if (has80) {
+            for (i = 0; i < o.options.length; i++) {
+                if (o.options[i].value == "2") { o.remove(i); break; }
+            }
+        }
+        /* remove 160MHz option */
+        if (has160) {
+            for (i = 0; i < o.options.length; i++) {
+                if (o.options[i].value == "3") { o.remove(i); break; }
+            }
+        }
+        /* reset selection if it was on a removed option */
+        if (v == "2" || v == "3")
+            o.options[o.options.length - 1].selected = 1;
     }else{
-        if (l > 2)
-            return;
-        o.options[2] = new Option("20/40/80 MHz");
-        o.options[2].value = "2";
+        /* add 80MHz option if missing */
+        if (!has80) {
+            var opt80 = new Option("20/40/80 MHz (*)");
+            opt80.value = "2";
+            /* insert before 160MHz if present, else append */
+            if (has160) {
+                for (i = 0; i < o.options.length; i++) {
+                    if (o.options[i].value == "3") {
+                        o.add(opt80, i);
+                        break;
+                    }
+                }
+            } else {
+                o.add(opt80, null);
+            }
+        }
+        /* add 160MHz option if hardware supports it and missing */
+        if (typeof support_5g_160mhz == "function" && support_5g_160mhz() && !has160) {
+            var opt160 = new Option("20/40/80/160 MHz");
+            opt160.value = "3";
+            o.add(opt160, null);
+        }
     }
 }
 
