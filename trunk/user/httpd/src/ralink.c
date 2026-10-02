@@ -1050,6 +1050,9 @@ print_sta_list(webs_t wp, RT_802_11_MAC_TABLE *mp, int num_ss_rx, int ap_idx)
 		MACHTTRANSMIT_SETTING RxRate;
 		bzero(&RxRate, sizeof(RxRate));
 		RxRate.word = mp->Entry[i].LastRxRate;
+		/* Fallback: if LastRxRate is invalid (zero), use TxRate */
+		if (RxRate.word == 0)
+			RxRate = mp->Entry[i].TxRate;
 
 		ret += websWrite(wp, "%02X:%02X:%02X:%02X:%02X:%02X  %-7s %3s %3d %3s %4s %4s %5dM %5dM %4d %3s %02d:%02d:%02d\n",
 				mp->Entry[i].Addr[0], mp->Entry[i].Addr[1], mp->Entry[i].Addr[2],

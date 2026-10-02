@@ -3848,8 +3848,7 @@ INT ap_ieee_802_3_data_rx(RTMP_ADAPTER *pAd, struct wifi_dev *wdev, RX_BLK *pRxB
 		de_fragment_data_pkt(pAd, pRxBlk);
 	}
 
-	if (pRxInfo->U2M)
-		pEntry->LastRxRate = (ULONG)(pRxBlk->rx_rate.word);
+	pEntry->LastRxRate = (ULONG)(pRxBlk->rx_rate.word);
 
 #ifdef IGMP_SNOOP_SUPPORT
 
@@ -4071,10 +4070,11 @@ INT ap_ieee_802_11_data_rx(RTMP_ADAPTER *pAd, struct wifi_dev *wdev, RX_BLK *pRx
 	/* TODO: shiang-usw,  remove upper setting becasue we need to migrate to tr_entry! */
 	pAd->MacTab.tr_entry[pEntry->wcid].NoDataIdleCount = 0;
 
+	pEntry->LastRxRate = (ULONG)(pRxBlk->rx_rate.word);
+
 	if (pRxInfo->U2M) {
 		Update_Rssi_Sample(pAd, &pAd->ApCfg.RssiSample, &pRxBlk->rx_signal, pRxBlk->rx_rate.field.MODE, pRxBlk->rx_rate.field.BW);
 		pAd->ApCfg.NumOfAvgRssiSample++;
-		pEntry->LastRxRate = (ULONG)(pRxBlk->rx_rate.word);
 #ifdef TXBF_SUPPORT
 
 		if (pRxBlk->rx_rate.field.ShortGI)

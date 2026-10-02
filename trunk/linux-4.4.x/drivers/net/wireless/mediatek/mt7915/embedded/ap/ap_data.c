@@ -3850,8 +3850,7 @@ INT ap_ieee_802_3_data_rx(RTMP_ADAPTER *pAd, struct wifi_dev *wdev, RX_BLK *pRxB
 		de_fragment_data_pkt(pAd, pRxBlk);
 	}
 
-	if (pRxInfo->U2M)
-		pEntry->LastRxRate = (ULONG)(pRxBlk->rx_rate.word);
+	pEntry->LastRxRate = (ULONG)(pRxBlk->rx_rate.word);
 
 #ifdef IGMP_SNOOP_SUPPORT
 
@@ -4089,9 +4088,10 @@ INT ap_ieee_802_11_data_rx(RTMP_ADAPTER *pAd, struct wifi_dev *wdev, RX_BLK *pRx
 	pEntry->NoDataIdleCount = 0;
 	tr_ctl->tr_entry[pEntry->wcid].NoDataIdleCount = 0;
 
+	pEntry->LastRxRate = (ULONG)(pRxBlk->rx_rate.word);
+
 	if (pRxInfo->U2M) {
 		pAd->ApCfg.NumOfAvgRssiSample++;
-		pEntry->LastRxRate = (ULONG)(pRxBlk->rx_rate.word);
 #ifdef TXBF_SUPPORT
 
 		if (pRxBlk->rx_rate.field.ShortGI)

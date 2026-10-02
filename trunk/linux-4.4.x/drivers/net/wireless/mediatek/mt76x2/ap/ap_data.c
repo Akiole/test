@@ -5426,9 +5426,10 @@ VOID APHandleRxDataFrame(RTMP_ADAPTER *pAd, RX_BLK *pRxBlk)
 	}
 
 
+	pEntry->LastRxRate = (ULONG)(pRxBlk->rx_rate.word);
+
 	if (pRxInfo->U2M)
 	{
-		pEntry->LastRxRate = (ULONG)(pRxBlk->rx_rate.word);
 #ifdef SMART_MESH
         Update_CliPktStats(pAd, pEntry, pHeader->Sequence, FALSE);
 #endif /* SMART_MESH */
@@ -6048,9 +6049,10 @@ if (0 /*!(pRxInfo->Mcast || pRxInfo->Bcast)*/){
    	/* update rssi sample */
    	Update_Rssi_Sample(pAd, &pEntry->RssiSample, pRxWI);
 
+	pEntry->LastRxRate = pRxBlk->rx_rate.word;
+
 	if (pRxInfo->U2M)
 	{
-		pEntry->LastRxRate = pRxBlk->rx_rate.word;
 #ifdef SMART_MESH
 		Update_CliPktStats(pAd, pEntry, pHeader->Sequence, FALSE);
 #endif /* SMART_MESH */
