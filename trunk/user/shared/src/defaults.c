@@ -225,7 +225,7 @@ struct nvram_pair router_defaults[] = {
 	{ "wl_wdslist_x", "" },                        /* WDS list */
 	{ "wl_maclist_x", "" },                        /* MAC filter list */
 	{ "wl_macdesc_x", "" },                        /* MAC description list */
-	{ "wl_wpa_mode", "2" },                        /* WPA mode (2=WPA2-Personal) */
+	{ "wl_wpa_mode", "6" },                        /* WPA mode (6=WPA2/WPA3-Mixed Personal) */
 	{ "wl_stream_tx", STR(BOARD_NUM_ANT_5G_TX) },
 	{ "wl_stream_rx", STR(BOARD_NUM_ANT_5G_RX) },
 	{ "wl_preamble", "1" },                        /* Preamble type */
