@@ -1148,6 +1148,12 @@ gen_ralink_config(int is_soc_ap, int is_aband, int disable_autoscan)
 	//PMF Capability and required
 	if (i_auth > 2 && i_auth != 5) {
 		i_pmfr = nvram_wlan_get_int(is_aband, "pmf");
+		/* WPA3-Personal (9) and OWE (11) require PMF mandatory */
+		if (i_auth == 9 || i_auth == 11)
+			i_pmfr = 2;
+		/* WPA2/WPA3-Mixed (10) requires at least PMF optional */
+		else if (i_auth == 10 && i_pmfr == 0)
+			i_pmfr = 1;
 		fprintf(fp, "PMFMFPC=%d\n", i_pmfr ? 1 : 0);
 		fprintf(fp, "PMFMFPR=%d\n", (i_pmfr & 2) ? 1 : 0);
 		fprintf(fp, "PMFSHA256=%d\n", i_pmfr ? 1 : 0);
@@ -1181,27 +1187,39 @@ gen_ralink_config(int is_soc_ap, int is_aband, int disable_autoscan)
 		i_encr = 1;  // WEP
 		c_val_mbss[0] = "WEP";
 	} else if (i_auth != 0) {
-		p_str = nvram_wlan_get(is_aband, "crypto");
-		if (!strcmp(p_str, "tkip")) {
-			i_encr = 2;  // TKIP
-			c_val_mbss[0] = "TKIP";
-		} else if (!strcmp(p_str, "aes")) {
-			i_encr = 3;  // AES
+		/* WPA3 (9/10) and OWE (11) require AES only */
+		if (i_auth == 9 || i_auth == 10 || i_auth == 11) {
+			i_encr = 3;  /* AES */
 			c_val_mbss[0] = "AES";
-		} else if (!strcmp(p_str, "tkip+aes")) {
-			i_encr = 4;  // TKIP or AES
-			c_val_mbss[0] = "TKIPAES";
+		} else {
+			p_str = nvram_wlan_get(is_aband, "crypto");
+			if (!strcmp(p_str, "tkip")) {
+				i_encr = 2;  /* TKIP */
+				c_val_mbss[0] = "TKIP";
+			} else if (!strcmp(p_str, "aes")) {
+				i_encr = 3;  /* AES */
+				c_val_mbss[0] = "AES";
+			} else if (!strcmp(p_str, "tkip+aes")) {
+				i_encr = 4;  /* TKIP or AES */
+				c_val_mbss[0] = "TKIPAES";
+			}
 		}
 	}
 	p_str = nvram_wlan_get(is_aband, "guest_auth_mode");
 	if (!strcmp(p_str, "psk") || !strcmp(p_str, "owe")) {
-		p_str = nvram_wlan_get(is_aband, "guest_crypto");
-		if (!strcmp(p_str, "tkip"))
-			c_val_mbss[1] = "TKIP";
-		else if (!strcmp(p_str, "aes"))
+		i_val = nvram_wlan_get_int(is_aband, "guest_wpa_mode");
+		/* WPA3 (5/6) and OWE require AES only */
+		if (!strcmp(p_str, "owe") || i_val == 5 || i_val == 6) {
 			c_val_mbss[1] = "AES";
-		else if (!strcmp(p_str, "tkip+aes"))
-			c_val_mbss[1] = "TKIPAES";
+		} else {
+			p_str = nvram_wlan_get(is_aband, "guest_crypto");
+			if (!strcmp(p_str, "tkip"))
+				c_val_mbss[1] = "TKIP";
+			else if (!strcmp(p_str, "aes"))
+				c_val_mbss[1] = "AES";
+			else if (!strcmp(p_str, "tkip+aes"))
+				c_val_mbss[1] = "TKIPAES";
+		}
 	}
 	fprintf(fp, "EncrypType=%s;%s\n", c_val_mbss[0], c_val_mbss[1]);
 
@@ -1441,8 +1459,8 @@ gen_ralink_config(int is_soc_ap, int is_aband, int disable_autoscan)
 	//HT_PROTECT
 	fprintf(fp, "HT_PROTECT=%d\n", 1);
 
-	//HT_DisallowTKIP
-	fprintf(fp, "HT_DisallowTKIP=%d\n", 0);
+	//HT_DisallowTKIP (WPA3/OWE requires disabling TKIP)
+	fprintf(fp, "HT_DisallowTKIP=%d\n", (i_auth == 9 || i_auth == 10 || i_auth == 11) ? 1 : 0);
 
 	//HT_LDPC
 	i_ldpc = nvram_wlan_get_int(is_aband, "ldpc");
