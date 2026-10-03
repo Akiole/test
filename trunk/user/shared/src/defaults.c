@@ -173,7 +173,7 @@ struct nvram_pair router_defaults[] = {
 	{ "wl_mcs_mode", "0" },                        /* MCS mode */
 	{ "wl_channel", "0" },                         /* Channel number */
 	{ "wl_bcn", "100" },                           /* Beacon interval */
-	{ "wl_dtim", "1" },                            /* DTIM period */
+	{ "wl_dtim", "2" },                            /* DTIM period (2 lowers STA power) */
 	{ "wl_rts", "2347" },                          /* RTS threshold */
 	{ "wl_frag", "2346" },                         /* Fragmentation threshold */
 	{ "wl_ap_isolate", "0" },                      /* AP isolate mode */
@@ -292,7 +292,7 @@ struct nvram_pair router_defaults[] = {
 	{ "rt_mcs_mode", "0" },                        /* MCS mode */
 	{ "rt_channel", "0" },                         /* Channel number */
 	{ "rt_bcn", "100" },                           /* Beacon interval */
-	{ "rt_dtim", "1" },                            /* DTIM interval */
+	{ "rt_dtim", "2" },                            /* DTIM interval (2 lowers STA power) */
 	{ "rt_gmode_protection", "auto" },             /* G mode protection */
 	{ "rt_rts", "2347" },                          /* RTS threshold */
 	{ "rt_frag", "2346" },                         /* Fragment threshold */
