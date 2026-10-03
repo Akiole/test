@@ -10,6 +10,8 @@ CONFIGURE_ARGS += \
 	--disable-openssl \
 	--disable-readline
 
+TARGET_CFLAGS += -D_GNU_SOURCE
+
 $(eval $(call BuildPackage,$(PKG_NAME)))
 
 romfs:
