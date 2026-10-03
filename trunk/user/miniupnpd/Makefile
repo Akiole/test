@@ -9,6 +9,7 @@ include $(INCLUDE_DIR)/package.mk
 # miniupnpd 2.3.x uses its own configure script (not standard autoconf)
 # Override Build/Configure to avoid standard autoconf options (--target/--host/--build)
 # Padavan fixes: enable IPTABLES_143, disable LIB_UUID/BSD_UUID (musl has no uuid)
+# Features: IGDv2 + HTTPS + LEASEFILE + PCP_PEER + PORTINUSE
 
 define Build/Configure
 	(cd $(PKG_BUILD_DIR); \
@@ -17,7 +18,14 @@ define Build/Configure
 			--host-os-version=4.4 \
 			--host-machine=mips \
 			--firewall=iptables \
-			--disable-pppconn; \
+			--disable-pppconn \
+			--igd2 \
+			--https \
+			--https-cert=/tmp/miniupnpd-cert.pem \
+			--https-key=/tmp/miniupnpd-key.pem \
+			--leasefile \
+			--pcp-peer \
+			--portinuse; \
 	)
 	$(SED) 's/^#undef IPTABLES_143/#define IPTABLES_143 1/' $(PKG_BUILD_DIR)/config.h
 	$(SED) 's/^#define LIB_UUID/\/\/ #define LIB_UUID/' $(PKG_BUILD_DIR)/config.h
@@ -27,7 +35,8 @@ endef
 MAKE_FLAGS += \
 	-f Makefile.linux \
 	CFLAGS="$(TARGET_CFLAGS) -Os -fno-strict-aliasing -fno-common -Wall" \
-	LDFLAGS="$(TARGET_LDFLAGS)"
+	LDFLAGS="$(TARGET_LDFLAGS)" \
+	LDLIBS="-lssl -lcrypto"
 
 $(eval $(call BuildPackage,$(PKG_NAME)))
 

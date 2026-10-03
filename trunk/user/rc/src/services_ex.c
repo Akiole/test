@@ -868,6 +868,15 @@ start_upnp(void)
 	fclose(fp);
 
 	create_file(UPNPD_LEASE_FILE);
+
+	/* Generate self-signed certificate for IGDv2 HTTPS if not exists */
+	if (access("/tmp/miniupnpd-cert.pem", F_OK) != 0 ||
+	    access("/tmp/miniupnpd-key.pem", F_OK) != 0) {
+		doSystem("openssl req -x509 -newkey rsa:2048 -keyout /tmp/miniupnpd-key.pem "
+			 "-out /tmp/miniupnpd-cert.pem -days 3650 -nodes "
+			 "-subj \"/CN=Padavan-UPnP\" >/dev/null 2>&1");
+	}
+
 	return eval("/usr/bin/miniupnpd");
 }
 
