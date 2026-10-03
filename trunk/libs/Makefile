@@ -204,6 +204,9 @@ LIBS_INCLUDE_OPENSSL   = y
 LIBS_INCLUDE_LIBCAP_NG = y
 endif
 
+# miniupnpd (always built): requires libcap-ng for IGDv2 privilege dropping
+LIBS_INCLUDE_LIBCAP_NG = y
+
 # redsocks: requires libevent
 ifeq ($(CONFIG_FIRMWARE_INCLUDE_REDSOCKS),y)
 LIBS_INCLUDE_LIBEVENT = y

@@ -25,7 +25,8 @@ define Build/Configure
 			--https-key=/tmp/miniupnpd-key.pem \
 			--leasefile \
 			--pcp-peer \
-			--portinuse; \
+			--portinuse \
+			--vendorcfg; \
 	)
 	$(SED) 's/^#undef IPTABLES_143/#define IPTABLES_143 1/' $(PKG_BUILD_DIR)/config.h
 	$(SED) 's/^#define LIB_UUID/\/\/ #define LIB_UUID/' $(PKG_BUILD_DIR)/config.h
