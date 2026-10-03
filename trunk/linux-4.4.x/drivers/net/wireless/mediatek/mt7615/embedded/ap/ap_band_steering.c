@@ -954,6 +954,19 @@ BOOLEAN BndStrg_CheckConnectionReq(
 		}
 	}
 
+	/* Built-in band steering: steer VHT-capable STAs away from 2.4G.
+	 * Reject Probe/Auth on 2.4G for STAs that support 5GHz, so they
+	 * automatically try the 5GHz radio first. No userspace daemon needed.
+	 */
+	if (WMODE_CAP_2G(wdev->PhyMode) && (wdev->channel <= 14)) {
+		if (FrameType == APMT2_PEER_PROBE_REQ && ProbeReqParam && ProbeReqParam->IsVhtSupport) {
+			BND_STRG_PRINTQAMSG(table, pSrcAddr,
+				("BndStrg 2.4G: VHT STA %02x:%02x:%02x:%02x:%02x:%02x probe rejected, steer to 5G\n",
+				 PRINT_MAC(pSrcAddr)));
+			return FALSE;
+		}
+	}
+
 /* WPS_BandSteering Support */
 #ifdef WSC_AP_SUPPORT
 	{
