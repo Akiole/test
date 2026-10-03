@@ -121,7 +121,7 @@ void time_zone_x_mapping()
 	char tmpstr[32];
 	char *ptr;
 
-	strcpy(tmpstr, nvram_safe_get("time_zone"));
+	strlcpy(tmpstr, nvram_safe_get("time_zone"), sizeof(tmpstr));
 
 	/* replace . with : */
 	if ((ptr=strchr(tmpstr, '.'))!=NULL) *ptr = ':';
@@ -185,9 +185,9 @@ void change_passwd_unix(char *user, char *pass)
 		fclose(fp);
 	}
 
-	sprintf(cmdbuf, "/usr/sbin/chpasswd -m < %s", tmpfile);
+	snprintf(cmdbuf, sizeof(cmdbuf), "/usr/sbin/chpasswd -m < %s", tmpfile);
 	system(cmdbuf);
-	sprintf(cmdbuf, "rm -f %s", tmpfile);
+	snprintf(cmdbuf, sizeof(cmdbuf), "rm -f %s", tmpfile);
 	system(cmdbuf);
 
 	chmod("/etc/shadow", 0640);
@@ -598,7 +598,7 @@ int
 fput_int(const char *name, int value)
 {
 	char svalue[32];
-	sprintf(svalue, "%d", value);
+	snprintf(svalue, sizeof(svalue), "%d", value);
 	return fput_string(name, svalue);
 }
 

@@ -201,14 +201,14 @@ nvram_set_temp(const char *name, const char *value)
 int nvram_set_int(const char *name, int value)
 {
 	char int_str[16];
-	sprintf(int_str, "%d", value);
+	snprintf(int_str, sizeof(int_str), "%d", value);
 	return _nvram_set(name, int_str, 0);
 }
 
 int nvram_set_int_temp(const char *name, int value)
 {
 	char int_str[16];
-	sprintf(int_str, "%d", value);
+	snprintf(int_str, sizeof(int_str), "%d", value);
 	return _nvram_set(name, int_str, 1);
 }
 

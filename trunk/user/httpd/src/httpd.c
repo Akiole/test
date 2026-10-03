@@ -1182,10 +1182,10 @@ main(int argc, char **argv)
 
 	if (http_port[1]) {
 		char path_ca[64], path_crt[64], path_key[64], path_dhp[64];
-		sprintf(path_ca,  "%s/%s", STORAGE_HTTPSSL_DIR, "ca.crt");
-		sprintf(path_crt, "%s/%s", STORAGE_HTTPSSL_DIR, "server.crt");
-		sprintf(path_key, "%s/%s", STORAGE_HTTPSSL_DIR, "server.key");
-		sprintf(path_dhp, "%s/%s", STORAGE_HTTPSSL_DIR, "dh1024.pem");
+		snprintf(path_ca,  sizeof(path_ca),  "%s/%s", STORAGE_HTTPSSL_DIR, "ca.crt");
+		snprintf(path_crt, sizeof(path_crt), "%s/%s", STORAGE_HTTPSSL_DIR, "server.crt");
+		snprintf(path_key, sizeof(path_key), "%s/%s", STORAGE_HTTPSSL_DIR, "server.key");
+		snprintf(path_dhp, sizeof(path_dhp), "%s/%s", STORAGE_HTTPSSL_DIR, "dh1024.pem");
 		if (ssl_server_init(path_ca, path_crt, path_key, path_dhp, nvram_get("https_clist")) != 0) {
 			http_port[1] = 0;
 			/* avoid httpd unload */

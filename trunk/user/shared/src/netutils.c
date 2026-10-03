@@ -861,8 +861,11 @@ char *get_ifaddr6(const char *ifname, int linklocal, char *p_addr6s)
 				continue;
 			if (inet_ntop(ife->ifa_addr->sa_family, &addr6->sin6_addr, p_addr6s, INET6_ADDRSTRLEN) != NULL) {
 				prefix = get_prefix6_len((struct sockaddr_in6 *)ife->ifa_netmask);
-				if (prefix > 0 && prefix < 128)
-					sprintf(p_addr6s + strlen(p_addr6s), "/%d", prefix);
+				if (prefix > 0 && prefix < 128) {
+					size_t len = strlen(p_addr6s);
+					if (len + 5 < INET6_ADDRSTRLEN)
+						snprintf(p_addr6s + len, INET6_ADDRSTRLEN - len, "/%d", prefix);
+				}
 				ret = p_addr6s;
 				break;
 			}

@@ -53,7 +53,7 @@ void build_dns6_var(void)
 void reset_wan6_vars(void)
 {
 	struct in6_addr addr6;
-	char addr6s[INET6_ADDRSTRLEN] = {0};
+	char addr6s[INET6_ADDRSTRLEN + 8] = {0};
 	char *wan_addr6, *wan_gate6;
 	int wan_size6;
 
@@ -65,9 +65,11 @@ void reset_wan6_vars(void)
 		if (*wan_addr6) {
 			memset(&addr6, 0, sizeof(addr6));
 			ipv6_from_string(wan_addr6, &addr6);
-			inet_ntop(AF_INET6, &addr6, addr6s, INET6_ADDRSTRLEN);
-			if (wan_size6 > 0 && wan_size6 < 128)
-				sprintf(addr6s, "%s/%d", addr6s, wan_size6);
+			inet_ntop(AF_INET6, &addr6, addr6s, sizeof(addr6s));
+			if (wan_size6 > 0 && wan_size6 < 128) {
+				size_t len = strlen(addr6s);
+				snprintf(addr6s + len, sizeof(addr6s) - len, "/%d", wan_size6);
+			}
 		}
 	}
 
