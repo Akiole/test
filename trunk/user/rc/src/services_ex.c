@@ -752,7 +752,8 @@ start_upnp(void)
 {
 	FILE *fp;
 	int ret, i_proto_use, i_clean_min, i_clean_int, i_iports[2], i_eports[2];
-	char *lan_addr, *lan_mask, *lan_url, *proto_upnp, *proto_npmp, *secured;
+	int i_https_port, i_stun_enable, i_stun_port, i_min_lifetime, i_max_lifetime;
+	char *lan_addr, *lan_mask, *lan_url, *proto_upnp, *proto_npmp, *secured, *stun_host;
 	char var[100];
 	char wan_ifname[16];
 	char lan_class[24];
@@ -768,6 +769,12 @@ start_upnp(void)
 	i_iports[1] = nvram_safe_get_int("upnp_iport_max", 65535, 1, 65535);
 	i_eports[0] = nvram_safe_get_int("upnp_eport_min", 21, 1, 65535);
 	i_eports[1] = nvram_safe_get_int("upnp_eport_max", 65535, 1, 65535);
+	i_https_port = nvram_safe_get_int("upnp_https_port", 5001, 1, 65535);
+	i_stun_enable = nvram_get_int("upnp_stun_enable");
+	i_stun_port = nvram_safe_get_int("upnp_stun_port", 3478, 1, 65535);
+	i_min_lifetime = nvram_safe_get_int("upnp_min_lifetime", 120, 0, 86400);
+	i_max_lifetime = nvram_safe_get_int("upnp_max_lifetime", 86400, 0, 86400);
+	stun_host = nvram_safe_get("upnp_stun_host");
 
 	if (i_iports[0] > i_iports[1])
 		i_iports[0] = i_iports[1];
@@ -814,7 +821,14 @@ start_upnp(void)
 		"listening_ip=%s\n"
 		"port=%d\n"
 		"enable_upnp=%s\n"
-		"enable_natpmp=%s\n"
+		"enable_pcp_pmp=%s\n"
+		"ext_allow_private_ipv4=yes\n"
+		"https_port=%d\n"
+		"ext_perform_stun=%s\n"
+		"ext_stun_host=%s\n"
+		"ext_stun_port=%d\n"
+		"min_lifetime=%d\n"
+		"max_lifetime=%d\n"
 		"upnp_forward_chain=%s\n"
 		"upnp_nat_chain=%s\n"
 		"upnp_nat_postrouting_chain=%s\n"
@@ -843,6 +857,12 @@ start_upnp(void)
 		0,
 		proto_upnp,
 		proto_npmp,
+		i_https_port,
+		(i_stun_enable ? "allow-filtered" : "no"),
+		stun_host,
+		i_stun_port,
+		i_min_lifetime,
+		i_max_lifetime,
 		MINIUPNPD_CHAIN_IP4_FORWARD,
 		MINIUPNPD_CHAIN_IP4_NAT,
 		MINIUPNPD_CHAIN_IP4_NAT_POST,

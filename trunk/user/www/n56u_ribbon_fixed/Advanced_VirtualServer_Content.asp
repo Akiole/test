@@ -130,6 +130,12 @@ function change_upnp_enabled(){
 	showhide_div("row_upnp_iports", v);
 	showhide_div("row_upnp_clean_int", v);
 	showhide_div("row_upnp_clean_min", v);
+	showhide_div("row_upnp_https_port", v);
+	showhide_div("row_upnp_stun_enable", v);
+	showhide_div("row_upnp_stun_host", v);
+	showhide_div("row_upnp_stun_port", v);
+	showhide_div("row_upnp_min_lifetime", v);
+	showhide_div("row_upnp_max_lifetime", v);
 }
 
 function change_vts_enabled(){
@@ -604,6 +610,49 @@ function valid_IP_subnet(obj){
                                             <td>
                                                 <input type="text" maxlength="3" class="input" size="32" name="upnp_clean_min" value="<% nvram_get_x("", "upnp_clean_min"); %>" onkeypress="return is_number(this,event);"/>
                                                 &nbsp;<span style="color:#888;">[1..999]</span>
+                                            </td>
+                                        </tr>
+                                        <tr id="row_upnp_https_port">
+                                            <th><#UPnP_HTTPS_Port#></th>
+                                            <td>
+                                                <input type="text" maxlength="5" class="input" size="32" name="upnp_https_port" value="<% nvram_get_x("", "upnp_https_port"); %>" onkeypress="return is_number(this,event);"/>
+                                                &nbsp;<span style="color:#888;">[1..65535]</span>
+                                            </td>
+                                        </tr>
+                                        <tr id="row_upnp_stun_enable">
+                                            <th><#UPnP_STUN_Enable#></th>
+                                            <td>
+                                                <select name="upnp_stun_enable" class="input">
+                                                    <option value="0" <% nvram_match_x("", "upnp_stun_enable", "0", "selected"); %>><#checkbox_No#></option>
+                                                    <option value="1" <% nvram_match_x("", "upnp_stun_enable", "1", "selected"); %>><#checkbox_Yes#></option>
+                                                </select>
+                                            </td>
+                                        </tr>
+                                        <tr id="row_upnp_stun_host">
+                                            <th><#UPnP_STUN_Server#></th>
+                                            <td>
+                                                <input type="text" maxlength="64" class="input" size="32" name="upnp_stun_host" value="<% nvram_get_x("", "upnp_stun_host"); %>"/>
+                                            </td>
+                                        </tr>
+                                        <tr id="row_upnp_stun_port">
+                                            <th><#UPnP_STUN_Port#></th>
+                                            <td>
+                                                <input type="text" maxlength="5" class="input" size="32" name="upnp_stun_port" value="<% nvram_get_x("", "upnp_stun_port"); %>" onkeypress="return is_number(this,event);"/>
+                                                &nbsp;<span style="color:#888;">[1..65535]</span>
+                                            </td>
+                                        </tr>
+                                        <tr id="row_upnp_min_lifetime">
+                                            <th><#UPnP_Min_Lifetime#></th>
+                                            <td>
+                                                <input type="text" maxlength="5" class="input" size="32" name="upnp_min_lifetime" value="<% nvram_get_x("", "upnp_min_lifetime"); %>" onkeypress="return is_number(this,event);"/>
+                                                &nbsp;<span style="color:#888;">[0..86400]</span>
+                                            </td>
+                                        </tr>
+                                        <tr id="row_upnp_max_lifetime">
+                                            <th><#UPnP_Max_Lifetime#></th>
+                                            <td>
+                                                <input type="text" maxlength="5" class="input" size="32" name="upnp_max_lifetime" value="<% nvram_get_x("", "upnp_max_lifetime"); %>" onkeypress="return is_number(this,event);"/>
+                                                &nbsp;<span style="color:#888;">[0..86400]</span>
                                             </td>
                                         </tr>
                                     </table>

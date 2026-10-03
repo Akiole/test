@@ -477,6 +477,12 @@ struct nvram_pair router_defaults[] = {
 	{ "upnp_iport_max", "65535" },                 /* UPnP internal port max */
 	{ "upnp_eport_min", "80" },                    /* UPnP external port min */
 	{ "upnp_eport_max", "65535" },                 /* UPnP external port max */
+	{ "upnp_https_port", "5001" },                 /* UPnP HTTPS port */
+	{ "upnp_stun_enable", "1" },                   /* UPnP STUN enable */
+	{ "upnp_stun_host", "stun.nextcloud.com" },    /* UPnP STUN server */
+	{ "upnp_stun_port", "3478" },                  /* UPnP STUN port */
+	{ "upnp_min_lifetime", "120" },                /* UPnP min lifetime */
+	{ "upnp_max_lifetime", "86400" },              /* UPnP max lifetime */
 	{ "vts_enable_x", "0" },                       /* Virtual server enable */
 	{ "vts_num_x", "0" },                          /* Virtual server count */
 	{ "sp_battle_ips", "0" },                      /* Game boost IP */
