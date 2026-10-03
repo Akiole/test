@@ -1,18 +1,33 @@
 include $(ROOTDIR)/rules.mk
 
 PKG_NAME:=miniupnpd
-PKG_VERSION:=2.0
+PKG_VERSION:=2.3.11
 SRC_DIR:=./$(PKG_NAME)-$(PKG_VERSION)
 
 include $(INCLUDE_DIR)/package.mk
 
-# disable support IPv6 yet, because no profit w/o IGDv2
-# e.g. Windows not supported IGDv2 and UPnP not worked
+# miniupnpd 2.3.x uses its own configure script (not standard autoconf)
+# Override Build/Configure to avoid standard autoconf options (--target/--host/--build)
+# Padavan fixes: enable IPTABLES_143, disable LIB_UUID/BSD_UUID (musl has no uuid)
 
-ENABLE_IPV6:=0
+define Build/Configure
+	(cd $(PKG_BUILD_DIR); \
+		$(CONFIGURE_VARS) ./configure \
+			--host-os=Linux \
+			--host-os-version=4.4 \
+			--host-machine=mips \
+			--firewall=iptables \
+			--disable-pppconn; \
+	)
+	$(SED) 's/^#undef IPTABLES_143/#define IPTABLES_143 1/' $(PKG_BUILD_DIR)/config.h
+	$(SED) 's/^#define LIB_UUID/\/\/ #define LIB_UUID/' $(PKG_BUILD_DIR)/config.h
+	$(SED) 's/^#define BSD_UUID/\/\/ #define BSD_UUID/' $(PKG_BUILD_DIR)/config.h
+endef
+
 MAKE_FLAGS += \
 	-f Makefile.linux \
-	ENABLE_IPV6=$(ENABLE_IPV6)
+	CFLAGS="$(TARGET_CFLAGS) -Os -fno-strict-aliasing -fno-common -Wall" \
+	LDFLAGS="$(TARGET_LDFLAGS)"
 
 $(eval $(call BuildPackage,$(PKG_NAME)))
 
