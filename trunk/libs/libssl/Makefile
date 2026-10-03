@@ -55,8 +55,6 @@ CONFIGURE_CMD = ./Configure
 CONFIGURE_ARGS = \
 	linux-mips32 \
 	shared \
-	no-legacy \
-	no-module \
 	no-threads \
 	--prefix=/ \
 	--openssldir=/etc/ssl \
@@ -80,6 +78,8 @@ romfs:
 	$(INSTALL_DIR) $(ROMFSDIR)/lib
 	$(CP) $(PKG_INSTALL_DIR)/lib/libssl.so* $(ROMFSDIR)/lib/
 	$(CP) $(PKG_INSTALL_DIR)/lib/libcrypto.so* $(ROMFSDIR)/lib/
+	$(INSTALL_DIR) $(ROMFSDIR)/lib/ossl-modules
+	-$(CP) $(PKG_INSTALL_DIR)/lib/ossl-modules/*.so $(ROMFSDIR)/lib/ossl-modules/
 	$(INSTALL_DIR) $(ROMFSDIR)/etc_ro
 	$(INSTALL_DATA) ./openssl.cnf $(ROMFSDIR)/etc_ro/openssl.cnf
 

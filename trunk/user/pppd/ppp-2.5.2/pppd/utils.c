@@ -277,6 +277,8 @@ vslprintf(char *buf, int buflen, const char *fmt, va_list args)
 	    break;
 	case 's':
 	    str = va_arg(args, char *);
+	    if (str == NULL)
+		str = "(null)";
 	    break;
 	case 'c':
 	    num[0] = va_arg(args, int);

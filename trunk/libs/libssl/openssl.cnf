@@ -1,4 +1,19 @@
 
+openssl_init = openssl_init_section
+
+[openssl_init_section]
+providers = provider_sect
+
+[provider_sect]
+default = default_sect
+legacy = legacy_sect
+
+[default_sect]
+activate = 1
+
+[legacy_sect]
+activate = 1
+
 oid_section		= new_oids
 [ new_oids ]
 

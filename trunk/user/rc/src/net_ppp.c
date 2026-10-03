@@ -247,6 +247,11 @@ launch_wan_pppd(int unit, int wan_proto)
 
 	snprintf(options, sizeof(options), "/tmp/ppp/options.wan%d", unit);
 
+	/* pppd 2.5.x expects scripts and resolv.conf under /etc/ppp/ */
+	mkdir("/tmp/ppp", 0777);
+	if (access("/etc/ppp", F_OK) != 0)
+		symlink("/tmp/ppp", "/etc/ppp");
+
 	/* Generate options file */
 	if (!(fp = fopen(options, "w"))) {
 		perror(options);
@@ -364,7 +369,7 @@ launch_wan_pppd(int unit, int wan_proto)
 	if (wan_proto != IPV4_WAN_PROTO_PPPOE) {
 		int mppe_mode = get_wan_unit_value_int(unit, "ppp_mppe");
 		if (mppe_mode == 0) {
-			fprintf(fp, "nomppe nomppc\n");
+			fprintf(fp, "nomppe\n");
 		} else {
 			if (mppe_mode == 2) {
 				fprintf(fp, "+mppe\n");
@@ -381,7 +386,7 @@ launch_wan_pppd(int unit, int wan_proto)
 			fprintf(fp, "nomppe-stateful\n");
 		}
 	} else {
-		fprintf(fp, "nomppe nomppc\n");
+		fprintf(fp, "nomppe\n");
 	}
 
 	if (get_wan_unit_value_int(unit, "ppp_lcp") > 0) {
@@ -392,7 +397,7 @@ launch_wan_pppd(int unit, int wan_proto)
 	if (get_wan_unit_value_int(unit, "ppp_alcp") > 0)
 		fprintf(fp, "lcp-echo-adaptive\n");
 
-	fprintf(fp, "minunit %d\n", unit);
+	fprintf(fp, "unit %d\n", unit);
 	fprintf(fp, "linkname wan%d\n", unit);
 	fprintf(fp, "ktune\n");
 
@@ -408,6 +413,9 @@ launch_wan_pppd(int unit, int wan_proto)
 	fclose(fp);
 
 	chmod(options, 0600);
+
+	/* pppd 2.5.x stores pid files under /var/run/pppd/ */
+	mkdir("/var/run/pppd", 0755);
 
 	if (wan_proto == IPV4_WAN_PROTO_L2TP) {
 #if defined (APP_RPL2TP)

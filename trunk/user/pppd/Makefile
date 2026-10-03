@@ -23,6 +23,6 @@ $(eval $(call BuildPackage,$(PKG_NAME)))
 romfs:
 	$(INSTALL_DIR) $(ROMFSDIR)/usr/sbin
 	$(INSTALL_BIN) $(PKG_INSTALL_DIR)/sbin/pppd $(ROMFSDIR)/usr/sbin/pppd
-	$(INSTALL_DIR) $(ROMFSDIR)/usr/lib/pppd/$(PKG_VERSION)
-	$(CP) $(PKG_INSTALL_DIR)/lib/pppd/$(PKG_VERSION)/pppoe.so $(ROMFSDIR)/usr/lib/pppd/$(PKG_VERSION)/
-	$(CP) $(PKG_INSTALL_DIR)/lib/pppd/$(PKG_VERSION)/pppol2tp.so $(ROMFSDIR)/usr/lib/pppd/$(PKG_VERSION)/
+	$(INSTALL_DIR) $(ROMFSDIR)/lib/pppd/$(PKG_VERSION)
+	$(CP) $(PKG_INSTALL_DIR)/lib/pppd/$(PKG_VERSION)/pppoe.so $(ROMFSDIR)/lib/pppd/$(PKG_VERSION)/
+	$(CP) $(PKG_INSTALL_DIR)/lib/pppd/$(PKG_VERSION)/pppol2tp.so $(ROMFSDIR)/lib/pppd/$(PKG_VERSION)/

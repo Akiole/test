@@ -86,6 +86,9 @@ start_vpn_client(void)
 	vpnc_opt = VPN_CLIENT_PPPD_OPTIONS;
 
 	mkdir("/tmp/ppp", 0777);
+	/* pppd 2.5.x expects scripts and resolv.conf under /etc/ppp/ */
+	if (access("/etc/ppp", F_OK) != 0)
+		symlink("/tmp/ppp", "/etc/ppp");
 	symlink("/sbin/rc", VPNC_PPP_UP_SCRIPT);
 	symlink("/sbin/rc", VPNC_PPP_DW_SCRIPT);
 
@@ -142,7 +145,7 @@ start_vpn_client(void)
 	fprintf(fp, "novj nobsdcomp nodeflate\n");
 
 	if (i_mppe == 3) {
-		fprintf(fp, "nomppe nomppc\n");
+		fprintf(fp, "nomppe\n");
 	} else {
 		if (i_mppe == 1) {
 			fprintf(fp, "+mppe\n");
@@ -173,7 +176,7 @@ start_vpn_client(void)
 	fprintf(fp, "ip-up-script %s\n", VPNC_PPP_UP_SCRIPT);
 	fprintf(fp, "ip-down-script %s\n", VPNC_PPP_DW_SCRIPT);
 
-	fprintf(fp, "minunit %d\n", VPNC_PPP_UNIT);
+	fprintf(fp, "unit %d\n", VPNC_PPP_UNIT);
 	fprintf(fp, "ktune\n");
 
 	/* user specific options */
@@ -182,6 +185,9 @@ start_vpn_client(void)
 	fclose(fp);
 
 	chmod(vpnc_opt, 0600);
+
+	/* pppd 2.5.x stores pid files under /var/run/pppd/ */
+	mkdir("/var/run/pppd", 0755);
 
 	if (i_type == 1)
 	{
