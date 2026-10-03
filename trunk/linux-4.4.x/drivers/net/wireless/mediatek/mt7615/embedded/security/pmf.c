@@ -127,12 +127,12 @@ VOID PMF_MlmeSAQueryReq(
 						  END_OF_ARGS);
 
 		if (pPmfCfg->SAQueryStatus == SAQ_IDLE) {
-			RTMPSetTimer(&pPmfCfg->SAQueryTimer, 1000); /* 1000ms */
+			RTMPSetTimer(&pPmfCfg->SAQueryTimer, 2000); /* 2000ms, give sleeping STAs more time */
 			MTWF_LOG(DBG_CAT_SEC, CATSEC_PMF, DBG_LVL_ERROR, ("[PMF]%s -- SAQueryTimer\n", __func__));
 		}
 
 		pPmfCfg->SAQueryStatus = SAQ_SENDING;
-		RTMPSetTimer(&pPmfCfg->SAQueryConfirmTimer, 200); /* 200ms */
+		RTMPSetTimer(&pPmfCfg->SAQueryConfirmTimer, 500); /* 500ms retry interval */
 		/* transmit the frame */
 		MiniportMMRequest(pAd, QID_MGMT, pOutBuffer, FrameLen);
 		os_free_mem(pOutBuffer);
