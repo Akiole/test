@@ -28,6 +28,7 @@ $j(document).ready(function() {
 	init_itoggle('x_DHCPClient', change_wan_dhcp_auto);
 	init_itoggle('wan_dnsenable_x', change_wan_dns_auto);
 	init_itoggle('vlan_filter', change_stb_port_and_vlan);
+	init_itoggle('fw_pt_pppoe');
 	init_itoggle('pppoesync_enable');
 	init_itoggle('pppoemwan_enable',change_pppoemwan_enabled);
 	init_itoggle('pppoemwan_rules_x', change_pppoemwan_rules_enabled);
@@ -1006,6 +1007,21 @@ function simplyMAC(fullMAC){
                                                 <div style="position: absolute; margin-left: -10000px;">
                                                     <input type="radio" name="gw_arp_ping" id="gw_arp_ping_1" value="1" <% nvram_match_x("", "gw_arp_ping", "1", "checked"); %>/><#checkbox_Yes#>
                                                     <input type="radio" name="gw_arp_ping" id="gw_arp_ping_0" value="0" <% nvram_match_x("", "gw_arp_ping", "0", "checked"); %>/><#checkbox_No#>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this,7,11);"><#PPPConnection_x_PPPoERelay_itemname#></a></th>
+                                            <td>
+                                                <div class="main_itoggle">
+                                                    <div id="fw_pt_pppoe_on_of">
+                                                        <input type="checkbox" id="fw_pt_pppoe_fake" <% nvram_match_x("", "fw_pt_pppoe", "1", "value=1 checked"); %><% nvram_match_x("", "fw_pt_pppoe", "0", "value=0"); %>>
+                                                    </div>
+                                                </div>
+
+                                                <div style="position: absolute; margin-left: -10000px;">
+                                                    <input type="radio" id="fw_pt_pppoe_1" name="fw_pt_pppoe" value="1" <% nvram_match_x("", "fw_pt_pppoe", "1", "checked selected"); %>/><#checkbox_Yes#>
+                                                    <input type="radio" id="fw_pt_pppoe_0" name="fw_pt_pppoe" value="0" <% nvram_match_x("", "fw_pt_pppoe", "0", "checked selected"); %>/><#checkbox_No#>
                                                 </div>
                                             </td>
                                         </tr>

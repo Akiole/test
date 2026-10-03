@@ -503,6 +503,7 @@
 			{"wan_ppp_alcp", "", NULL, EVM_RESTART_WAN},
 			{"wan_ppp_pppd", "", NULL, EVM_RESTART_WAN},
 			{"pppoemwanIPList", "Group", ARGV((char*)variables_PPPConnection_pppoemwanIPList, "8", "55", "pppoemwan_staticnum_x"), EVM_RESTART_FIREWALL},
+			{"fw_pt_pppoe", "", NULL, EVM_RESTART_SYSCTL},
 			{0,0,0,0}
 		};
 
@@ -524,7 +525,6 @@
 			{"udpxy_wport", "", NULL, EVM_RESTART_FIREWALL},
 			{"misc_lpr_x", "", NULL, EVM_RESTART_FIREWALL},
 			{"misc_ping_x", "", NULL, EVM_RESTART_FIREWALL},
-			{"fw_pt_pppoe", "", NULL, EVM_RESTART_SYSCTL},
 			{"fw_lw_enable_x", "", NULL, EVM_RESTART_FIREWALL},
 			{"filter_lw_date_x", "", NULL, EVM_RESTART_FIREWALL},
 			{"filter_lw_time_x", "", NULL, EVM_RESTART_FIREWALL},
