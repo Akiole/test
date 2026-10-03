@@ -1,7 +1,7 @@
 include $(ROOTDIR)/rules.mk
 
 PKG_NAME:=openvpn
-PKG_VERSION:=2.7.6
+PKG_VERSION:=2.7.7
 SRC_DIR:=./$(PKG_NAME)-$(PKG_VERSION)
 PKG_FIXUP:=autoreconf
 

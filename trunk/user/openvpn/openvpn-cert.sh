@@ -25,9 +25,9 @@ TA_KEY=ta.key
 STC2_KEY=stc2.key
 ECPARAM=ecparam.pem
 ## number of bits to use when generate new key
-RSA_BITS=1024
+RSA_BITS=2048
 ## number of bits for prime
-DH_BITS=1024
+DH_BITS=2048
 ## CA common name
 CA_CN="OpenVPN CA"
 ## temp config file with cert extensions
@@ -189,11 +189,11 @@ make_dh() {
   #
   # $1 --> dh bits
   #
-  if [ -f dh1024.pem ] ; then
+  if [ -f dh2048.pem ] ; then
     echo_process "Skipping DH Parameters. File exists"
   else
     echo_process "Creating DH Parameters (may take long time, be patient)"
-    openssl dhparam -out dh1024.pem $1 &>/dev/null
+    openssl dhparam -out dh2048.pem $1 &>/dev/null
   fi
   echo_done
 }

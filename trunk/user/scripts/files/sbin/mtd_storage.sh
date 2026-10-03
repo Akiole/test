@@ -613,7 +613,7 @@ EOF
 		[ ! -d "$dir_ovpncli" ] && mkdir -p -m 700 "$dir_ovpncli"
 		[ ! -d "$dir_ovpnsvr" ] && mkdir -p -m 700 "$dir_ovpnsvr"
 		dir_ovpn="$dir_storage/openvpn"
-		for i in ca.crt dh1024.pem server.crt server.key server.conf ta.key ; do
+		for i in ca.crt dh2048.pem dh1024.pem server.crt server.key server.conf ta.key ; do
 			[ -f "$dir_ovpn/$i" ] && mv -n "$dir_ovpn/$i" "$dir_ovpnsvr"
 		done
 		if [ ! -f "$user_ovpnsvr_conf" ] ; then

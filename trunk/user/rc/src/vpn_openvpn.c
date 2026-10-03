@@ -46,7 +46,7 @@
 
 static const char *openvpn_server_keys[6] = {
 	"ca.crt",
-	"dh1024.pem",
+	"dh2048.pem",
 	"server.crt",
 	"server.key",
 	"ta.key",
@@ -99,10 +99,20 @@ static int
 openvpn_check_key(const char *key_name, int is_server)
 {
 	char key_file[64];
+	const char *alt_name = NULL;
+
+	/* backward compatibility: dh2048.pem may not exist for old configs */
+	if (strcmp(key_name, "dh2048.pem") == 0)
+		alt_name = "dh1024.pem";
 
 	snprintf(key_file, sizeof(key_file), "%s/%s", (is_server) ? SERVER_CERT_DIR : CLIENT_CERT_DIR, key_name);
 
 	if (!check_if_file_exist(key_file)) {
+		if (alt_name) {
+			snprintf(key_file, sizeof(key_file), "%s/%s", (is_server) ? SERVER_CERT_DIR : CLIENT_CERT_DIR, alt_name);
+			if (check_if_file_exist(key_file))
+				return 1;
+		}
 		logmessage(LOGNAME, "Unable to start %s: key file \"%s\" not found!", 
 			(is_server) ? SERVER_LOG_NAME : CLIENT_LOG_NAME, key_file);
 		
@@ -479,7 +489,18 @@ openvpn_create_server_conf(const char *conf_file, int is_tun)
 #endif
 
 	fprintf(fp, "ca %s/%s\n", SERVER_CERT_DIR, openvpn_server_keys[0]);
-	fprintf(fp, "dh %s/%s\n", SERVER_CERT_DIR, openvpn_server_keys[1]);
+	{
+		char dh_file[64];
+		const char *dh_name = openvpn_server_keys[1];
+		snprintf(dh_file, sizeof(dh_file), "%s/%s", SERVER_CERT_DIR, dh_name);
+		/* fallback to dh1024.pem for backward compatibility */
+		if (!check_if_file_exist(dh_file)) {
+			snprintf(dh_file, sizeof(dh_file), "%s/%s", SERVER_CERT_DIR, "dh1024.pem");
+			if (check_if_file_exist(dh_file))
+				dh_name = "dh1024.pem";
+		}
+		fprintf(fp, "dh %s/%s\n", SERVER_CERT_DIR, dh_name);
+	}
 	fprintf(fp, "cert %s/%s\n", SERVER_CERT_DIR, openvpn_server_keys[2]);
 	fprintf(fp, "key %s/%s\n", SERVER_CERT_DIR, openvpn_server_keys[3]);
 
