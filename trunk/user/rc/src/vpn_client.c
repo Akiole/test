@@ -121,13 +121,7 @@ start_vpn_client(void)
 		fprintf(fp, "refuse-mschap-v2\n");
 	}
 
-	if (i_type != 1) {
-		fprintf(fp, "plugin pptp.so\n");
-		fprintf(fp, "pptp_server '%s'\n", vpnc_peer);
-		fprintf(fp, "route_rdgw %d\n", (nvram_match("vpnc_dgw", "1")) ? 2 : 0);
-		fprintf(fp, "persist\n");
-		fprintf(fp, "linkname %s\n", VPNC_PPP_LINK_NAME);
-	}
+	/* PPTP client removed: ppp 2.5.2 no longer ships pptp.so plugin */
 
 	fprintf(fp, "mtu %d\n", nvram_safe_get_int("vpnc_mtu", 1450, 1000, 1460));
 	fprintf(fp, "mru %d\n", nvram_safe_get_int("vpnc_mru", 1450, 1000, 1460));

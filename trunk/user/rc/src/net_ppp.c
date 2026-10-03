@@ -287,18 +287,7 @@ launch_wan_pppd(int unit, int wan_proto)
 	mru_def = 1492;
 	mru_max = 1492;
 
-	if (wan_proto == IPV4_WAN_PROTO_PPTP) {
-		mtu_def = 1400;
-		mtu_max = 1476;
-		mru_def = 1400;
-		mru_max = 1500;
-		mtu = get_wan_unit_value_int(unit, "pptp_mtu");
-		mru = get_wan_unit_value_int(unit, "pptp_mru");
-		
-		fprintf(fp, "plugin pptp.so\n");
-		fprintf(fp, "pptp_server '%s'\n", get_wan_ppp_peer(unit));
-		fprintf(fp, "route_rdgw %d\n", 1);
-	}
+	/* PPTP client removed: ppp 2.5.2 no longer ships pptp.so plugin */
 
 	if (wan_proto == IPV4_WAN_PROTO_L2TP) {
 		mtu_def = 1460;
