@@ -1512,7 +1512,7 @@ gen_ralink_config(int is_soc_ap, int is_aband, int disable_autoscan)
 		fprintf(fp, "VHT_SGI=%d\n", 1);
 		
 		//VHT_BW_SIGNAL
-		fprintf(fp, "VHT_BW_SIGNAL=%d\n", 0);
+		fprintf(fp, "VHT_BW_SIGNAL=%d\n", 2);
 		
 		//VHT_DisallowNonVHT
 		fprintf(fp, "VHT_DisallowNonVHT=%d\n", (i_phy_mode == PHY_11VHT) ? 1 : 0);
