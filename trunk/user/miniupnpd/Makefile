@@ -36,7 +36,7 @@ MAKE_FLAGS += \
 	-f Makefile.linux \
 	CFLAGS="$(TARGET_CFLAGS) -Os -fno-strict-aliasing -fno-common -Wall" \
 	LDFLAGS="$(TARGET_LDFLAGS)" \
-	LDLIBS="-lssl -lcrypto"
+	LDLIBS="-lssl -lcrypto -lip4tc -lxtables -lcap-ng"
 
 $(eval $(call BuildPackage,$(PKG_NAME)))
 
