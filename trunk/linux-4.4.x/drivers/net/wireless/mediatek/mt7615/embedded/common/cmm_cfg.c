@@ -155,7 +155,7 @@ static UCHAR CFG_WMODE_MAP[] = {
 	PHY_11VHT_N_AG_MIXED, (WMODE_G | WMODE_GN | WMODE_A | WMODE_AN | WMODE_AC), /* 13 => G/GN/A/AN/AC mixed , no B mode */
 	PHY_11VHT_N_A_MIXED, (WMODE_A | WMODE_AN | WMODE_AC), /* 14 => A/AC/AN mixed */
 	PHY_11VHT_N_MIXED, (WMODE_AN | WMODE_AC), /* 15 => AC/AN mixed, but no A mode */
-	PHY_11VHT, (WMODE_A | WMODE_AN | WMODE_AC), /* 16 => AC only (VHT_DisallowNonVHT rejects non-VHT clients) */
+	PHY_11VHT, (WMODE_A | WMODE_AN | WMODE_AC), /* 22 => AC only (VHT_DisallowNonVHT rejects non-VHT clients) */
 #endif /* DOT11_VHT_AC */
 	PHY_MODE_MAX, WMODE_INVALID /* default phy mode if not match */
 };
@@ -215,12 +215,18 @@ RT_802_11_PHY_MODE wmode_2_cfgmode(UCHAR wmode)
 
 UCHAR cfgmode_2_wmode(UCHAR cfg_mode)
 {
+	INT i, mode_cnt = sizeof(CFG_WMODE_MAP) / (sizeof(UCHAR) * 2);
+
 	MTWF_LOG(DBG_CAT_CFG, DBG_SUBCAT_ALL, DBG_LVL_TRACE, ("cfg_mode=%d\n", cfg_mode));
 
-	if (cfg_mode >= PHY_MODE_MAX)
-		cfg_mode =  PHY_MODE_MAX;
+	for (i = 0; i < mode_cnt; i++) {
+		if (CFG_WMODE_MAP[i * 2] == cfg_mode)
+			return CFG_WMODE_MAP[i * 2 + 1];
+	}
 
-	return CFG_WMODE_MAP[cfg_mode * 2 + 1];
+	MTWF_LOG(DBG_CAT_CFG, DBG_SUBCAT_ALL, DBG_LVL_ERROR, ("%s(): Cannot get wmode by cfgmode(%d)\n",
+			 __func__, cfg_mode));
+	return WMODE_INVALID;
 }
 
 #ifdef MIN_PHY_RATE_SUPPORT

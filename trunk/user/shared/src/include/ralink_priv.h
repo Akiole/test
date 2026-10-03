@@ -84,7 +84,7 @@ typedef enum _RT_802_11_PHY_MODE {
 	PHY_11AX_24G_6G = 19,
 	PHY_11AX_5G_6G = 20,
 	PHY_11AX_24G_5G_6G = 21,
-	PHY_11VHT = 16, /* AC only in 5G band */
+	PHY_11VHT = 22, /* AC only in 5G band */
 } RT_802_11_PHY_MODE;
 
 enum WIFI_MODE {
