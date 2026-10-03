@@ -877,7 +877,7 @@ start_upnp(void)
 			 "-subj \"/CN=Padavan-UPnP\" >/dev/null 2>&1");
 	}
 
-	return eval("/usr/bin/miniupnpd");
+	return eval("/usr/bin/miniupnpd", "-f", "/etc/miniupnpd.conf");
 }
 
 void
