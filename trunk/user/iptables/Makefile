@@ -1,10 +1,10 @@
-# iptables 1.8.7 with Padavan custom extensions (FULLCONENAT/HL/TTL/DSCP-mark etc.)
+# iptables 1.8.13 with Padavan custom extensions (FULLCONENAT/HL/TTL/DSCP-mark etc.)
 # Source is bundled locally due to extensive kernel 4.4.x compatibility patches
 
 include $(ROOTDIR)/rules.mk
 
 PKG_NAME:=iptables
-PKG_VERSION:=1.8.7
+PKG_VERSION:=1.8.13
 SRC_DIR:=./$(PKG_NAME)-$(PKG_VERSION)
 PKG_FIXUP:=autoreconf
 PKG_INSTALL:=1
@@ -19,6 +19,16 @@ CONFIGURE_ARGS += \
 	--with-xtlibdir=/usr/lib/xtables \
 	--with-kernel=$(ROOTDIR)/$(LINUXDIR) \
 	--with-xt-lock-name="/var/lock/xtables.lock"
+
+# Disable --no-undefined to allow runtime symbol resolution for shared modules
+define Build/Configure
+	$(call Build/Configure/Default)
+	@for f in extensions/GNUmakefile libiptc/GNUmakefile; do \
+		if [ -f $(PKG_BUILD_DIR)/$$f ]; then \
+			$(SED) 's/AM_LDFLAGS\s*=\s*-Wl,--no-undefined/AM_LDFLAGS =/' $(PKG_BUILD_DIR)/$$f; \
+		fi; \
+	done
+endef
 
 $(eval $(call BuildPackage,$(PKG_NAME)))
 
