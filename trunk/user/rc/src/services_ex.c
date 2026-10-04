@@ -780,6 +780,10 @@ start_upnp(void)
 		i_iports[0] = i_iports[1];
 	if (i_eports[0] > i_eports[1])
 		i_eports[0] = i_eports[1];
+	if (i_min_lifetime > i_max_lifetime)
+		i_min_lifetime = i_max_lifetime;
+	if (!stun_host || !*stun_host)
+		stun_host = "stun.nextcloud.com";
 
 	wan_ifname[0] = 0;
 	get_wan_ifname(wan_ifname);
