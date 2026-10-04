@@ -19,7 +19,6 @@ OPENSSL_CIPHERS = \
 	no-static-engine \
 	no-md2 \
 	no-sse2 \
-	no-dso \
 	no-ts \
 	no-mdc2 \
 	no-cast \
