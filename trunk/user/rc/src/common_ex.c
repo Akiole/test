@@ -450,7 +450,7 @@ char_to_ascii(char *output, char *input)
 			*ptr = input[i];
 			ptr ++;
 		} else {
-			sprintf(tmp, "%%%.02X", input[i]);
+			sprintf(tmp, "%%%.02X", (unsigned char)input[i]);
 			strcpy(ptr, tmp);
 			ptr += 3;
 		}

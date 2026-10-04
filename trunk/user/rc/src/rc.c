@@ -325,7 +325,7 @@ nvram_convert_old_params(void)
 static void
 nvram_convert_misc_values(void)
 {
-	char buff[64];
+	char buff[128];
 	int sw_mode;
 
 	/* check router mode */

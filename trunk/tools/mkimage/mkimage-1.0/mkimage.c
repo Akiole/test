@@ -267,7 +267,7 @@ main (int argc, char **argv)
 				sscanf(argv[1], "%hhu.%hhu", &tail_pre.kernel.major, &tail_pre.kernel.minor);
 				{
 					unsigned int fs_ver;
-					char sub;
+					char sub = 0;
 					if (sscanf(argv[2], "%u%c", &fs_ver, &sub) >= 1) {
 						tail_pre.fs.major = fs_ver >> 8;
 						tail_pre.fs.minor = fs_ver & 0xFF;

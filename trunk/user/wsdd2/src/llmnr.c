@@ -180,7 +180,7 @@ static int llmnr_send_response(struct endpoint *ep,
 
 	/* process all labels in question section */
 	in_name_p = &in[12];
-	while (*in_name_p > 0) {
+	while ((size_t)(in_name_p - in) < inlen && *in_name_p > 0) {
 		/*
 		 * not supporting message compression
 		 * see section 4.1.4 of RFC 1035
@@ -188,6 +188,24 @@ static int llmnr_send_response(struct endpoint *ep,
 		if (*in_name_p >= 0xC0) {
 			DEBUG(1, L, "llmnr: message compression not "
 				  "supported");
+			free(in_name);
+			return -1;
+		}
+
+		/* RFC 1035 limits a label to 63 bytes; in_label only holds
+		 * 64 bytes, a longer label would overflow the stack buffer */
+		if (*in_name_p > 63) {
+			DEBUG(1, L, "llmnr: label length %u exceeds 63",
+			      (unsigned)*in_name_p);
+			free(in_name);
+			return -1;
+		}
+
+		/* the length byte and the label it describes must lie fully
+		 * inside the received datagram, otherwise a short crafted
+		 * packet makes the memcpy below read past the buffer */
+		if ((size_t)(in_name_p - in) + 1 + *in_name_p > inlen) {
+			DEBUG(1, L, "llmnr: label extends past datagram");
 			free(in_name);
 			return -1;
 		}
@@ -219,6 +237,14 @@ static int llmnr_send_response(struct endpoint *ep,
 	 * this implementation only supports questions of type A
 	 * or AAAA
 	 */
+	/* qtype/qclass live right after the terminating zero label; make
+	 * sure the 4 trailing bytes are still inside the datagram */
+	if ((size_t)(in_name_p - in) + 5 > inlen) {
+		DEBUG(1, L, "llmnr: question section truncated");
+		free(in_name);
+		return -1;
+	}
+
 	qtype = in_name_p[1]*256 + in_name_p[2];
 	if (qtype != DNS_TYPE_A && qtype != DNS_TYPE_AAAA) {
 		DEBUG(1, L, "llmnr: record in question not of type A or AAAA");

@@ -350,7 +350,10 @@ int exit_auth(void)
 
 static void pkt_data_log(char * header, uint8_t * pktdata, int len)
 {
-    static char log_buf[1024];
+    /* recvfrom() is capped at 1024 bytes; a hex dump needs ~3.2 bytes per
+       byte of packet, so 1024 bytes would overflow this buffer. Size it to
+       hold the largest packet the caller can hand us. */
+    static char log_buf[4096];
 
     int i, index = 0;
     strcpy(log_buf, header);
