@@ -1339,6 +1339,8 @@ int ei_qdma_xmit_housekeeping(struct net_device *netdev, int budget)
 		/* atomic_add(1, &ei_local->free_txd_num[ring_no]); */
 		/* 3. update ctx_offset and free skb memory */
 		ctx_offset = (tmp_ptr - ei_local->phy_txd_pool) / QTXD_LEN;
+		if (ctx_offset >= num_tx_desc)
+			break;
 		if (ei_local->features & FE_TSO) {
 			if (ei_local->skb_free[ctx_offset] != magic_id) {
 				dev_kfree_skb_any(ei_local->skb_free

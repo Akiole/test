@@ -111,6 +111,9 @@ int mtk_partition_register(struct mtd_info *mtd, int start_blk)
 
 				gpt_e = (gpt_entry *)buf;
 				while (gpt_e->partition_type_guid.b[0] != 0) {
+					/* clamp to allocated table; entries can span multiple pages */
+					if (current_part >= MTK_GPT_MAX_PART)
+						break;
 					start_page = le64_to_cpu(gpt_e->starting_lba);
 					end_page = le64_to_cpu(gpt_e->ending_lba);
 					mtk_part[current_part].offset = start_page << chip->page_shift;

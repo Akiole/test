@@ -485,6 +485,12 @@ int fe_hw_lro_recv(struct net_device *dev,
 
 		length = (rx_ring->rxd_info2.PLEN1 << 14) |
 			 rx_ring->rxd_info2.PLEN0;
+		if (rx_ring_no == 0) {
+			if (length > MAX_RX_LENGTH)
+				length = MAX_RX_LENGTH;
+		} else if (length > MAX_LRO_RX_LENGTH) {
+			length = MAX_LRO_RX_LENGTH;
+		}
 		dma_unmap_single(dev->dev.parent,
 				 rx_ring->rxd_info1.PDP0,
 				 length, DMA_FROM_DEVICE);

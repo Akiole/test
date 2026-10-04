@@ -273,6 +273,8 @@ static int rt2880_eth_recv(struct net_device *dev,
 		skb_reserve(rx_skb, NET_SKB_PAD + NET_IP_ALIGN);
 
 		length = rx_ring->rxd_info2.PLEN0;
+		if (length > MAX_RX_LENGTH)
+			length = MAX_RX_LENGTH;
 		dma_unmap_single(dev->dev.parent,
 				 rx_ring->rxd_info1.PDP0,
 				 length, DMA_FROM_DEVICE);
@@ -2810,6 +2812,10 @@ int ei_ioctl(struct net_device *dev, struct ifreq *ifr, int cmd)
 	case RAETH_ESW_INGRESS_RATE:
 		result = copy_from_user(&ratelimit, ifr->ifr_data,
 					sizeof(ratelimit));
+		if (ratelimit.port >= 8) {
+			ret = -EINVAL;
+			break;
+		}
 		offset = 0x1800 + (0x100 * ratelimit.port);
 		value = sys_reg_read(RALINK_ETH_SW_BASE + offset);
 
@@ -2840,6 +2846,10 @@ int ei_ioctl(struct net_device *dev, struct ifreq *ifr, int cmd)
 	case RAETH_ESW_EGRESS_RATE:
 		result = copy_from_user(&ratelimit, ifr->ifr_data,
 					sizeof(ratelimit));
+		if (ratelimit.port >= 8) {
+			ret = -EINVAL;
+			break;
+		}
 		offset = 0x1040 + (0x100 * ratelimit.port);
 		value = sys_reg_read(RALINK_ETH_SW_BASE + offset);
 

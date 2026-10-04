@@ -1178,7 +1178,12 @@ static inline ssize_t __exfat_blkdev_direct_IO(int rw, struct kiocb *iocb,
 #endif
 
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 5, 0)
+/* 4.4.302 has the follow_link(dentry, void **) API; sublevel 302 makes
+ * KERNEL_VERSION(4,4,302) numerically collide with 4.5.x, so use 4.6.0 as
+ * the cut-off for the get_link(dentry, inode, delayed_call) API which does
+ * not exist on this tree.
+ */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 6, 0)
 static const char *exfat_follow_link(struct dentry *dentry, struct inode *inode, struct delayed_call *done)
 {
 	struct exfat_inode_info *ei = EXFAT_I(inode);
@@ -2145,9 +2150,9 @@ static const struct inode_operations exfat_symlink_inode_operations = {
 #if LINUX_VERSION_CODE < KERNEL_VERSION(4, 10, 0)
 	.readlink    = generic_readlink,
 #endif
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 5, 0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 6, 0)
 	.get_link = exfat_follow_link,
-#else /* LINUX_VERSION_CODE < KERNEL_VERSION(4, 5, 0) */
+#else /* LINUX_VERSION_CODE < KERNEL_VERSION(4, 6, 0) */
 	.follow_link = exfat_follow_link,
 #endif
 #ifdef CONFIG_EXFAT_VIRTUAL_XATTR

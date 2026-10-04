@@ -231,8 +231,8 @@ ssize_t ioc_pmu_write(struct file *file, const char __user *buffer,
 		break;
 	}
 
-	if (iocoherent_set_func[arg0] &&
-	    (ARRAY_SIZE(iocoherent_set_func) > arg0)) {
+	if (arg0 >= 0 && arg0 < ARRAY_SIZE(iocoherent_set_func) &&
+	    iocoherent_set_func[arg0]) {
 		(*iocoherent_set_func[arg0]) (arg1, arg2, arg3);
 	} else {
 		pr_info("no handler defined for command id(0x%08lx)\n\r", arg0);

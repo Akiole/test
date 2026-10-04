@@ -36,7 +36,7 @@
 #include <net/netfilter/ipv6/nf_conntrack_ipv6.h>
 
 /* Do not check the TCP window for incoming packets  */
-static int nf_ct_tcp_no_window_check __read_mostly = 1;
+static int nf_ct_tcp_no_window_check __read_mostly = 0;
 #ifdef CONFIG_SHORTCUT_FE
 EXPORT_SYMBOL_GPL(nf_ct_tcp_no_window_check);
 #endif

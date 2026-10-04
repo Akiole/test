@@ -191,7 +191,8 @@ static int mt753x_nl_reply_read(struct genl_info *info, struct gsw_mt753x *gsw)
 	devad = mt753x_nl_get_s32(info, MT753X_ATTR_TYPE_DEVAD, -1);
 	reg = mt753x_nl_get_s32(info, MT753X_ATTR_TYPE_REG, -1);
 
-	if (reg < 0)
+	if (reg < 0 ||
+	    reg > (MT753X_REG_PAGE_ADDR_M | MT753X_REG_ADDR_M))
 		goto err;
 
 	ret = mt753x_nl_prepare_reply(info, MT753X_CMD_READ, &rep_skb);
@@ -238,7 +239,8 @@ static int mt753x_nl_reply_write(struct genl_info *info, struct gsw_mt753x *gsw)
 	if (mt753x_nl_get_u32(info, MT753X_ATTR_TYPE_VAL, &value))
 		goto err;
 
-	if (reg < 0)
+	if (reg < 0 ||
+	    reg > (MT753X_REG_PAGE_ADDR_M | MT753X_REG_ADDR_M))
 		goto err;
 
 	ret = mt753x_nl_prepare_reply(info, MT753X_CMD_WRITE, &rep_skb);

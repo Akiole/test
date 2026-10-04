@@ -246,6 +246,11 @@ static int load_bmt_data(int start, int pool_size)
 		memcpy(&phys_table, dat_buf + MAIN_SIGNATURE_OFFSET,
 		       sizeof(phys_table));
 
+		/* mapped_count is an on-flash u8; clamp to the fixed table size
+		   so a corrupted value can't walk/overflow the table arrays. */
+		if (phys_table.header.mapped_count > MAX_BMT_SIZE)
+			phys_table.header.mapped_count = MAX_BMT_SIZE;
+
 		if (!valid_bmt_data(&phys_table)) {
 			pr_warn("BMT data is not correct %d\n", bmt_index);
 			continue;

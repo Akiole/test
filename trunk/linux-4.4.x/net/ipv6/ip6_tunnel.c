@@ -381,6 +381,9 @@ ip6_tnl_dev_uninit(struct net_device *dev)
 	struct net *net = t->net;
 	struct ip6_tnl_net *ip6n = net_generic(net, ip6_tnl_net_id);
 
+	/* Wait for any in-flight rcu reader still walking the fmr list
+	 * before freeing it. */
+	synchronize_rcu();
 	while (t->parms.fmrs) {
 		struct __ip6_tnl_fmr *next = t->parms.fmrs->next;
 		kfree(t->parms.fmrs);
@@ -1457,12 +1460,19 @@ ip6_tnl_change(struct ip6_tnl *t, const struct __ip6_tnl_parm *p)
 	t->parms.link = p->link;
 	t->parms.proto = p->proto;
 
-       while (t->parms.fmrs) {
-               struct __ip6_tnl_fmr *next = t->parms.fmrs->next;
-               kfree(t->parms.fmrs);
-               t->parms.fmrs = next;
+       /* Install the new list first so that readers taking the rcu
+        * read lock afterwards only see it, then wait for any reader
+        * still walking the old list to finish before freeing it. */
+       {
+               struct __ip6_tnl_fmr *old = t->parms.fmrs;
+               t->parms.fmrs = p->fmrs;
+               synchronize_rcu();
+               while (old) {
+                       struct __ip6_tnl_fmr *next = old->next;
+                       kfree(old);
+                       old = next;
+               }
        }
-       t->parms.fmrs = p->fmrs;
 
 	dst_cache_reset(&t->dst_cache);
 	ip6_tnl_link_config(t);
@@ -1890,6 +1900,17 @@ static void ip6_tnl_netlink_parms(struct nlattr *data[],
 
 			if ((c = fmrd[IFLA_IPTUN_FMR_OFFSET]))
 				nfmr->offset = nla_get_u8(c);
+
+			/* Reject out-of-range FMR parameters: values above the
+			 * normal prefix lengths would make ip4ip6_fmr_calc()
+			 * compute an out-of-bounds frombyte / negative memcpy
+			 * length or an over-wide bit shift. */
+			if (nfmr->ip6_prefix_len > 128 ||
+			    nfmr->ip4_prefix_len > 32 ||
+			    nfmr->ea_len > 63) {
+				kfree(nfmr);
+				continue;
+			}
 
 			nfmr->next = parms->fmrs;
 			parms->fmrs = nfmr;

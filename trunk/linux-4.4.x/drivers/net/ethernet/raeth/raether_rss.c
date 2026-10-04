@@ -344,6 +344,8 @@ int fe_rss0_recv(struct net_device *dev,
 		skb_reserve(rx_skb, NET_SKB_PAD + NET_IP_ALIGN);
 
 		length = rx_ring->rxd_info2.PLEN0;
+		if (length > MAX_RX_LENGTH)
+			length = MAX_RX_LENGTH;
 		dma_unmap_single(dev->dev.parent,
 				 rx_ring->rxd_info1.PDP0,
 				 length, DMA_FROM_DEVICE);
@@ -556,6 +558,8 @@ int fe_rss1_recv(struct net_device *dev,
 		skb_reserve(rx_skb, NET_SKB_PAD + NET_IP_ALIGN);
 
 		length = rx_ring->rxd_info2.PLEN0;
+		if (length > MAX_RX_LENGTH)
+			length = MAX_RX_LENGTH;
 		dma_unmap_single(dev->dev.parent,
 				 rx_ring->rxd_info1.PDP0,
 				 length, DMA_FROM_DEVICE);
@@ -764,6 +768,8 @@ int fe_rss2_recv(struct net_device *dev,
 		skb_reserve(rx_skb, NET_SKB_PAD + NET_IP_ALIGN);
 
 		length = rx_ring->rxd_info2.PLEN0;
+		if (length > MAX_RX_LENGTH)
+			length = MAX_RX_LENGTH;
 		dma_unmap_single(dev->dev.parent,
 				 rx_ring->rxd_info1.PDP0,
 				 length, DMA_FROM_DEVICE);
@@ -972,6 +978,8 @@ int fe_rss3_recv(struct net_device *dev,
 		skb_reserve(rx_skb, NET_SKB_PAD + NET_IP_ALIGN);
 
 		length = rx_ring->rxd_info2.PLEN0;
+		if (length > MAX_RX_LENGTH)
+			length = MAX_RX_LENGTH;
 		dma_unmap_single(dev->dev.parent,
 				 rx_ring->rxd_info1.PDP0,
 				 length, DMA_FROM_DEVICE);

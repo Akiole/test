@@ -214,6 +214,7 @@ nf_nat_masquerade_ipv4(struct sk_buff *skb, unsigned int hooknum,
 			       	 ntohs(minport));
 		} else { /* no previous expect */
 			u_int16_t newport, tmpport, orgport;
+			unsigned int tries = 0;
 			
 			minport = range->min_proto.all == 0? 
 				ct->tuplehash[IP_CT_DIR_ORIGINAL].tuple.src.
@@ -221,8 +222,8 @@ nf_nat_masquerade_ipv4(struct sk_buff *skb, unsigned int hooknum,
 			maxport = range->max_proto.all == 0? 
 				htons(65535) : range->max_proto.all;
                         orgport = ntohs(minport);
-			for (newport = ntohs(minport),tmpport = ntohs(maxport); 
-			     newport <= tmpport; newport++) {
+			for (newport = ntohs(minport),tmpport = ntohs(maxport);
+			     tries <= 0xffff; newport++, tries++) {
 			     	if (CHECK_PORT_PARITY(orgport, newport) && !find_exp(newsrc, htons(newport), ct)) {
                                         pr_debug("swrt_nat: new mapped port = "
 					       	 "%hu\n", newport);

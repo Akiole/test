@@ -326,6 +326,8 @@ static bool xt_webstr_match(const struct sk_buff *skb,  struct xt_action_param *
 		}
 		tcph = (void *)iph + iph->ihl*4;
 		data = (void *)tcph + tcph->doff*4;
+		if ((unsigned int)(iph->ihl*4 + tcph->doff*4) > skb->len)
+			return 0;
 		datalen = (skb)->len - (iph->ihl*4) - (tcph->doff*4);
 	}
 #if IS_ENABLED(CONFIG_IPV6)
@@ -336,6 +338,8 @@ static bool xt_webstr_match(const struct sk_buff *skb,  struct xt_action_param *
 		}
 		tcph = (void *)iph + sizeof(struct ipv6hdr);
 		data = (void *)tcph + tcph->doff*4;
+		if ((unsigned int)(sizeof(struct ipv6hdr) + tcph->doff*4) > skb->len)
+			return 0;
 		datalen = (skb)->len - sizeof(struct ipv6hdr) - (tcph->doff*4);
 	}
 #endif

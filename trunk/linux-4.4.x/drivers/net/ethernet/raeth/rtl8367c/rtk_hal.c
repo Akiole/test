@@ -590,6 +590,9 @@ void rtk_hal_qos_set_pri2queue(struct ra_switch_ioctl_data *data)
 	rtk_api_ret_t ret;
 	rtk_qos_pri2queue_t pri2qid;
 
+	if (data->qos_queue_num >= RTK_MAX_NUM_OF_PRIORITY)
+		return;
+
 	ret = rtk_qos_priMap_get(8, &pri2qid);
 	pri2qid.pri2queue[data->qos_queue_num] = data->qos_pri;
 	ret = rtk_qos_priMap_set(8, &pri2qid);
@@ -616,6 +619,9 @@ void rtk_hal_qos_set_queue_weight(struct ra_switch_ioctl_data *data)
 {
 	rtk_api_ret_t ret;
 	rtk_qos_queue_weights_t qweights;
+
+	if (data->qos_queue_num >= RTK_MAX_NUM_OF_QUEUE)
+		return;
 
 	ret = rtk_qos_schedulingQueue_get(data->port, &qweights);
 	qweights.weights[data->qos_queue_num] = data->qos_weight;

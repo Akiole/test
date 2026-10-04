@@ -1553,6 +1553,8 @@ static ssize_t schedule_write(struct file *file,
 		char buf[2];
 		int old;
 
+		if (count > sizeof(buf))
+			count = sizeof(buf);
 		if (copy_from_user(buf, buffer, count))
 			return -EFAULT;
 		old = init_schedule;

@@ -720,6 +720,23 @@ NDIS_STATUS load_dev_l1profile(IN RTMP_ADAPTER *pAd)
 		first_load_done = 1;
 	}
 
+	/* Size the buffer from the real file length *before* allocating,
+	   and cap it so a bogus/huge fsize can't over-allocate or overflow. */
+	{
+		RTMP_OS_FD_EXT probe = os_file_open(L1_PROFILE_PATH, O_RDONLY, 0);
+		const ULONG max_l1_buf = 256 * 1024;
+
+		if (!probe.Status) {
+			if (probe.fsize > 0 && probe.fsize < max_l1_buf) {
+				ULONG want = (ULONG)probe.fsize + 1;
+
+				if (want > buf_size)
+					buf_size = want;
+			}
+			os_file_close(probe);
+		}
+	}
+
 	os_alloc_mem(pAd, (UCHAR **)&buffer, buf_size);
 
 	if (!buffer) {
@@ -739,13 +756,6 @@ NDIS_STATUS load_dev_l1profile(IN RTMP_ADAPTER *pAd)
 		strcpy(buffer, l1profile_default);
 	} else {
 		MTWF_LOG(DBG_CAT_CFG, DBG_SUBCAT_ALL, DBG_LVL_TRACE, ("Open file \"%s\" Succeed!\n", L1_PROFILE_PATH));
-#ifndef OS_ABL_SUPPORT
-
-		/* TODO: need to roll back when convert into OSABL code */
-		if (srcf.fsize != 0 && buf_size < (srcf.fsize + 1))
-			buf_size = srcf.fsize  + 1;
-
-#endif /* OS_ABL_SUPPORT */
 		retval = os_file_read(srcf, buffer, buf_size - 1);
 
 		if (retval)
@@ -775,7 +785,7 @@ NDIS_STATUS load_dev_l1profile(IN RTMP_ADAPTER *pAd)
 
 			for (attr_index = 0; attr_index < ARRAY_SIZE(l1profile_attributes); attr_index++) {
 				l1attr = &l1profile_attributes[attr_index];
-				sprintf(key, "%s_%s", profile_index, l1attr->name);
+				snprintf(key, sizeof(key), "%s_%s", profile_index, l1attr->name);
 
 				if (RTMPGetKeyParameter(key, tmpbuf, MAX_PARAM_BUFFER_SIZE, buffer, TRUE)) {
 					MTWF_LOG(DBG_CAT_CFG, DBG_SUBCAT_ALL, DBG_LVL_TRACE,

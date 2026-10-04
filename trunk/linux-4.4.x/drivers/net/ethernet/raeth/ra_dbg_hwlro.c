@@ -438,8 +438,8 @@ ssize_t hw_lro_auto_tlb_write(struct file *file, const char __user *buffer,
 		pr_info("y = %ld\n\r", y);
 	}
 
-	if (hw_lro_dbg_func[x] &&
-	    (ARRAY_SIZE(hw_lro_dbg_func) > x)) {
+	if (x >= 0 && x < ARRAY_SIZE(hw_lro_dbg_func) &&
+	    hw_lro_dbg_func[x]) {
 		(*hw_lro_dbg_func[x]) (x, y);
 	}
 

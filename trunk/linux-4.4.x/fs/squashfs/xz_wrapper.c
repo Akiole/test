@@ -156,20 +156,27 @@ static int squashfs_xz_uncompress(struct squashfs_sb_info *msblk, void *strm,
 		}
 
 		if (stream->buf.out_pos == stream->buf.out_size) {
-			stream->buf.out = squashfs_next_page(output);
-			if (!IS_ERR(stream->buf.out)) {
+			void *next = squashfs_next_page(output);
+
+			if (!IS_ERR_OR_NULL(next)) {
+				stream->buf.out = next;
 				stream->buf.out_pos = 0;
 				total += PAGE_CACHE_SIZE;
+			} else if (next == NULL) {
+				/* No real output page here: bounce the discarded tail.
+				   It is not delivered to the page cache, so it must not
+				   be counted in the returned length. */
+				if (!buf) {
+					buf = kmalloc(PAGE_CACHE_SIZE, GFP_ATOMIC);
+					if (!buf)
+						goto out;
+				}
+				stream->buf.out = buf;
+				stream->buf.out_pos = 0;
 			}
-		}
-
-		if (!stream->buf.out) {
-			if (!buf) {
-				buf = kmalloc(PAGE_CACHE_SIZE, GFP_ATOMIC);
-				if (!buf)
-					goto out;
-			}
-			stream->buf.out = buf;
+			/* else IS_ERR(next): all output pages consumed; leave the
+			   error pointer with out_pos == out_size so xz_dec_run stops
+			   writing. */
 		}
 		xz_err = xz_dec_run(stream->state, &stream->buf);
 
@@ -183,7 +190,7 @@ static int squashfs_xz_uncompress(struct squashfs_sb_info *msblk, void *strm,
 		goto out;
 
 	kfree(buf);
-	return total + stream->buf.out_pos;
+	return total + (stream->buf.out == buf ? 0 : stream->buf.out_pos);
 
 out:
 	for (; k < b; k++)

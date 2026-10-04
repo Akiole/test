@@ -341,6 +341,8 @@ static ssize_t ct_file_write(struct file *file, const char __user *buf,
 		kr.family = AF_INET;
 		if (!in4_pton(req, count, (void *)&kr.addr, '\n', NULL))
 			return -EINVAL;
+	} else {
+		return -EINVAL;
 	}
 
 	nf_ct_iterate_cleanup(net, kill_matching, &kr, 0, 0);

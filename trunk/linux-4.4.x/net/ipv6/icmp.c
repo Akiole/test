@@ -615,7 +615,6 @@ static void icmpv6_echo_reply(struct sk_buff *skb)
         rcu_read_lock_bh();
         n = __ipv6_neigh_lookup_noref(rt->dst.dev,
                           rt6_nexthop(rt, &fl6.daddr));
-        rcu_read_unlock_bh();
 
         // ndisc_recv_na -> neigh_update
         // 1. wan_rfc2460_rfc4861_rfc4443, case 13-20: (no reply)
@@ -628,9 +627,10 @@ static void icmpv6_echo_reply(struct sk_buff *skb)
         {
             pr_debug("icmpv6_echo_reply: nud_state=%02x flags=%02x dev=%s target=%pI6c\n", 
                         n->nud_state, n->flags, n->dev->name, &rt->rt6i_gateway);
-
+            rcu_read_unlock_bh();
             goto out;
         }
+        rcu_read_unlock_bh();
     }
 #endif
     
