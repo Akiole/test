@@ -782,6 +782,7 @@ set_nf_conntrack(void)
 
 	i_nf_val = nvram_safe_get_int("nf_max_conn", i_nf_def, 4096, i_nf_lim);
 	fput_int("/proc/sys/net/nf_conntrack_max", i_nf_val);
+	fput_int("/proc/sys/net/netfilter/nf_conntrack_expect_max", i_nf_val / 8);
 }
 
 void
