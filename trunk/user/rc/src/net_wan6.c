@@ -282,8 +282,10 @@ void start_sit_tunnel(int ipv6_type, char *wan_ifname, char *wan_addr4, char *wa
 
 	/* WAN IPv6 address */
 	inet_ntop(AF_INET6, &addr6, addr6s, INET6_ADDRSTRLEN);
-	if (size6 > 0)
-		sprintf(addr6s, "%s/%d", addr6s, size6);
+	if (size6 > 0) {
+		size_t len = strlen(addr6s);
+		snprintf(addr6s + len, sizeof(addr6s) - len, "/%d", size6);
+	}
 
 	control_if_ipv6_radv(IFNAME_SIT, 0);
 	doSystem("ip link set mtu %d dev %s up", sit_mtu, IFNAME_SIT);
@@ -318,7 +320,10 @@ void start_sit_tunnel(int ipv6_type, char *wan_ifname, char *wan_addr4, char *wa
 		}
 		
 		inet_ntop(AF_INET6, &addr6, addr6s, INET6_ADDRSTRLEN);
-		sprintf(addr6s, "%s/%d", addr6s, 64);
+		{
+			size_t len = strlen(addr6s);
+			snprintf(addr6s + len, sizeof(addr6s) - len, "/%d", 64);
+		}
 		
 		clear_if_addr6(IFNAME_BR);
 		doSystem("ip -6 addr add %s dev %s", addr6s, IFNAME_BR);

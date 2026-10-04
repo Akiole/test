@@ -115,7 +115,7 @@ static int parse_line(char *buf, int size)
 
     if (strcmp(opt.key, "remote_ip") == 0)
     {
-        strcpy(drcom_config.remote_ip, opt.value);
+        snprintf(drcom_config.remote_ip, sizeof(drcom_config.remote_ip), "%s", opt.value);
     }
     else if (strcmp(opt.key, "remote_port") == 0)
     {

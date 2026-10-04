@@ -74,7 +74,7 @@ if [ "$(nvram get sdns_enable)" = "1" ] ; then
        sed -i '/去广告/d' $smartdns_conf
        sed -i '/adbyby/d' $smartdns_conf
        sed -i '/no-resolv/d' "$dnsmasq_Conf"
-       sed -i '/server=127.0.0.1#'"$sdns_portd"'/d' "$dnsmasq_Conf"
+       sed -i '/server=127.0.0.1#'"$sdns_port"'/d' "$dnsmasq_Conf"
        sed -i '/port=0/d' "$dnsmasq_Conf"
        rm  -f "$smartdns_Ini"
    fi

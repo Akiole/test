@@ -56,13 +56,13 @@ static int read_d_config(char *buf, int size) {
     drcom_config.keepalive1_mod = 0;
 
     if (strcmp(key, "server") == 0) {
-        strcpy(drcom_config.server, value);
+        snprintf(drcom_config.server, sizeof(drcom_config.server), "%s", value);
         DEBUG_PRINT(("[PARSER_DEBUG]%s\n", drcom_config.server));
     } else if (strcmp(key, "username") == 0) {
-        strcpy(drcom_config.username, value);
+        snprintf(drcom_config.username, sizeof(drcom_config.username), "%s", value);
         DEBUG_PRINT(("[PARSER_DEBUG]%s\n", drcom_config.username));
     } else if (strcmp(key, "password") == 0) {
-        strcpy(drcom_config.password, value);
+        snprintf(drcom_config.password, sizeof(drcom_config.password), "%s", value);
         DEBUG_PRINT(("[PARSER_DEBUG]%s\n", drcom_config.password));
     } else if (strcmp(key, "CONTROLCHECKSTATUS") == 0) {
         value = strtok(value, delim2);
@@ -73,20 +73,20 @@ static int read_d_config(char *buf, int size) {
         sscanf(value, "%02hhx", &drcom_config.ADAPTERNUM);
         DEBUG_PRINT(("[PARSER_DEBUG]0x%02x\n", drcom_config.ADAPTERNUM));
     } else if (strcmp(key, "host_ip") == 0) {
-        strcpy(drcom_config.host_ip, value);
+        snprintf(drcom_config.host_ip, sizeof(drcom_config.host_ip), "%s", value);
         DEBUG_PRINT(("[PARSER_DEBUG]%s\n", drcom_config.host_ip));
     } else if (strcmp(key, "IPDOG") == 0) {
         value = strtok(value, delim2);
         sscanf(value, "%02hhx", &drcom_config.IPDOG);
         DEBUG_PRINT(("[PARSER_DEBUG]0x%02x\n", drcom_config.IPDOG));
     } else if (strcmp(key, "host_name") == 0) {
-        strcpy(drcom_config.host_name, value);
+        snprintf(drcom_config.host_name, sizeof(drcom_config.host_name), "%s", value);
         DEBUG_PRINT(("[PARSER_DEBUG]%s\n", drcom_config.host_name));
     } else if (strcmp(key, "PRIMARY_DNS") == 0) {
-        strcpy(drcom_config.PRIMARY_DNS, value);
+        snprintf(drcom_config.PRIMARY_DNS, sizeof(drcom_config.PRIMARY_DNS), "%s", value);
         DEBUG_PRINT(("[PARSER_DEBUG]%s\n", drcom_config.PRIMARY_DNS));
     } else if (strcmp(key, "dhcp_server") == 0) {
-        strcpy(drcom_config.dhcp_server, value);
+        snprintf(drcom_config.dhcp_server, sizeof(drcom_config.dhcp_server), "%s", value);
         DEBUG_PRINT(("[PARSER_DEBUG]%s\n", drcom_config.dhcp_server));
     } else if (strcmp(key, "AUTH_VERSION") == 0) {
         char *v1 = strtok(value, delim2);
@@ -117,7 +117,7 @@ static int read_d_config(char *buf, int size) {
         printf("\n");
 #endif
     } else if (strcmp(key, "host_os") == 0) {
-        strcpy(drcom_config.host_os, value);
+        snprintf(drcom_config.host_os, sizeof(drcom_config.host_os), "%s", value);
         DEBUG_PRINT(("[PARSER_DEBUG]%s\n", drcom_config.host_os));
     } else if (strcmp(key, "KEEP_ALIVE_VERSION") == 0) {
         char *v1 = strtok(value, delim2);
@@ -163,7 +163,7 @@ static int read_p_config(char *buf, int size) {
     }
 
     if (strcmp(key, "server") == 0) {
-        strcpy(drcom_config.server, value);
+        snprintf(drcom_config.server, sizeof(drcom_config.server), "%s", value);
         DEBUG_PRINT(("[PARSER_DEBUG]%s\n", drcom_config.server));
     } else if (strcmp(key, "pppoe_flag") == 0) {
         value = strtok(value, delim2);
