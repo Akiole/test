@@ -30,7 +30,12 @@ ifeq ($(STORAGE_ENABLED),y)
 OBJS += hotplug_stor.o
 OBJS += services_stor.o
 endif
-ifdef CONFIG_USB_SUPPORT
+# Userspace USB services are gated on USE_USB_SUPPORT (set by cflags.mk when
+# BOARD_NUM_USB_PORTS != 0), not on the kernel CONFIG_USB_SUPPORT: the latter
+# is always y on 6.x mt7621 (USB host stack) yet the USB service objects
+# include libdisk headers (usb_info.h/dev_info.h) that only exist when
+# storage support (libdisk) is built.
+ifdef USE_USB_SUPPORT
 OBJS += hotplug_usb.o usb_modem.o services_usb.o
 endif
 ifdef CONFIG_RTL8367
@@ -44,6 +49,13 @@ else
 ifdef CONFIG_RAETH_ESW
 OBJS += switch_mtk_esw.o
 CFLAGS += -I$(ROOTDIR)/$(LINUXDIR)/drivers/net/ethernet/raeth
+else
+# 6.x: MT7530 DSA replaces the vendor GSW driver; switch_mtk_esw.c provides
+# the DSA/phy helpers (dsa_port_netdev, phy_*) used by net_lan.c and is
+# sysfs-based, needing no raeth kernel headers.
+ifdef CONFIG_NET_DSA_MT7530
+OBJS += switch_mtk_esw.o
+endif
 endif
 endif
 endif

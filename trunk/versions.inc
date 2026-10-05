@@ -5,4 +5,4 @@ LINUX_SUBLEVEL := $(shell grep -m1 "^SUBLEVEL =" $(CONFIG_LINUXDIR)/Makefile | a
 FIRMWARE_KERNEL_VER=$(LINUX_VERSION).$(LINUX_PATCHLEVEL)
 FIRMWARE_ROOTFS_VER=$(LINUX_SUBLEVEL)
 FIRMWARE_BUILDS_VER=100
-FIRMWARE_BUILDS_REV=$(shell git rev-parse --short=7 HEAD 2>/dev/null)
+FIRMWARE_BUILDS_REV := $(shell git rev-parse --short=7 HEAD 2>/dev/null)

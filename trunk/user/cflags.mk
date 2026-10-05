@@ -32,7 +32,10 @@ CFLAGS += $(if $(CONFIG_NETFILTER_XT_MATCH_CONNTRACK),-DUSE_MATCH_CONNTRACK,)
 CFLAGS += $(if $(CONFIG_USB_XHCI_HCD),-DUSE_USB_XHCI,)
 CFLAGS += $(if $(CONFIG_MMC_MT7621),-DUSE_MTK_MMC,)
 
-ifdef CONFIG_RALINK_MT7621
+# 4.4 kernels use CONFIG_RALINK_MT7621; 6.x uses CONFIG_SOC_MT7621. Userspace
+# code (smp.c, rc, httpd) tests the 4.4-era macro, so map both to
+# -DCONFIG_RALINK_MT7621.
+ifneq ($(filter y,$(CONFIG_RALINK_MT7621) $(CONFIG_SOC_MT7621)),)
 CFLAGS += -DCONFIG_RALINK_MT7621
 endif
 
@@ -52,8 +55,11 @@ CFLAGS += -DUSE_WID_5G=7915
 endif # CONFIG_FIRST_IF_MT7915
 endif # CONFIG_FIRST_IF_MT7615E
 else # ! CONFIG_DBDC_MODE
-CFLAGS += -DUSE_WID_2G=$(CONFIG_RT_FIRST_CARD)
-CFLAGS += -DUSE_WID_5G=$(CONFIG_RT_SECOND_CARD)
+# 6.x (mt76) trees carry no vendor wireless CONFIG_RT_*_CARD symbols: only
+# emit -DUSE_WID_* when a real value exists, else an empty -DUSE_WID_5G=
+# breaks `#if defined(USE_WID_5G) && (USE_WID_5G==7915)` in defaults.c
+CFLAGS += $(if $(CONFIG_RT_FIRST_CARD),-DUSE_WID_2G=$(CONFIG_RT_FIRST_CARD),)
+CFLAGS += $(if $(CONFIG_RT_SECOND_CARD),-DUSE_WID_5G=$(CONFIG_RT_SECOND_CARD),)
 endif # CONFIG_DBDC_MODE
 endif # CONFIG_FIRST_IF_NONE
 

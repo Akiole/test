@@ -12,16 +12,19 @@
 #   include $(dir $(lastword $(MAKEFILE_LIST)))host-tools.mk  # rules.mk
 # ============================================================
 
-# OS detection (?= allows inheritance from environment/parent Makefile, avoiding repeated $(shell uname))
-HOST_OS  ?= $(shell uname)
-IS_DARWIN ?= $(filter Darwin,$(HOST_OS))
-HOST_OS_LOWER ?= $(shell echo $(HOST_OS) | tr '[:upper:]' '[:lower:]')
-HOST_ARCH     ?= $(shell uname -m)
+# OS detection (:= evaluates $(shell) once at parse time; recursive '?=' vars
+# containing $(shell) re-expand on every export, which with .EXPORT_ALL_VARIABLES
+# and GNU make 4.4's shell-function env hashing explodes into thousands of
+# redundant $(shell) spawns (observed as a hang on `gmake config`).
+HOST_OS  := $(shell uname)
+IS_DARWIN := $(filter Darwin,$(HOST_OS))
+HOST_OS_LOWER := $(shell echo $(HOST_OS) | tr '[:upper:]' '[:lower:]')
+HOST_ARCH     := $(shell uname -m)
 
 # Host environment (CPU cores, parallel jobs, shell path)
-HOST_NCPU    ?= $(shell nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 1)
-JOBS         ?= -j$(HOST_NCPU)
-CONFIG_SHELL ?= $(shell command -v bash 2>/dev/null || echo /bin/sh)
+HOST_NCPU    := $(shell nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 1)
+JOBS         := -j$(HOST_NCPU)
+CONFIG_SHELL := $(shell command -v bash 2>/dev/null || echo /bin/sh)
 export HOST_OS IS_DARWIN HOST_OS_LOWER HOST_ARCH HOST_NCPU JOBS CONFIG_SHELL
 
 # === macOS Homebrew detection ===

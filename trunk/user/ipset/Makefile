@@ -17,7 +17,11 @@ EXTRA_LDFLAGS += -Wl,-rpath-link,$(STAGEDIR)/lib
 
 define Build/Compile
 	$(MAKE) $(PKG_JOBS) -C $(PKG_BUILD_DIR) $(MAKE_FLAGS)
-	$(MAKE) $(PKG_JOBS) -C $(PKG_BUILD_DIR) $(MAKE_FLAGS) LDFLAGS= modules
+	# 6.x: ipset kernel modules come from the in-tree kernel build
+	# (CONFIG_IP_SET=m etc. in the board kernel config); the bundled
+	# out-of-tree kernel/ sources use the pre-6.x ematch API
+	# (tcf_em_register/tcf_em_unregister) and fail against linux-6.6.x.
+	# $(MAKE) $(PKG_JOBS) -C $(PKG_BUILD_DIR) $(MAKE_FLAGS) LDFLAGS= modules
 endef
 
 $(eval $(call BuildPackage,$(PKG_NAME)))

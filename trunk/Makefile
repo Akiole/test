@@ -33,8 +33,14 @@ LINUX_CONFIG     := $(ROOTDIR)/$(LINUXDIR)/.config
 
 # macOS host lacks <elf.h>; provide glibc-compatible one for kernel host tools
 # HOMEBREW_PREFIX is already defined by host-tools.mk (with /opt/homebrew fallback).
+# HOST_EXTRACFLAGS is passed as an ENV prefix (before the command) so the kernel's
+# own `HOST_EXTRACFLAGS +=` (scripts/dtc libfdt, selinux host tools) still appends:
+# passing it as a command-line override silently discards those, breaking
+# scripts/dtc (libfdt_env.h not found). HOSTLOADLIBES_* stay on the command line
+# to override the kconfig makefile's auto-detected values.
 ifdef IS_DARWIN
-KERNEL_HOST_EXTRACFLAGS := HOST_EXTRACFLAGS="-I$(ROOTDIR)/tools/include/darwin -I$(HOMEBREW_PREFIX)/opt/gettext/include" HOSTLOADLIBES_conf="-L$(HOMEBREW_PREFIX)/opt/gettext/lib -lintl" HOSTLOADLIBES_mconf="-L$(HOMEBREW_PREFIX)/opt/gettext/lib -lintl"
+KERNEL_HOST_EXTRACFLAGS := HOST_EXTRACFLAGS="-I$(ROOTDIR)/tools/include/darwin -I$(HOMEBREW_PREFIX)/opt/gettext/include"
+KERNEL_HOST_LDLIBS := HOSTLOADLIBES_conf="-L$(HOMEBREW_PREFIX)/opt/gettext/lib -lintl" HOSTLOADLIBES_mconf="-L$(HOMEBREW_PREFIX)/opt/gettext/lib -lintl"
 endif
 
 PROJECT_CONFIG   := $(ROOTDIR)/.config
@@ -200,8 +206,8 @@ endif
 
 dep: config
 	@echo "\033[1;34m===> 🔍 Preparing kernel configuration for $(FIRMWARE_KERNEL_VER).$(FIRMWARE_ROOTFS_VER)...\033[0m"
-	@$(MAKEARCH_KERNEL) $(KERNEL_HOST_EXTRACFLAGS) -C $(LINUXDIR) olddefconfig || { echo "\033[1;31m===> ❌ Kernel olddefconfig failed (error code: $$?)\033[0m"; exit 1; }
-	@$(MAKEARCH_KERNEL) $(KERNEL_HOST_EXTRACFLAGS) -C $(LINUXDIR) modules_prepare || { echo "\033[1;31m===> ❌ Kernel modules_prepare failed (error code: $$?)\033[0m"; exit 1; }
+	@$(KERNEL_HOST_EXTRACFLAGS) $(MAKEARCH_KERNEL) $(KERNEL_HOST_LDLIBS) -C $(LINUXDIR) olddefconfig || { echo "\033[1;31m===> ❌ Kernel olddefconfig failed (error code: $$?)\033[0m"; exit 1; }
+	@$(KERNEL_HOST_EXTRACFLAGS) $(MAKEARCH_KERNEL) $(KERNEL_HOST_LDLIBS) -C $(LINUXDIR) modules_prepare || { echo "\033[1;31m===> ❌ Kernel modules_prepare failed (error code: $$?)\033[0m"; exit 1; }
 	@echo "\033[1;32m===> ✅ Kernel configuration prepared\033[0m"
 
 # === Tool Build ===
@@ -225,7 +231,7 @@ unpack_trx:
 # === Kernel Build ===
 linux:
 	@echo "\033[1;30;43m BUILD \033[0m \033[1;30;44m Linux kernel version $(FIRMWARE_KERNEL_VER).$(FIRMWARE_ROOTFS_VER)...\033[0m"
-	@$(MAKEARCH_KERNEL) $(KERNEL_HOST_EXTRACFLAGS) $(JOBS) -C $(LINUXDIR) $(LINUXTARGET) || { echo "\033[1;31m===> ❌ Kernel build failed (error code: $$?)\033[0m"; exit 1; }
+	@$(KERNEL_HOST_EXTRACFLAGS) $(MAKEARCH_KERNEL) $(KERNEL_HOST_LDLIBS) $(JOBS) -C $(LINUXDIR) $(LINUXTARGET) || { echo "\033[1;31m===> ❌ Kernel build failed (error code: $$?)\033[0m"; exit 1; }
 	@[ -f $(LINUXDIR)/vmlinux ] && ln -f $(LINUXDIR)/vmlinux $(LINUXDIR)/linux || \
 		{ echo "\033[1;31m===> ❌ Failed to link vmlinux to linux\033[0m"; exit 1; }
 	@echo "\033[1;32m===> ✅ Kernel build completed\033[0m"
@@ -235,7 +241,7 @@ modules:
 	@echo "\033[1;34m===> 🔨 Building kernel modules for $(FIRMWARE_KERNEL_VER).$(FIRMWARE_ROOTFS_VER)...\033[0m"
 	@if $(GREP) -q 'CONFIG_MODULES=y' $(LINUX_CONFIG); then \
 		mkdir -p $(LINUXDIR)/modules; \
-		$(MAKEARCH_KERNEL) $(KERNEL_HOST_EXTRACFLAGS) $(JOBS) -C $(LINUXDIR) modules || \
+		$(KERNEL_HOST_EXTRACFLAGS) $(MAKEARCH_KERNEL) $(KERNEL_HOST_LDLIBS) $(JOBS) -C $(LINUXDIR) modules || \
 			{ echo "\033[1;31m===> ❌ Module build failed (error code: $$?)\033[0m"; exit 1; }; \
 	else \
 		echo "\033[1;33m===> ℹ️ Kernel module support disabled in $(LINUX_CONFIG)\033[0m"; \

@@ -42,6 +42,12 @@ else
 ifdef CONFIG_RAETH_ESW
 OBJS += switch_mtk_esw.o
 CFLAGS += -I$(ROOTDIR)/$(LINUXDIR)/drivers/net/ethernet/raeth
+else
+# 6.x: MT7530 DSA replaces the vendor GSW driver; switch_mtk_esw.c is
+# sysfs-based and needs no raeth kernel headers.
+ifdef CONFIG_NET_DSA_MT7530
+OBJS += switch_mtk_esw.o
+endif
 endif
 endif
 endif

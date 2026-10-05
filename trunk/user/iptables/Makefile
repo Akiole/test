@@ -20,6 +20,11 @@ CONFIGURE_ARGS += \
 	--with-kernel=$(ROOTDIR)/$(LINUXDIR) \
 	--with-xt-lock-name="/var/lock/xtables.lock"
 
+# 6.6 UAPI headers (include/uapi/linux/swab.h via linux/ip.h) use the
+# kernel-internal __attribute_const__ macro, undefined for userspace.
+# Define it empty, as upstream userspace consumers of UAPI do.
+TARGET_CFLAGS += -D__attribute_const__=
+
 # Disable --no-undefined to allow runtime symbol resolution for shared modules
 define Build/Configure
 	$(call Build/Configure/Default)
