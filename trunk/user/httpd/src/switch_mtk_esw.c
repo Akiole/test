@@ -15,6 +15,17 @@
  * MA 02111-1307 USA
  */
 
+/*
+ * stage2c: httpd switch status page, DSA (mt7530) replacement.
+ * The three exported functions keep their signatures (web_ex.c call sites are
+ * untouched by the wireless/httpd shard).  Internally they now read
+ * /sys/class/net/<wan|lanX>/{operstate,speed,duplex,statistics/*} instead of
+ * the closed-source /dev/mtk_esw ioctl.  Per-port detailed error MIB
+ * (CRC/alignment/pause) is not exposed by mt7530 DSA and is dropped.
+ *
+ * Port UAPI -> DSA netdev: 0=wan, 1=lan1, 2=lan2, 3=lan3, 4=lan4.
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -22,216 +33,145 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <string.h>
-#include <sys/ioctl.h>
 
 #include "httpd.h"
 
-#include <mtk_esw/ioctl.h>
-
-////////////////////////////////////////////////////////////////////////////////
-// MIB COUNTERS
-////////////////////////////////////////////////////////////////////////////////
-
-#if defined (USE_MTK_GSW)
-typedef struct esw_mib_counters_s
+static const char *
+eth_port_netdev(int port_id_uapi)
 {
-	uint64_t TxGoodOctets;
-	uint32_t TxUcastFrames;
-	uint32_t TxMcastFrames;
-	uint32_t TxBcastFrames;
-	uint32_t TxDropFrames;
-	uint32_t TxPauseFrames;
-	uint32_t TxCollisions;
-	uint32_t TxCRCError;
-	uint64_t RxGoodOctets;
-	uint32_t RxUcastFrames;
-	uint32_t RxMcastFrames;
-	uint32_t RxBcastFrames;
-	uint32_t RxDropFrames;
-	uint32_t RxPauseFrames;
-	uint32_t RxFilterFrames;
-	uint32_t RxCRCError;
-	uint32_t RxAligmentError;
-} esw_mib_counters_t;
-#elif defined (CONFIG_RALINK_MT7620)
-typedef struct esw_mib_counters_s
-{
-	uint64_t TxGoodOctets;
-	uint32_t TxGoodFrames;
-	uint32_t TxBadOctets;
-	uint32_t TxBadFrames;
-	uint32_t TxDropFrames;
-	uint64_t RxGoodOctets;
-	uint32_t RxGoodFrames;
-	uint32_t RxBadOctets;
-	uint32_t RxBadFrames;
-	uint32_t RxDropFramesFilter;
-	uint32_t RxDropFramesErr;
-} esw_mib_counters_t;
-#else
-#define ESW_RT3X5X
-typedef struct esw_mib_counters_s
-{
-	uint32_t TxGoodFrames;
-	uint32_t TxBadFrames;
-	uint32_t RxGoodFrames;
-	uint32_t RxBadFrames;
-} esw_mib_counters_t;
-#endif
-
-////////////////////////////////////////////////////////////////////////////////
-// IOCTL
-////////////////////////////////////////////////////////////////////////////////
-
-int mtk_esw_ioctl(unsigned int cmd, unsigned int par, unsigned int *value)
-{
-	int fd, retVal = 0;
-
-	fd = open(MTK_ESW_DEVPATH, O_RDONLY);
-	if (fd < 0) {
-		perror(MTK_ESW_DEVPATH);
-		return errno;
+	switch (port_id_uapi) {
+	case 0: return "wan";
+	case 1: return "lan1";
+	case 2: return "lan2";
+	case 3: return "lan3";
+	case 4: return "lan4";
+	default: return NULL;
 	}
+}
 
-	cmd &= ((1L << MTK_ESW_IOCTL_CMD_LENGTH_BITS) - 1);
-	cmd |= (par << MTK_ESW_IOCTL_CMD_LENGTH_BITS);
+static int
+read_sysfs_str(const char *ifname, const char *attr, char *buf, size_t len)
+{
+	char path[128];
+	int fd;
+	ssize_t n;
 
-	if (ioctl(fd, cmd, value) < 0) {
-		perror("ioctl");
-		retVal = errno;
-	}
-
+	snprintf(path, sizeof(path), "/sys/class/net/%s/%s", ifname, attr);
+	fd = open(path, O_RDONLY);
+	if (fd < 0)
+		return -1;
+	n = read(fd, buf, len - 1);
 	close(fd);
+	if (n <= 0)
+		return -1;
+	buf[n] = '\0';
+	while (n > 0 && (buf[n-1] == '\n' || buf[n-1] == '\r')) { buf[n-1] = '\0'; n--; }
+	return 0;
+}
 
-	return retVal;
+static long long
+read_sysfs_ll(const char *ifname, const char *attr)
+{
+	char path[128], buf[32];
+	int fd;
+	ssize_t n;
+	long long v = 0;
+
+	snprintf(path, sizeof(path), "/sys/class/net/%s/%s", ifname, attr);
+	fd = open(path, O_RDONLY);
+	if (fd < 0)
+		return 0;
+	n = read(fd, buf, sizeof(buf) - 1);
+	if (n > 0) { buf[n] = '\0'; v = strtoll(buf, NULL, 10); }
+	close(fd);
+	return v;
+}
+
+static int
+port_link_up(const char *ifname)
+{
+	char state[16];
+	if (read_sysfs_str(ifname, "operstate", state, sizeof(state)) != 0)
+		return 0;
+	return (strcmp(state, "up") == 0) ? 1 : 0;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// MIB COUNTERS
-////////////////////////////////////////////////////////////////////////////////
 
-int get_eth_port_bytes(int port_id_uapi, uint64_t *rx, uint64_t *tx)
+int
+get_eth_port_bytes(int port_id_uapi, uint64_t *rx, uint64_t *tx)
 {
-	port_bytes_t pb;
-	int ioctl_result;
+	const char *ifname = eth_port_netdev(port_id_uapi);
 
-	ioctl_result = mtk_esw_ioctl(MTK_ESW_IOCTL_STATUS_BYTES_PORT, port_id_uapi, (unsigned int *)&pb);
-	if (ioctl_result < 0)
-		return ioctl_result;
+	if (!ifname)
+		return -1;
 
-	*rx = pb.RX;
-	*tx = pb.TX;
-
-	return ioctl_result;
+	*rx = (uint64_t) read_sysfs_ll(ifname, "statistics/rx_bytes");
+	*tx = (uint64_t) read_sysfs_ll(ifname, "statistics/tx_bytes");
+	return 0;
 }
 
-int fill_eth_port_status(int port_id_uapi, char linkstate[40])
+int
+fill_eth_port_status(int port_id_uapi, char linkstate[40])
 {
-	unsigned int link_value = 0;
-	int has_link = 0;
+	const char *ifname = eth_port_netdev(port_id_uapi);
+	char speed[16] = {0}, duplex[16] = {0};
+	long spd = 0;
 
-	if (mtk_esw_ioctl(MTK_ESW_IOCTL_STATUS_SPEED_PORT, port_id_uapi, &link_value) < 0) {
+	if (!ifname) {
 		strcpy(linkstate, "I/O Error");
 		return 0;
 	}
 
-	has_link = (link_value >> 16) & 0x01;
-
-	if (has_link) {
-		int lspeed;
-		const char *text_fc = "";
-		const char *text_dup = "Half Duplex";
-		const char *text_eee = "";
-		
-		switch (link_value & 0x03)
-		{
-		case 3:
-		case 2:
-			lspeed = 1000;
-			break;
-		case 1:
-			lspeed = 100;
-			break;
-		default:
-			lspeed = 10;
-			break;
-		}
-		
-		if ((link_value >> 8) & 0x01) {
-			unsigned int link_fc = (link_value >> 9) & 0x03;
-			if (link_fc == 0x03)
-				text_fc = "TX/RX";
-			else if (link_fc == 0x01)
-				text_fc = "TX Asy";
-			else if (link_fc == 0x02)
-				text_fc = "RX Asy";
-			else
-				text_fc = "OFF";
-			text_dup = "Full Duplex, FC ";
-		}
-		
-		if ((link_value >> 11) & 0x03)
-			text_eee = ", EEE";
-		
-		/* 1000 Mbps, Full Duplex, FC TX/RX, EEE */
-		sprintf(linkstate, "%d Mbps, %s%s%s", lspeed, text_dup, text_fc, text_eee);
-	} else
+	if (!port_link_up(ifname)) {
 		strcpy(linkstate, "No Link");
+		return 0;
+	}
 
-	return has_link;
+	if (read_sysfs_str(ifname, "speed", speed, sizeof(speed)) == 0)
+		spd = atol(speed);
+	read_sysfs_str(ifname, "duplex", duplex, sizeof(duplex));
+
+	/* "1000 Mbps, Full Duplex" (FC/EEE are not exposed per-port by DSA) */
+	snprintf(linkstate, 40, "%ld Mbps, %s Duplex",
+		spd, (strcmp(duplex, "full") == 0) ? "Full" : "Half");
+
+	return 1;
 }
 
-int fill_eth_status(int port_id_uapi, webs_t wp)
+int
+fill_eth_status(int port_id_uapi, webs_t wp)
 {
-	int ret = 0;
-	esw_mib_counters_t mibc;
+	const char *ifname = eth_port_netdev(port_id_uapi);
 	char etherlink[40] = {0};
+	int ret = 0;
 
 	fill_eth_port_status(port_id_uapi, etherlink);
-
 	ret += websWrite(wp, "Port Link			: %s\n", etherlink);
 
-	memset(&mibc, 0, sizeof(esw_mib_counters_t));
-	if (mtk_esw_ioctl(MTK_ESW_IOCTL_STATUS_MIB_PORT, port_id_uapi, (unsigned int *)&mibc) == 0) {
-		ret += websWrite(wp, "\nMIB Counters\n");
-		ret += websWrite(wp, "----------------------------------------\n");
-#if defined (USE_MTK_GSW)
-		ret += websWrite(wp, "TxGoodOctets			: %llu\n", mibc.TxGoodOctets);
-		ret += websWrite(wp, "TxUcastFrames			: %u\n", mibc.TxUcastFrames);
-		ret += websWrite(wp, "TxMcastFrames			: %u\n", mibc.TxMcastFrames);
-		ret += websWrite(wp, "TxBcastFrames			: %u\n", mibc.TxBcastFrames);
-		ret += websWrite(wp, "TxDropFrames			: %u\n", mibc.TxDropFrames);
-		ret += websWrite(wp, "TxPauseFrames			: %u\n", mibc.TxPauseFrames);
-		ret += websWrite(wp, "TxCollisions			: %u\n", mibc.TxCollisions);
-		ret += websWrite(wp, "TxCRCError			: %u\n", mibc.TxCRCError);
-		ret += websWrite(wp, "RxGoodOctets			: %llu\n", mibc.RxGoodOctets);
-		ret += websWrite(wp, "RxUcastFrames			: %u\n", mibc.RxUcastFrames);
-		ret += websWrite(wp, "RxMcastFrames			: %u\n", mibc.RxMcastFrames);
-		ret += websWrite(wp, "RxBcastFrames			: %u\n", mibc.RxBcastFrames);
-		ret += websWrite(wp, "RxDropFrames			: %u\n", mibc.RxDropFrames);
-		ret += websWrite(wp, "RxPauseFrames			: %u\n", mibc.RxPauseFrames);
-		ret += websWrite(wp, "RxFilterFrames			: %u\n", mibc.RxFilterFrames);
-		ret += websWrite(wp, "RxCRCError			: %u\n", mibc.RxCRCError);
-		ret += websWrite(wp, "RxAligmentError			: %u", mibc.RxAligmentError);
-#elif !defined (ESW_RT3X5X)
-		ret += websWrite(wp, "TxGoodOctets			: %llu\n", mibc.TxGoodOctets);
-		ret += websWrite(wp, "TxGoodFrames			: %u\n", mibc.TxGoodFrames);
-		ret += websWrite(wp, "TxBadOctets			: %u\n", mibc.TxBadOctets);
-		ret += websWrite(wp, "TxBadFrames			: %u\n", mibc.TxBadFrames);
-		ret += websWrite(wp, "TxDropFrames			: %u\n", mibc.TxDropFrames);
-		ret += websWrite(wp, "RxGoodOctets			: %llu\n", mibc.RxGoodOctets);
-		ret += websWrite(wp, "RxGoodFrames			: %u\n", mibc.RxGoodFrames);
-		ret += websWrite(wp, "RxBadOctets			: %u\n", mibc.RxBadOctets);
-		ret += websWrite(wp, "RxBadFrames			: %u\n", mibc.RxBadFrames);
-		ret += websWrite(wp, "RxDropFramesFilter		: %u\n", mibc.RxDropFramesFilter);
-		ret += websWrite(wp, "RxDropFramesErr			: %u", mibc.RxDropFramesErr);
-#else
-		ret += websWrite(wp, "TxGoodFrames			: %u\n", mibc.TxGoodFrames);
-		ret += websWrite(wp, "TxBadFrames			: %u\n", mibc.TxBadFrames);
-		ret += websWrite(wp, "RxGoodFrames			: %u\n", mibc.RxGoodFrames);
-		ret += websWrite(wp, "RxBadFrames			: %u\n", mibc.RxBadFrames);
-#endif
-	}
+	if (!ifname)
+		return ret;
+
+	/* DSA exposes only the standard netdev statistics; detailed switch MIB
+	 * (CRC / alignment / pause frames) is not available on mt7530 DSA. */
+	ret += websWrite(wp, "\nStatistics\n");
+	ret += websWrite(wp, "----------------------------------------\n");
+	ret += websWrite(wp, "RX Bytes			: %llu\n",
+		(unsigned long long) read_sysfs_ll(ifname, "statistics/rx_bytes"));
+	ret += websWrite(wp, "RX Packets			: %llu\n",
+		(unsigned long long) read_sysfs_ll(ifname, "statistics/rx_packets"));
+	ret += websWrite(wp, "RX Errors			: %llu\n",
+		(unsigned long long) read_sysfs_ll(ifname, "statistics/rx_errors"));
+	ret += websWrite(wp, "RX Dropped			: %llu\n",
+		(unsigned long long) read_sysfs_ll(ifname, "statistics/rx_dropped"));
+	ret += websWrite(wp, "TX Bytes			: %llu\n",
+		(unsigned long long) read_sysfs_ll(ifname, "statistics/tx_bytes"));
+	ret += websWrite(wp, "TX Packets			: %llu\n",
+		(unsigned long long) read_sysfs_ll(ifname, "statistics/tx_packets"));
+	ret += websWrite(wp, "TX Errors			: %llu\n",
+		(unsigned long long) read_sysfs_ll(ifname, "statistics/tx_errors"));
+	ret += websWrite(wp, "TX Dropped			: %llu",
+		(unsigned long long) read_sysfs_ll(ifname, "statistics/tx_dropped"));
 
 	return ret;
 }

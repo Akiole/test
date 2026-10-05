@@ -28,6 +28,7 @@
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <sys/ioctl.h>
+#include <dirent.h>
 
 #include <net/if.h>
 
@@ -38,25 +39,192 @@
 #include "netutils.h"
 #include "rtutils.h"
 
-static const char *wifn_list[][4] = {
-	{IFNAME_2G_MAIN, IFNAME_2G_GUEST, IFNAME_2G_APCLI, IFNAME_2G_WDS0},
-#if BOARD_HAS_5G_RADIO
-	{IFNAME_5G_MAIN, IFNAME_5G_GUEST, IFNAME_5G_APCLI, IFNAME_5G_WDS0}
-#endif
+/*
+ * stage2c: runtime phy<->band detection for mt76 DBDC.
+ *
+ * mt7915e in DBDC mode registers two ieee80211 phy devices (phy0/phy1),
+ * but the order is not guaranteed: phy0 could be 2.4G or 5G depending on
+ * probe order and eeprom layout. We scan /sys/class/ieee80211/ for phy
+ * devices and ask `iw phy <name> info` which band(s) each supports, then
+ * cache the mapping. On any failure we fall back to the documented
+ * assumption (phy0=2.4G, phy1=5G) and log a message; this must be
+ * re-checked on real hardware (see stage2c report "board-check items").
+ */
+
+#define WIFI_PHY_NAME_MAX  32
+#define WIFI_IFNAME_MAX    32
+
+static char s_phy_2g[WIFI_PHY_NAME_MAX] = "phy0";
+static char s_phy_5g[WIFI_PHY_NAME_MAX] = "phy1";
+static int  s_phy_detected = 0;
+
+static char s_if_main_2g[WIFI_IFNAME_MAX];
+static char s_if_guest_2g[WIFI_IFNAME_MAX];
+static char s_if_sta_2g[WIFI_IFNAME_MAX];
+static char s_if_main_5g[WIFI_IFNAME_MAX];
+static char s_if_guest_5g[WIFI_IFNAME_MAX];
+static char s_if_sta_5g[WIFI_IFNAME_MAX];
+
+/* logmessage is provided by shutils (linked into libshared consumers) */
+extern void logmessage(char *logheader, char *fmt, ...);
+
+static int
+is_dir(const char *path)
+{
+	struct stat st;
+	return (stat(path, &st) == 0 && S_ISDIR(st.st_mode));
+}
+
+/*
+ * Returns 1 if phy advertises the requested band, 0 otherwise, -1 if
+ * unknown (iw not present / parse failed). "Band 1:" in iw output is
+ * 2.4GHz, "Band 2:" is 5GHz.
+ */
+static int
+phy_supports_band(const char *phy_name, int want_2g)
+{
+	char cmd[512];
+	char buf[1024];
+	FILE *pp;
+	int has_2g = 0, has_5g = 0;
+
+	snprintf(cmd, sizeof(cmd),
+		 "iw phy %s info 2>/dev/null | grep -E \"Band [12]:\"", phy_name);
+	pp = popen(cmd, "r");
+	if (!pp)
+		return -1;
+
+	while (fgets(buf, sizeof(buf), pp)) {
+		if (strstr(buf, "Band 1:"))
+			has_2g = 1;
+		else if (strstr(buf, "Band 2:"))
+			has_5g = 1;
+	}
+	pclose(pp);
+
+	if (!has_2g && !has_5g)
+		return -1;
+
+	return want_2g ? has_2g : has_5g;
+}
+
+static void
+detect_wifi_band(void)
+{
+	DIR *dir;
+	struct dirent *de;
+	char path[256];
+	char phy_names[8][WIFI_PHY_NAME_MAX];
+	int n_phy = 0, i;
+
+	if (s_phy_detected)
+		return;
+
+	dir = opendir("/sys/class/ieee80211");
+	if (!dir) {
+		logmessage((char *)"rtutils",
+			"ieee80211 class not present; assuming phy0=2.4G phy1=5G (verify on board)");
+		s_phy_detected = 1;
+		return;
+	}
+
+	while ((de = readdir(dir)) != NULL && n_phy < 8) {
+		if (strncmp(de->d_name, "phy", 3) != 0)
+			continue;
+		snprintf(path, sizeof(path), "/sys/class/ieee80211/%s", de->d_name);
+		if (is_dir(path))
+			snprintf(phy_names[n_phy++], WIFI_PHY_NAME_MAX, "%s", de->d_name);
+	}
+	closedir(dir);
+
+	if (n_phy < 2) {
+		logmessage((char *)"rtutils",
+			"expected 2 mt76 phy devices, found %d; using defaults (verify on board)", n_phy);
+		s_phy_detected = 1;
+		return;
+	}
+
+	s_phy_2g[0] = s_phy_5g[0] = 0;
+	for (i = 0; i < n_phy; i++) {
+		int r2 = phy_supports_band(phy_names[i], 1);
+		if (r2 == 1 && !s_phy_2g[0]) {
+			snprintf(s_phy_2g, WIFI_PHY_NAME_MAX, "%s", phy_names[i]);
+			continue;
+		}
+		int r5 = phy_supports_band(phy_names[i], 0);
+		if (r5 == 1 && !s_phy_5g[0])
+			snprintf(s_phy_5g, WIFI_PHY_NAME_MAX, "%s", phy_names[i]);
+	}
+
+	if (!s_phy_2g[0]) {
+		snprintf(s_phy_2g, WIFI_PHY_NAME_MAX, "%s", phy_names[0]);
+		logmessage((char *)"rtutils",
+			"2.4G band not detected; assuming %s (verify on board)", s_phy_2g);
+	}
+	if (!s_phy_5g[0]) {
+		snprintf(s_phy_5g, WIFI_PHY_NAME_MAX, "%s", phy_names[n_phy > 1 ? 1 : 0]);
+		logmessage((char *)"rtutils",
+			"5G band not detected; assuming %s (verify on board)", s_phy_5g);
+	}
+
+	snprintf(s_if_main_2g, WIFI_IFNAME_MAX, "%s-ap0", s_phy_2g);
+	snprintf(s_if_guest_2g, WIFI_IFNAME_MAX, "%s-ap1", s_phy_2g);
+	snprintf(s_if_sta_2g,  WIFI_IFNAME_MAX, "%s-sta0", s_phy_2g);
+	snprintf(s_if_main_5g, WIFI_IFNAME_MAX, "%s-ap0", s_phy_5g);
+	snprintf(s_if_guest_5g, WIFI_IFNAME_MAX, "%s-ap1", s_phy_5g);
+	snprintf(s_if_sta_5g,  WIFI_IFNAME_MAX, "%s-sta0", s_phy_5g);
+
+	s_phy_detected = 1;
+}
+
+/*
+ * DSA LAN port set (br0 membership iterates this array; switch contract).
+ * Sentinel NULL so consumers can walk until NULL.
+ */
+const char *lan_port_names[5] = {
+	"lan1", "lan2", "lan3", "lan4", NULL
 };
+
+const char *
+wifi_main_ifname(int aband)
+{
+	detect_wifi_band();
+	return aband ? s_if_main_5g : s_if_main_2g;
+}
+
+const char *
+wifi_guest_ifname(int aband)
+{
+	detect_wifi_band();
+	return aband ? s_if_guest_5g : s_if_guest_2g;
+}
+
+const char *
+wifi_apcli_ifname(int aband)
+{
+	detect_wifi_band();
+	return aband ? s_if_sta_5g : s_if_sta_2g;
+}
+
+const char *
+wifi_phy_name(int aband)
+{
+	detect_wifi_band();
+	return aband ? s_phy_5g : s_phy_2g;
+}
 
 const char *
 find_wlan_if_up(int is_aband)
 {
-	int i, idx = 0;
+	static const char *(*candidates[3])(int) = {
+		wifi_main_ifname,
+		wifi_guest_ifname,
+		wifi_apcli_ifname,
+	};
+	int i;
 
-#if BOARD_HAS_5G_RADIO
-	if (is_aband)
-		idx = 1;
-#endif
-
-	for (i = 0; i < 4; i++) {
-		const char *wifn = wifn_list[idx][i];
+	for (i = 0; i < 3; i++) {
+		const char *wifn = candidates[i](is_aband);
 		if (is_interface_up(wifn))
 			return wifn;
 	}
@@ -320,25 +488,6 @@ calc_mcast_tx_mode(int i_val, int is_aband, int *p_mmcs)
 {
 	int i_mphy = 2; // OFDM
 	int i_mmcs = 0; // 6 Mbps
-
-	/*	McastPhyMode, PHY mode for Multicast frames
-	 *	McastMcs, MCS for Multicast frames, ranges from 0 to 15
-	 *
-	 *	MODE=2, MCS=0: Legacy OFDM 6Mbps
-	 *	MODE=2, MCS=1: Legacy OFDM 9Mbps
-	 *	MODE=2, MCS=2: Legacy OFDM 12Mbps
-	 *	MODE=2, MCS=3: Legacy OFDM 18Mbps
-	 *	MODE=2, MCS=4: Legacy OFDM 24Mbps
-	 * 	MODE=2, MCS=5: Legacy OFDM 36Mbps
-	 *	MODE=2, MCS=6: Legacy OFDM 48Mbps
-	 *	MODE=2, MCS=7: Legacy OFDM 54Mbps
-	 *
-	 *	MODE=3, MCS=0: HTMIX 6.5/15Mbps
-	 *	MODE=3, MCS=1: HTMIX 15/30Mbps
-	 *	MODE=3, MCS=2: HTMIX 19.5/45Mbps
-	 *	MODE=3, MCS=8: HTMIX 13/30Mbps
-	 *	MODE=3, MCS=9: HTMIX 26/60Mbps
-	 */
 
 	switch (i_val)
 	{

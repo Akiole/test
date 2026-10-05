@@ -413,6 +413,20 @@ init_mdev(void)
 	fput_string("/proc/sys/kernel/hotplug", "/sbin/mdev");
 }
 
+/* Write a sysctl value, but stay silent if the kernel does not provide
+ * the node (e.g. CONFIG_TCP_FASTOPEN off) or rejects the value. Unlike
+ * fput_string() this never calls perror(), so a missing/unsupported
+ * sysctl degrades to a harmless no-op instead of boot-log noise. */
+static void
+fput_sysctl_silent(const char *name, const char *value)
+{
+	FILE *fp = fopen(name, "w");
+	if (fp) {
+		fputs(value, fp);
+		fclose(fp);
+	}
+}
+
 static void
 init_sysctl(void)
 {
@@ -425,12 +439,14 @@ init_sysctl(void)
 	fput_int("/proc/sys/net/core/netdev_max_backlog", 2000);
 	fput_int("/proc/sys/net/core/somaxconn", 1024);
 
-	/* Enable BBR congestion control if available (fallback to cubic) */
-	fput_string("/proc/sys/net/ipv4/tcp_congestion_control", "bbr");
+	/* Enable BBR congestion control if available (fallback to cubic).
+	 * Silent no-op if the kernel lacks CONFIG_TCP_CONG_BBR. */
+	fput_sysctl_silent("/proc/sys/net/ipv4/tcp_congestion_control", "bbr");
 
 	fput_string("/proc/sys/net/ipv4/tcp_rmem", "4096 131072 6291456");
 	fput_string("/proc/sys/net/ipv4/tcp_wmem", "4096 16384 4194304");
-	fput_int("/proc/sys/net/ipv4/tcp_fastopen", 3);
+	/* Silent no-op if the kernel lacks CONFIG_TCP_FASTOPEN. */
+	fput_sysctl_silent("/proc/sys/net/ipv4/tcp_fastopen", "3");
 
 	set_interface_conf_int("ipv4", "all", "rp_filter", 0); // new logic for new kernels
 

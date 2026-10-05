@@ -27,10 +27,82 @@ int rtl8367_main(int argc, char **argv);
 #endif
 
 #if defined(USE_MTK_ESW) || defined(USE_MTK_GSW)
-#include <mtk_esw/ioctl.h>
 int mtk_esw_node(void);
 int mtk_esw_main(int argc, char **argv);
 #endif
+
+////////////////////////////////////////////////////////////////////////////////
+// DSA PORT / VLAN CONSTANTS (replacement for closed-source mtk_esw/ioctl.h)
+//
+// stage2c: 4.4 closed-source raeth/mtk_esw switch control (/dev/mtk_esw,
+// major 219) no longer exists on linux-6.x.  The switch is now the mainline
+// mt7530 DSA driver.  The numeric UAPI port ids / bridge-mode / vlan-rule /
+// link-mode constants below are retained ONLY as source-compatible symbols so
+// the upper layers (net_lan.c / net_wan.c / detect_link.c / rstats.c) keep
+// their existing enumeration; the actual switch control面 is implemented in
+// switch_mtk_esw.c via /sys/class/net/<port> + iproute2 (ip/bridge vlan).
+//
+// DSA netdev mapping (mt7530, port@0=wan, port@1-4=lan1..lan4,
+// gmac0->switch0 port@6 = the only CPU port, aggregated by DSA framework):
+//   UAPI 0 -> "wan", 1 -> "lan1", 2 -> "lan2", 3 -> "lan3", 4 -> "lan4".
+////////////////////////////////////////////////////////////////////////////////
+
+/* HW-independent port ids (== DSA switch port number) */
+#define SWAPI_PORT_WAN			0
+#define SWAPI_PORT_LAN1			1
+#define SWAPI_PORT_LAN2			2
+#define SWAPI_PORT_LAN3			3
+#define SWAPI_PORT_LAN4			4
+#define SWAPI_PORT_LAN5			5
+
+/* WAN<->LAN bridge (STB / IPTV pass-through) modes -- hardware bypass is NOT
+ * available under DSA; phy_bridge_mode() is a best-effort degraded no-op. */
+#define SWAPI_WAN_BRIDGE_DISABLE		(0)
+#define SWAPI_WAN_BRIDGE_LAN1			(1)
+#define SWAPI_WAN_BRIDGE_LAN2			(2)
+#define SWAPI_WAN_BRIDGE_LAN3			(3)
+#define SWAPI_WAN_BRIDGE_LAN4			(4)
+#define SWAPI_WAN_BRIDGE_LAN3_LAN4		(5)
+#define SWAPI_WAN_BRIDGE_LAN1_LAN2		(6)
+#define SWAPI_WAN_BRIDGE_LAN1_LAN2_LAN3		(7)
+#define SWAPI_WAN_BRIDGE_DISABLE_WAN		(8)
+
+#define SWAPI_WAN_BWAN_ISOLATION_NONE		(0)
+#define SWAPI_WAN_BWAN_ISOLATION_FROM_CPU	(1)
+#define SWAPI_WAN_BWAN_ISOLATION_BETWEEN	(2)
+
+/* VLAN rule indices consumed by switch_config_vlan() */
+#define SWAPI_VLAN_RULE_WAN_INET		(0)
+#define SWAPI_VLAN_RULE_WAN_IPTV		(1)
+#define SWAPI_VLAN_RULE_WAN_LAN1		(2)
+#define SWAPI_VLAN_RULE_WAN_LAN2		(3)
+#define SWAPI_VLAN_RULE_WAN_LAN3		(4)
+#define SWAPI_VLAN_RULE_WAN_LAN4		(5)
+#define SWAPI_VLAN_RULE_NUM			(SWAPI_VLAN_RULE_WAN_LAN4 + 1)
+
+/* Link / flow-control modes (nvram ether_link_* / ether_flow_*) */
+#define SWAPI_LINK_SPEED_MODE_AUTO		(0)
+#define SWAPI_LINK_SPEED_MODE_AUTO_1000_FD	(1)
+#define SWAPI_LINK_SPEED_MODE_AUTO_100_FD	(2)
+#define SWAPI_LINK_SPEED_MODE_AUTO_100_HD	(3)
+#define SWAPI_LINK_SPEED_MODE_AUTO_10_FD	(4)
+#define SWAPI_LINK_SPEED_MODE_AUTO_10_HD	(5)
+#define SWAPI_LINK_SPEED_MODE_FORCE_100_FD	(6)
+#define SWAPI_LINK_SPEED_MODE_FORCE_100_HD	(7)
+#define SWAPI_LINK_SPEED_MODE_FORCE_10_FD	(8)
+#define SWAPI_LINK_SPEED_MODE_FORCE_10_HD	(9)
+#define SWAPI_LINK_SPEED_MODE_FORCE_POWER_OFF	(15)
+
+#define SWAPI_LINK_FLOW_CONTROL_TX_RX		(0)
+#define SWAPI_LINK_FLOW_CONTROL_TX_ASYNC	(1)
+#define SWAPI_LINK_FLOW_CONTROL_DISABLE		(2)
+
+/* Ethernet LED modes (BOARD_NUM_ETH_LEDS=0 on FCJ, compiled out) */
+#define SWAPI_LED_OFF				(11)
+
+/* Map a UAPI port id to its DSA netdev name (0=wan,1..4=lan1..lan4).
+ * Returns NULL for out-of-range ports. */
+const char *dsa_port_netdev(int port_id_uapi);
 
 ////////////////////////////////////////////////////////////////////////////////
 // SWITCH STATUS

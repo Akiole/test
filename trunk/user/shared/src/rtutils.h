@@ -20,6 +20,23 @@
 
 extern const char* find_wlan_if_up(int is_aband);
 
+/*
+ * stage2c (mt76 DBDC) wireless interface name helpers.
+ *
+ * These map a band selector (aband: 0=2.4GHz, 1=5GHz) to the runtime
+ * mt76/hotplug interface names. phy<->band mapping is detected once by
+ * detect_wifi_band() by scanning /sys/class/ieee80211/phyX for supported
+ * frequency bands; results are cached for the process lifetime.
+ *
+ * Returned strings are static buffers (valid until next call in a
+ * re-detect scenario; for the normal cached path they are immutable).
+ * Callers must not free the returned pointer.
+ */
+extern const char *wifi_main_ifname(int aband);   /* e.g. "phy1-ap0" */
+extern const char *wifi_guest_ifname(int aband);  /* e.g. "phy1-ap1" */
+extern const char *wifi_apcli_ifname(int aband);  /* e.g. "phy1-sta0" */
+extern const char *wifi_phy_name(int aband);      /* e.g. "phy1"     */
+
 extern int calc_phy_mode(int i_val, int is_aband);
 extern int calc_fixed_tx_mode(int i_val, int is_aband, int i_phy_mode, int *p_mcs);
 extern int calc_mcast_tx_mode(int i_val, int is_aband, int *p_mmcs);

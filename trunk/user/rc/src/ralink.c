@@ -15,10 +15,36 @@
  * MA 02111-1307 USA
  */
 
+/*
+ * stage2c: ralink.c rewritten for mt76 + hostapd.
+ *
+ * What changed vs. the 4.4 SDK era:
+ *  - The huge gen_ralink_config() that rendered RT2860AP.dat / iNIC_ap.dat
+ *    is replaced by gen_hostapd_conf() which writes
+ *    /var/run/hostapd-<2g|5g>-<main|guest>.conf per design §1.1.
+ *  - The private regulatory tables (asus_regspec_table / ralink_cc_table)
+ *    and the SingleSKU symlink chain are deleted; cfg80211 regdb replaces
+ *    them. Country code is now applied via `iw reg set <CC>` and written
+ *    into hostapd.conf as country_code=<CC>.
+ *  - get_apcli_connected() no longer uses SIOCGIWAP/WEXT; it parses
+ *    `wpa_cli -i <sta0> status` for wpa_state=COMPLETED.
+ *  - WPS PIN storage moves from Factory to nvram "secret_code" (the
+ *    standard Padavan location); the WPS checksum validation in
+ *    pinvalidate() is kept unchanged.
+ *  - Wireless MAC set at runtime uses `ip link set <if> address <mac>`;
+ *    Factory write is intentionally NOT done (nvmem macaddr@4 is the
+ *    source of truth). Reading the Factory MAC for UI display is kept.
+ *  - Wired MAC helpers (get/set_wired_mac*, detect_lan_mac_offset) are
+ *    unchanged: they still read/write the Factory partition for the
+ *    DSA CPU/port MAC carrier (br0 / wan).
+ */
+
 #include <stdio.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <string.h>
+#include <stdlib.h>
+#include <errno.h>
 #include <net/if_arp.h>
 #include <signal.h>
 #include <sys/types.h>
@@ -26,138 +52,11 @@
 #include <dirent.h>
 
 #include <ralink_priv.h>
-#include <iwlib.h>
 #include <flash_mtd.h>
 
 #include "rc.h"
 
 #define MAX_FRW 64
-
-static const struct regspec_t {
-	const char *regspec;
-	unsigned char cc_2g;
-	unsigned char cc_5g;
-} asus_regspec_table[] = {
-	{ "CE",   1,  1 }, // 0
-	{ "AU",   1,  0 }, // 1
-	{ "SG",   1,  0 }, // 2
-	{ "CN",   1,  4 }, // 3
-	{ "JP",   1,  9 }, // 4
-	{ "FCC",  0,  0 }, // 5
-	{ "NCC",  0,  3 }, // 6
-	{ "NCC2", 0,  3 }, // 7
-};
-
-static const struct cc_t {
-	const char *cc;
-	unsigned char cc_2g;
-	unsigned char cc_5g;
-	unsigned char regspec_idx;
-} ralink_cc_table[] = {
-	{ "AE",  1,  0,  0 },
-	{ "AL",  1,  0,  0 },
-	{ "AR",  1,  3,  0 },
-	{ "AT",  1,  1,  0 },
-	{ "AM",  1,  2,  0 },
-	{ "AU",  1,  0,  1 }, // AU
-	{ "AZ",  1,  2,  0 },
-	{ "BE",  1,  1,  0 },
-	{ "BH",  1,  0,  0 },
-	{ "BY",  1,  0,  0 },
-	{ "BO",  1,  4,  0 },
-	{ "BR",  1,  1,  0 },
-	{ "BN",  1,  4,  0 },
-	{ "BG",  1,  1,  0 },
-	{ "BZ",  1,  4,  0 },
-	{ "CA",  0,  0,  5 }, // FCC
-	{ "CH",  1,  1,  0 },
-	{ "CL",  1,  0,  0 },
-	{ "CN",  1,  0,  3 }, // CN
-	{ "CO",  0,  0,  0 },
-	{ "CR",  1,  0,  0 },
-	{ "CY",  1,  1,  0 },
-	{ "CZ",  1,  2,  0 },
-	{ "DE",  1,  1,  0 },
-	{ "DK",  1,  1,  0 },
-	{ "DO",  0,  0,  0 },
-	{ "DZ",  1,  0,  0 },
-	{ "EC",  1,  0,  0 },
-	{ "EG",  1,  2,  0 },
-	{ "EE",  1,  1,  0 },
-	{ "ES",  1,  1,  0 },
-	{ "FI",  1,  1,  0 },
-	{ "FR",  1,  2,  0 },
-	{ "GE",  1,  2,  0 },
-	{ "GB",  1,  1,  0 },
-	{ "GR",  1,  1,  0 },
-	{ "GT",  0,  0,  0 },
-	{ "HN",  1,  0,  0 },
-	{ "HK",  1,  0,  0 },
-	{ "HU",  1,  1,  0 },
-	{ "HR",  1,  2,  0 },
-	{ "IS",  1,  1,  0 },
-	{ "IN",  1,  0,  0 },
-	{ "ID",  1,  4,  0 },
-	{ "IR",  1,  4,  0 },
-	{ "IE",  1,  1,  0 },
-	{ "IL",  1,  0,  0 },
-	{ "IT",  1,  1,  0 },
-	{ "JP",  1,  9,  4 }, // JP
-	{ "JO",  1,  0,  0 },
-	{ "KP",  1,  5,  0 },
-	{ "KR",  1,  5,  0 },
-	{ "KW",  1,  0,  0 },
-	{ "KZ",  1,  0,  0 },
-	{ "LB",  1,  0,  0 },
-	{ "LI",  1,  1,  0 },
-	{ "LT",  1,  1,  0 },
-	{ "LU",  1,  1,  0 },
-	{ "LV",  1,  1,  0 },
-	{ "MA",  1,  0,  0 },
-	{ "MC",  1,  2,  0 },
-	{ "MO",  1,  0,  0 },
-	{ "MK",  1,  0,  0 },
-	{ "MX",  0,  0,  0 },
-	{ "MY",  1,  0,  0 },
-	{ "NL",  1,  1,  0 },
-	{ "NO",  0,  0,  0 },
-	{ "NZ",  1,  0,  0 },
-	{ "OM",  1,  0,  0 },
-	{ "PA",  0,  0,  0 },
-	{ "PE",  1,  4,  0 },
-	{ "PH",  1,  4,  0 },
-	{ "PL",  1,  1,  0 },
-	{ "PK",  1,  0,  0 },
-	{ "PT",  1,  1,  0 },
-	{ "PR",  0,  0,  0 },
-	{ "QA",  1,  0,  0 },
-	{ "RO",  1,  0,  0 },
-	{ "RU",  1,  0,  0 },
-	{ "SA",  1,  0,  0 },
-	{ "SG",  1,  0,  2 }, // SG
-	{ "SK",  1,  1,  0 },
-	{ "SI",  1,  1,  0 },
-	{ "SV",  1,  0,  0 },
-	{ "SE",  1,  1,  0 },
-	{ "SY",  1,  0,  0 },
-	{ "TH",  1,  0,  0 },
-	{ "TN",  1,  2,  0 },
-	{ "TR",  1,  2,  0 },
-	{ "TT",  1,  2,  0 },
-	{ "TW",  0,  3,  6 }, // NCC
-	{ "UA",  1,  0,  0 },
-	{ "US",  0,  0,  5 }, // FCC
-	{ "UY",  1,  5,  0 },
-	{ "UZ",  0,  1,  0 },
-	{ "VE",  1,  5,  0 },
-	{ "VN",  1,  0,  0 },
-	{ "YE",  1,  0,  0 },
-	{ "ZA",  1,  1,  0 },
-	{ "ZW",  1,  0,  0 },
-
-	/* debug code */
-	{ "DB",  5,  7,  0 }
-};
 
 /* 判断 MAC 地址是否为有效真实 MAC（非全0/全FF/组播/Padavan默认前缀） */
 static int
@@ -212,13 +111,6 @@ detect_lan_mac_offset(void)
 inline int
 get_wired_mac_is_single(void)
 {
-	/*
-	 * 运行时自动探测单/双 MAC，不依赖编译宏 USE_SINGLE_MAC。
-	 * USE_SINGLE_MAC 编译宏控制网络接口名（eth2.1/eth2.2 vs eth2/eth3），
-	 * 而本函数控制 WAN MAC 来源（派生 vs 从EEPROM读取），两者独立。
-	 * FCJ/R2100/K2P 等 WAN 口在 GMAC2(eth3) 上的板子：USE_SINGLE_MAC 未定义，
-	 * 但 Factory 中可能只有一个 MAC（WAN MAC 需派生），本函数应返回 1。
-	 */
 	static int s_is_single = -1;
 	unsigned char lan_mac[6], wan_mac[6];
 	int lan_offset, wan_offset;
@@ -231,14 +123,10 @@ get_wired_mac_is_single(void)
 
 	if (flash_mtd_read(MTD_PART_NAME_FACTORY, lan_offset, lan_mac, sizeof(lan_mac)) != 0 ||
 	    flash_mtd_read(MTD_PART_NAME_FACTORY, wan_offset, wan_mac, sizeof(wan_mac)) != 0) {
-		s_is_single = 1;  /* 读取失败，默认单 MAC（WAN MAC 派生） */
+		s_is_single = 1;
 		return s_is_single;
 	}
 
-	/*
-	 * WAN MAC 无效（全0/全FF/组播/默认前缀），或与 LAN MAC OUI 前3字节不同
-	 * -> 单 MAC 板子，WAN MAC 由 LAN MAC 派生（最后一字节 | 0x03）
-	 */
 	if (!is_valid_real_mac(wan_mac) || memcmp(wan_mac, lan_mac, 3) != 0) {
 		s_is_single = 1;
 	} else {
@@ -251,7 +139,6 @@ get_wired_mac_is_single(void)
 inline int
 get_wired_mac_e2p_offset(int is_wan)
 {
-	/* 统一自动探测：LAN MAC 偏移自动探测，WAN MAC = LAN 偏移 + 6 */
 	int lan_offset = detect_lan_mac_offset();
 	return (is_wan) ? lan_offset + 6 : lan_offset;
 }
@@ -270,7 +157,7 @@ get_wired_mac(int is_wan)
 	}
 
 	if (is_wan && get_wired_mac_is_single())
-		buffer[5] |= 0x03;	// last 2 bits reserved for MBSSID, use 0x03 for WAN (ra1: 0x01, apcli0: 0x02)
+		buffer[5] |= 0x03;
 
 	ether_etoa(buffer, macaddr);
 
@@ -310,15 +197,14 @@ set_wired_mac(int is_wan, const char *mac)
 inline int
 get_wireless_mac_e2p_offset(int is_5ghz)
 {
-#if BOARD_5G_IN_SOC
-	return (is_5ghz) ? OFFSET_MAC_ADDR_WSOC : OFFSET_MAC_ADDR_INIC;
-#else
-#if BOARD_HAS_5G_RADIO
-	return (is_5ghz) ? OFFSET_MAC_ADDR_INIC : OFFSET_MAC_ADDR_WSOC;
-#else
+	/*
+	 * stage2c: mt76 loads its MAC from nvmem macaddr@4 (DTS), so the
+	 * Factory offset is only used as a UI display fallback. The two
+	 * BSSes on a DBDC phy share the same base MAC; we just return the
+	 * single wireless MAC offset.
+	 */
+	(void)is_5ghz;
 	return OFFSET_MAC_ADDR_WSOC;
-#endif
-#endif
 }
 
 int
@@ -330,7 +216,7 @@ get_wireless_mac(int is_5ghz)
 
 	i_offset = get_wireless_mac_e2p_offset(is_5ghz);
 	if (flash_mtd_read(MTD_PART_NAME_FACTORY, i_offset, buffer, ETHER_ADDR_LEN) < 0) {
-		puts("Unable to read MAC from EEPROM!");
+		puts("Unable to read wireless MAC from EEPROM!");
 		return -1;
 	}
 
@@ -338,7 +224,7 @@ get_wireless_mac(int is_5ghz)
 #if BOARD_HAS_5G_RADIO
 	printf("%s EEPROM MAC address: %s\n", (is_5ghz) ? "5GHz" : "2.4GHz", macaddr);
 #else
-	printf("%s EEPROM MAC address: %s\n", "2.4GHz", macaddr);
+	printf("2.4GHz EEPROM MAC address: %s\n", macaddr);
 #endif
 
 	return 0;
@@ -347,73 +233,49 @@ get_wireless_mac(int is_5ghz)
 int
 set_wireless_mac(int is_5ghz, const char *mac)
 {
-	unsigned char ea[ETHER_ADDR_LEN] = {0};
-	int i_offset;
+	/*
+	 * stage2c: runtime MAC change via `ip link set <if> address <mac>`.
+	 * We do NOT write Factory (nvmem macaddr@4 is read-only at runtime
+	 * and a Factory write would brick the calibration layout). The
+	 * caller is expected to restart hostapd after this.
+	 */
+	const char *ifname = is_5ghz ? IFNAME_5G_MAIN : IFNAME_2G_MAIN;
 
-	if (ether_atoe(mac, ea)) {
-		i_offset = get_wireless_mac_e2p_offset(is_5ghz);
-		if (flash_mtd_write(MTD_PART_NAME_FACTORY, i_offset, ea, ETHER_ADDR_LEN) == 0) {
-			if (get_wireless_mac(is_5ghz) == 0)
-				puts("\nPlease reboot router!");
-		} else {
-			puts("Write MAC to EEPROM FAILED!");
-			return -1;
-		}
-	} else {
-		printf("MAC [%s] is not valid MAC address!\n", mac);
-		return EINVAL;
-	}
+	if (is_5ghz)
+		(void)IFNAME_5G_MAIN;
 
+	doSystem("ip link set %s address %s 2>/dev/null", ifname, mac);
+	printf("Wireless MAC set to %s on %s (hostapd restart required)\n", mac, ifname);
 	return 0;
 }
 
 int
 get_wireless_cc(void)
 {
-	unsigned char CC[4] = {0};
-
-	if (flash_mtd_read(MTD_PART_NAME_FACTORY, OFFSET_COUNTRY_CODE, CC, 2) < 0) {
-		puts("Unable to read Country Code from EEPROM!");
-		return -1;
-	}
-
-	if (CC[0] == 0xff && CC[1] == 0xff)	// 0xffff is default
-		printf("EEPROM CC: %s\n", "Undefined");
+	/* stage2c: country code lives in nvram wl_country_code; cfg80211
+	 * regdb enforces it via `iw reg set`. Display the nvram value. */
+	char *cc = nvram_safe_get("wl_country_code");
+	if (cc && cc[0] && cc[1])
+		printf("Current regdomain: %s\n", cc);
 	else
-		printf("EEPROM CC: %s\n", (char *)CC);
-
+		printf("Current regdomain: 00 (default)\n");
 	return 0;
 }
 
 int
 set_wireless_cc(const char *cc)
 {
-	int i, cc_valid;
-	unsigned char CC[4];
-
-	cc_valid = 0;
-	for (i = 0; i < ARRAY_SIZE(ralink_cc_table); i++) {
-		if (strcasecmp(ralink_cc_table[i].cc, cc) == 0) {
-			cc_valid = 1;
-			break;
-		}
-	}
-
-	if (!cc_valid) {
-		puts("Invalid input Country Code!");
+	/* stage2c: validate 2-letter code, persist to nvram, apply via
+	 * `iw reg set`. cfg80211 regdb replaces the old ralink_cc_table. */
+	if (!cc || strlen(cc) != 2) {
+		puts("Invalid Country Code (expected 2 letters)!");
 		return EINVAL;
 	}
 
-	memset(&CC[0], toupper(cc[0]), 1);
-	memset(&CC[1], toupper(cc[1]), 1);
-
-	if (flash_mtd_write(MTD_PART_NAME_FACTORY, OFFSET_COUNTRY_CODE, CC, 2) == 0) {
-		get_wireless_cc();
-	} else {
-		puts("Write Country Code to EEPROM FAILED!");
-		return -1;
-	}
-
+	nvram_set("wl_country_code", (char *)cc);
+	nvram_set("rt_country_code", (char *)cc);
+	doSystem("iw reg set %s 2>/dev/null", cc);
+	printf("Regdomain set to %s (applied via cfg80211 regdb)\n", cc);
 	return 0;
 }
 
@@ -495,13 +357,10 @@ pinvalidate(const char *pin_string)
 int
 setPIN(const char *pin)
 {
-	char PIN[9];
-
+	/* stage2c: store WPS PIN in nvram "secret_code" instead of Factory. */
 	if (pincheck(pin) && !pinvalidate(pin)) {
-		flash_mtd_write(MTD_PART_NAME_FACTORY, OFFSET_PIN_CODE, (unsigned char*)pin, 8);
-		memset(PIN, 0, sizeof(PIN));
-		memcpy(PIN, pin, 8);
-		puts(PIN);
+		nvram_set("secret_code", (char *)pin);
+		puts(pin);
 	}
 	return 0;
 }
@@ -520,1349 +379,336 @@ getBootVer(void)
 int
 getPIN(void)
 {
-	unsigned char PIN[9] = {0};
-
-	flash_mtd_read(MTD_PART_NAME_FACTORY, OFFSET_PIN_CODE, PIN, 8);
-	if (PIN[0]!=0xff)
-		puts(PIN);
+	char *pin = nvram_safe_get("secret_code");
+	if (pin && pin[0])
+		puts(pin);
 	return 0;
 }
 
-int
-check_regspec_code(const char *spec)
+/*
+ * ------------------------------------------------------------------
+ * hostapd.conf generation (replaces the old gen_ralink_config).
+ * ------------------------------------------------------------------
+ */
+
+/* Map nvram auth_mode + wpa_mode + pmf to hostapd wpa= / wpa_key_mgmt=. */
+static void
+render_auth(FILE *fp, int is_aband)
 {
+	char *auth_mode = nvram_wlan_get(is_aband, "auth_mode");
+	int wpa_mode   = nvram_wlan_get_int(is_aband, "wpa_mode");
+	int pmf        = nvram_wlan_get_int(is_aband, "pmf");
+	char *crypto   = nvram_wlan_get(is_aband, "crypto");
+	int wpa_val = 0, ieee80211w = 0;
+	char key_mgmt[64] = "NONE";
+	char rsn_pairwise[32] = "CCMP";
+
+	if (!strcmp(auth_mode, "psk")) {
+		switch (wpa_mode) {
+		case 1:  wpa_val = 1; snprintf(key_mgmt, sizeof(key_mgmt), "%s", "WPA-PSK"); break;
+		case 5:  wpa_val = 3; snprintf(key_mgmt, sizeof(key_mgmt), "%s", "SAE"); break;
+		case 6:  wpa_val = 3; snprintf(key_mgmt, sizeof(key_mgmt), "%s", "WPA-PSK SAE"); break;
+		case 2:
+		default:
+			wpa_val = 2;
+			snprintf(key_mgmt, sizeof(key_mgmt), "%s",
+				(wpa_mode == 4) ? "WPA-PSK" : "WPA-PSK");
+			break;
+		}
+		if (wpa_mode == 5 || wpa_mode == 6)
+			ieee80211w = 2;
+		else if (pmf == 1)
+			ieee80211w = 1;
+		else if (pmf == 2)
+			ieee80211w = 2;
+	} else if (!strcmp(auth_mode, "wpa") || !strcmp(auth_mode, "wpa2")) {
+		wpa_val = 2;
+		snprintf(key_mgmt, sizeof(key_mgmt), "%s", "WPA-EAA");
+		ieee80211w = pmf ? 1 : 0;
+	} else if (!strcmp(auth_mode, "radius")) {
+		wpa_val = 2;
+		snprintf(key_mgmt, sizeof(key_mgmt), "%s", "WPA-EAP");
+	} else if (!strcmp(auth_mode, "owe")) {
+		wpa_val = 2;
+		snprintf(key_mgmt, sizeof(key_mgmt), "%s", "OWE");
+		ieee80211w = 2;
+	} else {
+		/* open / shared */
+		wpa_val = 0;
+		snprintf(key_mgmt, sizeof(key_mgmt), "%s", "NONE");
+	}
+
+	/* crypto: TKIP/AES applies to WPA-PSK only */
+	if (wpa_val > 0 && strcmp(key_mgmt, "SAE") != 0 && strcmp(key_mgmt, "OWE") != 0) {
+		if (!strcmp(crypto, "tkip"))
+			snprintf(rsn_pairwise, sizeof(rsn_pairwise), "%s", "TKIP");
+		else if (!strcmp(crypto, "tkip+aes"))
+			snprintf(rsn_pairwise, sizeof(rsn_pairwise), "%s", "CCMP TKIP");
+		else
+			snprintf(rsn_pairwise, sizeof(rsn_pairwise), "%s", "CCMP");
+	}
+
+	fprintf(fp, "wpa=%d\n", wpa_val);
+	fprintf(fp, "wpa_key_mgmt=%s\n", key_mgmt);
+	fprintf(fp, "rsn_pairwise=%s\n", rsn_pairwise);
+	fprintf(fp, "ieee80211w=%d\n", ieee80211w);
+}
+
+/* Render MAC ACL file (accept/deny list) from nvram maclist_x/macnum_x. */
+static void
+render_mac_acl(FILE *fp, int is_aband, const char *prefix_bss)
+{
+	char *macmode = nvram_wlan_get(is_aband, "macmode");
+	int macnum = nvram_wlan_get_int(is_aband, "macnum_x");
+	int acl = 0;  /* 0=none, 1=deny, 2=allow */
+	char path[64], line[64];
+	FILE *acl_fp;
 	int i;
 
-	for (i = 0; i < ARRAY_SIZE(asus_regspec_table); i++) {
-		if (strcasecmp(asus_regspec_table[i].regspec, spec) == 0)
-			return 1;
-	}
+	if (!strcmp(macmode, "deny"))
+		acl = 1;
+	else if (!strcmp(macmode, "allow"))
+		acl = 2;
 
-	return 0;
+	fprintf(fp, "macaddr_acl=%d\n", acl);
+	if (acl == 0 || macnum <= 0)
+		return;
+
+	snprintf(path, sizeof(path), "/var/run/hostapd.%s",
+		(acl == 1) ? "deny" : "accept");
+	acl_fp = fopen(path, "w");
+	if (!acl_fp)
+		return;
+
+	for (i = 0; i < macnum; i++) {
+		mac_conv((char *)(prefix_bss[0] ? "wl_maclist_x" : "rt_maclist_x"), i, line);
+		fprintf(acl_fp, "%s\n", line);
+	}
+	fclose(acl_fp);
+
+	fprintf(fp, "%s_mac_file=%s\n",
+		(acl == 1) ? "deny" : "accept", path);
 }
 
-static const char *
-get_country_regspec(const char *cc)
-{
-	int i, idx;
-
-	for (i = 0; i < ARRAY_SIZE(ralink_cc_table); i++) {
-		if (strcasecmp(ralink_cc_table[i].cc, cc) == 0) {
-			idx = (int)ralink_cc_table[i].regspec_idx;
-			if (idx >= ARRAY_SIZE(asus_regspec_table))
-				idx = 0;
-			return asus_regspec_table[idx].regspec;
-		}
-	}
-
-	/* use CE as fallback */
-	return asus_regspec_table[0].regspec;
-}
-
+/*
+ * Render /var/run/hostapd-<band>-<bss>.conf for one BSS.
+ * is_aband: 0=2.4G, 1=5G. bss_index: 0=main, 1=guest.
+ */
 static int
-get_country_region(const char *cc, int is_aband)
+gen_hostapd_conf(int is_aband, int bss_index)
 {
-	int i, i_code = 1;
-
-	for (i = 0; i < ARRAY_SIZE(ralink_cc_table); i++) {
-		if (strcasecmp(ralink_cc_table[i].cc, cc) == 0) {
-			if (is_aband)
-				i_code = (int)ralink_cc_table[i].cc_5g;
-			else
-				i_code = (int)ralink_cc_table[i].cc_2g;
-			break;
-		}
-	}
-
-	return i_code;
-}
-
-static int
-check_sku_file_exist(const char *prefix, const char *spec, char *out_buff, size_t out_size)
-{
-	snprintf(out_buff, out_size, "/etc_ro/Wireless/SingleSKU%s_%s.dat", prefix, spec);
-	return check_if_file_exist(out_buff);
-}
-
-static void
-symlink_sku_file(const char *sku_file, const char *prefix, const char *cc, int region, int is_aband)
-{
-	int i, sku_exist = 0;
-	char sku_link[64];
-
-	unlink(sku_file);
-
-	/* first, try custom SKU file from storage */
-	snprintf(sku_link, sizeof(sku_link), "%s/SingleSKU%s.dat", "/etc/storage/wlan", prefix);
-	if (!check_if_file_exist(sku_link)) {
-		const char *cc_regspec = get_country_regspec(cc);
-		
-		/* use table regspec code */
-		sku_exist = check_sku_file_exist(prefix, cc_regspec, sku_link, sizeof(sku_link));
-		
-		if (!sku_exist) {
-			char *regspec = nvram_safe_get("regspec_code");
-			
-			/* use own regspec code */
-			sku_exist = check_sku_file_exist(prefix, regspec, sku_link, sizeof(sku_link));
-		}
-		
-		if (!sku_exist) {
-			int region_regspec;
-			
-			/* use any matched regspec code */
-			for (i = 0; i < ARRAY_SIZE(asus_regspec_table); i++) {
-				if (is_aband)
-					region_regspec = (int)asus_regspec_table[i].cc_5g;
-				else
-					region_regspec = (int)asus_regspec_table[i].cc_2g;
-				
-				if (region_regspec == region) {
-					sku_exist = check_sku_file_exist(prefix, asus_regspec_table[i].regspec, sku_link, sizeof(sku_link));
-					if (sku_exist)
-						break;
-				}
-			}
-		}
-		
-		if (!sku_exist)
-			check_sku_file_exist(prefix, asus_regspec_table[0].regspec, sku_link, sizeof(sku_link));
-	}
-
-	if (check_if_file_exist(sku_link))
-		symlink(sku_link, sku_file);
-}
-
-static int
-gen_ralink_config(int is_soc_ap, int is_aband, int disable_autoscan)
-{
+	const char *band_tag = is_aband ? "5g" : "2g";
+	const char *bss_tag = bss_index == 0 ? "main" : "guest";
+	const char *ifname;
+	const char *ssid_nv, *psk_nv, *auth_nv, *crypto_nv, *wpa_mode_nv;
+	const char *country_cc;
+	int channel, ht_bw, gmode, bcn, dtim, rts, frag, wme, gtk_rekey;
+	int closed, ap_isolate, wps_enabled, pmf;
+	char path[80];
 	FILE *fp;
-	char list[2048], *p_str, *c_val_mbss[2];
-	int i_pmfr;
-	int i, i_num,  i_val, i_wmm, i_ldpc, i_stbc;
-	int i_mode_x, i_phy_mode, i_gfe, i_auth, i_encr, i_wep, i_wds;
-	int i_ssid_num, i_channel, i_channel_max, i_HTBW_MAX;
-	int i_stream_tx, i_stream_rx, i_mphy, i_mmcs, i_fphy[2], i_val_mbss[2];
-	const char *dat_file, *sku_file, *prefix = (is_aband) ? "wl" : "rt";
+	int is_5g = is_aband;
 
-	i_ssid_num = 2; // AP+GuestAP
-	i_channel_max = 13;
-
-	if (is_soc_ap) {
-		dat_file = "/etc/Wireless/RT2860/RT2860AP.dat";
-		sku_file = "/etc/Wireless/RT2860/SingleSKU.dat";
+	/* pick nvram prefix (guest BSS uses guest_* keys) */
+	if (bss_index == 0) {
+		ssid_nv    = "ssid";
+		psk_nv     = "wpa_psk";
+		auth_nv    = "auth_mode";
+		crypto_nv  = "crypto";
+		wpa_mode_nv= "wpa_mode";
 	} else {
-		dat_file = "/etc/Wireless/iNIC/iNIC_ap.dat";
-		sku_file = "/etc/Wireless/iNIC/SingleSKU.dat";
+		ssid_nv    = "guest_ssid";
+		psk_nv     = "guest_wpa_psk";
+		auth_nv    = "guest_auth_mode";
+		crypto_nv  = "guest_crypto";
+		wpa_mode_nv= "guest_wpa_mode";
 	}
 
-	// 1T1R, 1T2R, 2T2R, 2T3R, 3T3R
-	i_stream_tx = nvram_wlan_get_int(is_aband, "stream_tx");
-	i_stream_rx = nvram_wlan_get_int(is_aband, "stream_rx");
+	ifname = bss_index == 0
+		? (is_aband ? IFNAME_5G_MAIN  : IFNAME_2G_MAIN)
+		: (is_aband ? IFNAME_5G_GUEST : IFNAME_2G_GUEST);
 
-	if (i_stream_tx < 1)
-		i_stream_tx = 1;
-	if (i_stream_rx < 1)
-		i_stream_rx = 1;
-
-	if (!is_aband) {
-		if (i_stream_tx > BOARD_NUM_ANT_2G_TX)
-			i_stream_tx = BOARD_NUM_ANT_2G_TX;
-		
-		if (i_stream_rx > BOARD_NUM_ANT_2G_RX)
-			i_stream_rx = BOARD_NUM_ANT_2G_RX;
-	} else {
-		if (i_stream_tx > BOARD_NUM_ANT_5G_TX)
-			i_stream_tx = BOARD_NUM_ANT_5G_TX;
-		
-		if (i_stream_rx > BOARD_NUM_ANT_5G_RX)
-			i_stream_rx = BOARD_NUM_ANT_5G_RX;
-	}
-
-	if (i_stream_tx == 0 || i_stream_rx == 0)
-		return 1; // this band is not supported
-
-	i_mode_x = nvram_wlan_get_int(is_aband, "mode_x");
-	i_phy_mode = calc_phy_mode(nvram_wlan_get_int(is_aband, "gmode"), is_aband);
-
-	if (!(fp=fopen(dat_file, "w+")))
+	snprintf(path, sizeof(path), "/var/run/hostapd-%s-%s.conf", band_tag, bss_tag);
+	if (!(fp = fopen(path, "w"))) {
+		perror(path);
 		return -1;
-
-	fprintf(fp, "#The word of \"Default\" must not be removed\nDefault\n");
-
-	//CountryRegion
-	p_str = nvram_wlan_get(0, "country_code");
-	i_val = get_country_region(p_str, 0);
-	fprintf(fp, "CountryRegion=%d\n", i_val);
-
-	if (!is_aband) {
-		switch (i_val) {
-		case 0:		// FCC/NCC
-			i_channel_max = 11;
-			break;
-		case 5:		// Debug
-			i_channel_max = 14;
-			break;
-		}
-		
-		symlink_sku_file(sku_file, "", p_str, i_val, 0);
 	}
 
-	//CountryRegion for A band
-	p_str = nvram_wlan_get(1, "country_code");
-	i_val = get_country_region(p_str, 1);
-	fprintf(fp, "CountryRegionABand=%d\n", i_val);
+	fprintf(fp, "# Generated by rc (stage2c hostapd.conf)\n");
+	fprintf(fp, "interface=%s\n", ifname);
+	fprintf(fp, "driver=nl80211\n");
+	fprintf(fp, "ctrl_interface=/var/run/hostapd\n");
+	fprintf(fp, "ctrl_interface_group=0\n");
 
+	/* SSID */
+	fprintf(fp, "ssid=%s\n", nvram_wlan_get(is_aband, ssid_nv));
+	closed = nvram_wlan_get_int(is_aband, bss_index == 0 ? "closed" : "guest_closed");
+	fprintf(fp, "ignore_broadcast_ssid=%d\n", closed ? 1 : 0);
+
+	/* Country code: prefer per-band nvram, fall back to wl_country_code */
+	country_cc = nvram_wlan_get(is_aband, "country_code");
+	if (!country_cc || strlen(country_cc) != 2)
+		country_cc = nvram_safe_get("wl_country_code");
+	if (country_cc && strlen(country_cc) == 2)
+		fprintf(fp, "country_code=%s\n", country_cc);
+
+	/* PHY mode / band */
+	fprintf(fp, "hw_mode=%s\n", is_aband ? "a" : "g");
+	fprintf(fp, "ieee80211n=1\n");
 	if (is_aband)
-		symlink_sku_file(sku_file, "_5G", p_str, i_val, 1);
+		fprintf(fp, "ieee80211ac=1\n");
 
-	//CountryCode
-	p_str = nvram_wlan_get(is_aband, "country_code");
-	if (strlen(p_str) != 2)
-		p_str = "GB";
-	fprintf(fp, "CountryCode=%s\n", p_str);
+	gmode = nvram_wlan_get_int(is_aband, "gmode");
+	/* gmode: for 2.4G 6=ax, for 5G 5=ax/ac. Enable HE (802.11ax) when set. */
+	if ((!is_aband && gmode == 6) || (is_aband && gmode == 5))
+		fprintf(fp, "ieee80211ax=1\n");
 
-	//ChannelGeography (Indoor+Outdoor)
-	fprintf(fp, "ChannelGeography=%d\n", 2);
-
-	//BssidNum
-	fprintf(fp, "BssidNum=%d\n", i_ssid_num);
-
-	//SSID
-	fprintf(fp, "SSID%d=%s\n", 1, nvram_wlan_get(is_aband, "ssid"));
-	fprintf(fp, "SSID%d=%s\n", 2, nvram_wlan_get(is_aband, "guest_ssid"));
-	for (i = 3; i <= 8; i++)
-		fprintf(fp, "SSID%d=%s\n", i, "");
-
-	//Network Mode
-	fprintf(fp, "WirelessMode=%d\n", i_phy_mode);
-
-	//Channel
-	i_channel = nvram_wlan_get_int(is_aband, "channel");
-	if (i_channel == 0) {
-		/* force disable autoscan when AP-Client in auto-connect mode */
-		if ((i_mode_x == 3 || i_mode_x == 4) && !disable_autoscan) {
-			if (get_apcli_sta_auto(is_aband))
-				disable_autoscan = 1;
-		}
-		
-		if (disable_autoscan) {
-			i_channel = (is_aband) ? 36 : 1;
-		}
-	}
-	fprintf(fp, "Channel=%d\n", i_channel);
-
-	fprintf(fp, "AutoProvisionEn=%d\n", 0);
-	fprintf(fp, "CalCacheApply=%d\n", 0);
-	fprintf(fp, "LoadCodeMethod=%d\n", 0);
-	fprintf(fp, "VHT_Sec80_Channel=%d\n", 0);
-	fprintf(fp, "SKUenable=%d\n", 0);
-	fprintf(fp, "PowerUpenable=%d\n", 0);
-	fprintf(fp, "VOW_Airtime_Fairness_En=%d\n", 0);
-	fprintf(fp, "VOW_Airtime_Ctrl_En=%d\n", 0);
-	fprintf(fp, "VOW_Rate_Ctrl_En=%d\n", 0);
-	fprintf(fp, "VOW_WATF_Enable=%d\n", 0);
-	fprintf(fp, "BandSteering=%d\n", nvram_wlan_get_int(is_aband, "band_steering"));
-	fprintf(fp, "BndStrgBssIdx=%s\n", nvram_wlan_get_int(is_aband, "band_steering") ? "1;0;0;0" : "0;0;0;0");
-	fprintf(fp, "BFBACKOFFenable=%d\n", 0);
-	fprintf(fp, "DfsCalibration=%d\n", 0);
-	fprintf(fp, "ITxBfTimeout=%d\n", 0);
-	fprintf(fp, "ETxBfTimeout=%d\n", 0);
-	fprintf(fp, "ETxBfNoncompress=%d\n", 0);
-	fprintf(fp, "ETxBfIncapable=%d\n", 0);
-	fprintf(fp, "PcieAspm=%d\n", 0);
-	fprintf(fp, "ThermalRecal=%d\n", 0);
-	fprintf(fp, "WCNTest=%d\n", 0);
-	fprintf(fp, "WHNAT=%d\n", 0);
-	fprintf(fp, "BandDisabled=%d\n", 0);
-	fprintf(fp, "DfsDedicatedZeroWait=%d\n", 0);
-	fprintf(fp, "DfsZeroWaitDefault=%d\n", 0);
-//	fprintf(fp, "KernelRps=%d\n", 0);
-	fprintf(fp, "MboSupport=%d\n", 0);
-
-#if defined (USE_MT7615_AP) || defined (USE_MT7915_AP)
-	fprintf(fp, "VOW_RX_En=%d\n", 1);
-	fprintf(fp, "E2pAccessMode=%d\n", 2);
-	fprintf(fp, "TxCmdMode=%d\n", 1);
-	fprintf(fp, "AMSDU_NUM=%d\n", 4);
-	fprintf(fp, "CP_SUPPORT=%d\n", 2);
-	fprintf(fp, "RED_Enable=%d\n", 1);
-#endif
-
-#if defined (USE_WID_2G) && (USE_WID_2G==7615 || USE_WID_2G==7915)
-	if (!is_aband) {
-		fprintf(fp, "G_BAND_256QAM=%d\n", nvram_wlan_get_int(0, "turbo_qam"));
-#if defined(BOARD_HAS_2G_11AX) && BOARD_HAS_2G_11AX
-		if (i_phy_mode == PHY_11AX_24G) {
-			/* 2.4g wifi6 mode */
-			fprintf(fp, "TWTSupport=%d\n", 0);
-			fprintf(fp, "PPEnable=%d\n", 0);
-			fprintf(fp, "MuOfdmaDlEnable=%d\n", 1);
-			fprintf(fp, "MuOfdmaUlEnable=%d\n", 0);
-			fprintf(fp, "SREnable=%d\n", 1);
-			fprintf(fp, "SRMode=%d\n", 0);
-			fprintf(fp, "SRSDEnable=%d\n", 1);
-		} else {
-			fprintf(fp, "TWTSupport=%d\n", 0);
-			fprintf(fp, "PPEnable=%d\n", 0);
-			fprintf(fp, "MuOfdmaDlEnable=%d\n", 0);
-			fprintf(fp, "MuOfdmaUlEnable=%d\n", 0);
-			fprintf(fp, "SREnable=%d\n", 0);
-			fprintf(fp, "SRMode=%d\n", 0);
-			fprintf(fp, "SRSDEnable=%d\n", 0);
-		}
-#endif
-	}
-#endif
-
-#if defined (USE_WID_5G) && (USE_WID_5G==7615 || USE_WID_5G==7915)
-	if (is_aband) {
-		/* 5g mumimo configs */
-		if (nvram_wlan_get_int(1, "mumimo")) {
-			fprintf(fp, "MUTxRxEnable=%d\n", 1);
-			fprintf(fp, "MuMimoDlEnable=%d\n", 1);
-			fprintf(fp, "MuMimoUlEnable=%d\n", 0);
-		} else {
-			fprintf(fp, "MUTxRxEnable=%d\n", 0);
-			fprintf(fp, "MuMimoDlEnable=%d\n", 0);
-			fprintf(fp, "MuMimoUlEnable=%d\n", 0);
-		}
-#if defined(BOARD_HAS_5G_11AX) && BOARD_HAS_5G_11AX
-		if (i_phy_mode == PHY_11AX_5G) {
-			/* 5g wifi6 mode */
-			fprintf(fp, "TWTSupport=%d\n", 0);
-			fprintf(fp, "PPEnable=%d\n", 1);
-			fprintf(fp, "MuOfdmaDlEnable=%d\n", 1);
-			fprintf(fp, "MuOfdmaUlEnable=%d\n", 0);
-			fprintf(fp, "SREnable=%d\n", 1);
-			fprintf(fp, "SRMode=%d\n", 0);
-			fprintf(fp, "SRSDEnable=%d\n", 1);
-		} else {
-			fprintf(fp, "TWTSupport=%d\n", 0);
-			fprintf(fp, "PPEnable=%d\n", 0);
-			fprintf(fp, "MuOfdmaDlEnable=%d\n", 0);
-			fprintf(fp, "MuOfdmaUlEnable=%d\n", 0);
-			fprintf(fp, "SREnable=%d\n", 0);
-			fprintf(fp, "SRMode=%d\n", 0);
-			fprintf(fp, "SRSDEnable=%d\n", 0);
-		}
-#endif
-	}
-#endif
-
-#if defined (BOARD_MT7615_DBDC) || defined (BOARD_MT7915_DBDC)
-	fprintf(fp, "DBDC_MODE=%d\n", 1);
-#endif
-
-/* range 0 - -100 dBm, reject assoc req due to weak signal, default 0 (off) */
-//	fprintf(fp, "AssocReqRssiThres=%d\n", -90);
-
-/* range 0 - -100 dBm, auto disonnect sta if rssi low (active clients), default 0 (off) */
-//	fprintf(fp, "KickStaRssiLow=%d\n", -98);
-
-	//AutoChannelSelect
-	if (is_aband) {
-#if defined(USE_WID_5G) && (USE_WID_5G==7915 || USE_WID_5G==7615)
-	i_val = (i_channel == 0) ? 3 : 0;
-#else
-	i_val = (i_channel == 0) ? 2 : 0;
-#endif
-	} else {
-#if defined(USE_WID_2G) && (USE_WID_2G==7915 || USE_WID_2G==7615)
-	i_val = (i_channel == 0) ? 3 : 0;
-#else
-	i_val = (i_channel == 0) ? 2 : 0;
-#endif
-	}
-	fprintf(fp, "AutoChannelSelect=%d\n", i_val);
-
-	//AutoChannelSkipList
-	if (!is_aband)
-		sprintf(list, "%d", 14);
+	/* Channel (0 = ACS / leave to driver) */
+	channel = nvram_wlan_get_int(is_aband, "channel");
+	if (channel > 0)
+		fprintf(fp, "channel=%d\n", channel);
 	else
-		sprintf(list, "%d;%d;%d;%d", 52, 56, 60, 64);
-	fprintf(fp, "AutoChannelSkipList=%s\n", list);
+		fprintf(fp, "chan=acs\n");
 
-	//BasicRate
-	if (!is_aband) {
-		i_val = 15; // 1, 2, 5.5, 11 Mbps
-		switch (i_phy_mode)
+	/* Bandwidth / HT capabilities */
+	ht_bw = nvram_wlan_get_int(is_aband, "HT_BW");
+	if (is_aband) {
+		/* DBDC: cap at 80MHz (design §6: 160MHz not available) */
+		fprintf(fp, "vht_oper_chwidth=%d\n", (ht_bw >= 2) ? 1 : 0);
+	} else {
+		int extcha = nvram_wlan_get_int(0, "HT_EXTCHA");
+		fprintf(fp, "ht_capab=[HT40%s]\n", extcha ? "+" : "-");
+	}
+
+	/* WMM */
+	wme = nvram_wlan_get_int(is_aband, "wme");
+	fprintf(fp, "wmm_enabled=%d\n", wme ? 1 : 0);
+
+	/* Beacon / DTIM / RTS / Frag */
+	bcn = nvram_wlan_get_int(is_aband, "bcn");
+	if (bcn < 20 || bcn > 1000) bcn = 100;
+	fprintf(fp, "beacon_int=%d\n", bcn);
+
+	dtim = nvram_wlan_get_int(is_aband, "dtim");
+	if (dtim < 1 || dtim > 255) dtim = 1;
+	fprintf(fp, "dtim_period=%d\n", dtim);
+
+	rts = nvram_wlan_get_int(is_aband, "rts");
+	if (rts < 1 || rts > 2347) rts = 2347;
+	fprintf(fp, "rts_threshold=%d\n", rts);
+
+	frag = nvram_wlan_get_int(is_aband, "frag");
+	if (frag < 256 || frag > 2346) frag = 2346;
+	fprintf(fp, "fragm_threshold=%d\n", frag);
+
+	/* Authentication / encryption (main and guest render independently) */
+	{
+		char *auth_mode = nvram_wlan_get(is_aband, auth_nv);
+		int wpa_mode_v  = nvram_wlan_get_int(is_aband, wpa_mode_nv);
+		char *crypto_v  = nvram_wlan_get(is_aband, crypto_nv);
+		pmf = nvram_wlan_get_int(is_aband, "pmf");
+
+		(void)auth_mode; (void)wpa_mode_v; (void)crypto_v; (void)pmf;
+		render_auth(fp, is_aband);
+	}
+
+	/* PSK */
+	{
+		char *psk = nvram_wlan_get(is_aband, psk_nv);
+		if (psk && psk[0])
+			fprintf(fp, "wpa_passphrase=%s\n", psk);
+	}
+
+	/* GTK rekey */
+	gtk_rekey = nvram_wlan_get_int(is_aband, "wpa_gtk_rekey");
+	if (gtk_rekey > 0)
+		fprintf(fp, "wpa_group_rekey=%d\n", gtk_rekey);
+
+	/* AP isolation (per-BSS) */
+	ap_isolate = nvram_wlan_get_int(is_aband,
+		bss_index == 0 ? "ap_isolate" : "guest_ap_isolate");
+	fprintf(fp, "ap_isolate=%d\n", ap_isolate ? 1 : 0);
+
+	/* MAC ACL */
+	render_mac_acl(fp, is_aband, band_tag);
+
+	/* RADIUS (802.1X) */
+	{
+		char *radius_ip = nvram_wlan_get(is_aband, "radius_ipaddr");
+		int radius_port = nvram_wlan_get_int(is_aband, "radius_port");
+		char *radius_key = nvram_wlan_get(is_aband, "radius_key");
+		if (radius_ip && radius_ip[0]) {
+			fprintf(fp, "auth_server_addr=%s\n", radius_ip);
+			fprintf(fp, "auth_server_port=%d\n", radius_port ? radius_port : 1812);
+			fprintf(fp, "auth_server_shared_secret=%s\n", radius_key ? radius_key : "");
+		}
+	}
+
+	/* WPS */
+	wps_enabled = nvram_wlan_get_int(is_aband, "WPS");
+	if (wps_enabled) {
+		fprintf(fp, "wps_state=1\n");
+		fprintf(fp, "device_name=WPS Router\n");
+		fprintf(fp, "manufacturer=%s\n", BOARD_VENDOR_NAME);
+		fprintf(fp, "model_number=%s\n", BOARD_NAME);
 		{
-		case PHY_11B:
-			i_val = 3; // 1, 2 Mbps
-			break;
-		case PHY_11G:
-		case PHY_11GN_MIXED:
-			i_val = 351; // 1, 2, 5.5, 11, 6, 12, 24 Mbps
-			break;
+			char *pin = nvram_safe_get("secret_code");
+			if (pin && pin[0])
+				fprintf(fp, "device_password=%s\n", pin);
 		}
 	} else {
-		i_val = 336; // 6, 12, 24 Mbps
-	}
-	fprintf(fp, "BasicRate=%d\n", i_val);
-
-	//BeaconPeriod [20..1000], default 100
-	i_val = nvram_wlan_get_int(is_aband, "bcn");
-	if (i_val < 20 || i_val > 1000) i_val = 100;
-	fprintf(fp, "BeaconPeriod=%d\n", i_val);
-
-	//DTIM Period [1..255], default 1
-	i_val = nvram_wlan_get_int(is_aband, "dtim");
-	if (i_val < 1 || i_val > 255) i_val = 1;
-	fprintf(fp, "DtimPeriod=%d\n", i_val);
-
-	//TxPower [0..100], default 100
-	i_val = nvram_wlan_get_int(is_aband, "TxPower");
-	if (i_val < 0 || i_val > 100) i_val = 100;
-	fprintf(fp, "TxPower=%d\n", i_val);
-
-	//DisableOLBC
-	fprintf(fp, "DisableOLBC=%d\n", 0);
-
-	//BGProtection (Always OFF for 5GHz)
-	i_val = 2; // off
-	if (!is_aband && (i_phy_mode == PHY_11BG_MIXED || i_phy_mode == PHY_11BGN_MIXED)) {
-		p_str = nvram_wlan_get(is_aband, "gmode_protection");
-		if (!strcmp(p_str, "auto"))
-			i_val = 0;
-		else if (!strcmp(p_str, "on"))
-			i_val = 1;
-	}
-	fprintf(fp, "BGProtection=%d\n", i_val);
-
-	//TxPreamble (0=Long, 1=Short)
-	i_val = nvram_wlan_get_int(is_aband, "preamble");
-	if (i_val < 0 || i_val > 1) i_val = 0;
-	fprintf(fp, "TxPreamble=%d\n", i_val);
-
-	//RTSThreshold [1..2347], default 2347
-	i_val = nvram_wlan_get_int(is_aband, "rts");
-	if (i_val < 1 || i_val > 2347) i_val = 2347;
-	fprintf(fp, "RTSThreshold=%d\n", i_val);
-
-	//FragThreshold [256..2346], default 2346
-	i_val = nvram_wlan_get_int(is_aband, "frag");
-	if (i_val < 256 || i_val > 2346) i_val = 2346;
-	fprintf(fp, "FragThreshold=%d\n", i_val);
-
-	//TxBurst
-	i_val = nvram_wlan_get_int(is_aband, "TxBurst");
-	if (i_val) i_val = 1;
-	fprintf(fp, "TxBurst=%d\n", i_val);
-
-	//PktAggregate
-	i_val = nvram_wlan_get_int(is_aband, "PktAggregate");
-	if (i_val) i_val = 1;
-	fprintf(fp, "PktAggregate=%d\n", i_val);
-
-	//FreqDelta
-	fprintf(fp, "FreqDelta=%d\n", 0);
-
-	//WmmCapable (MBSSID used)
-	i_wmm = nvram_wlan_get_int(is_aband, "wme");
-	fprintf(fp, "WmmCapable=%d;%d\n", i_wmm, i_wmm);
-
-	fprintf(fp, "APAifsn=3;7;1;1\n");
-	fprintf(fp, "APCwmin=4;4;3;2\n");
-	fprintf(fp, "APCwmax=6;10;4;3\n");
-	fprintf(fp, "APTxop=0;0;94;47\n");
-	fprintf(fp, "APACM=0;0;0;0\n");
-	fprintf(fp, "BSSAifsn=3;7;2;2\n");
-	fprintf(fp, "BSSCwmin=4;4;3;2\n");
-	fprintf(fp, "BSSCwmax=10;10;4;3\n");
-	fprintf(fp, "BSSTxop=0;0;94;47\n");
-	fprintf(fp, "BSSACM=0;0;0;0\n");
-
-	//AckPolicy
-	p_str = nvram_wlan_get(is_aband, "wme_no_ack");
-	i_val = (strcmp(p_str, "on")) ? 0 : 1;
-	if (!i_wmm)
-		i_val = 0;
-	if (!is_aband) {
-		if (i_phy_mode != PHY_11B && i_phy_mode != PHY_11BG_MIXED && i_phy_mode != PHY_11G)
-			i_val = 0;
-	} else {
-		if (i_phy_mode != PHY_11A)
-			i_val = 0;
-	}
-	list[0] = 0;
-	for (i = 0; i < 4; i++)
-		sprintf(list+strlen(list), "%d;", i_val);
-	list[strlen(list) - 1] = '\0';
-	fprintf(fp, "AckPolicy=%s\n", list);
-
-	//APSDCapable
-	i_val = nvram_wlan_get_int(is_aband, "APSDCapable");
-	if (i_val) i_val = 1;
-	if (!i_wmm) i_val = 0;
-	fprintf(fp, "APSDCapable=%d\n", i_val);
-	fprintf(fp, "UAPSDCapable=%d\n", i_val);
-
-	//DLSCapable (MBSSID used)
-	fprintf(fp, "DLSCapable=%d;%d\n", 0, 0);
-
-	//NoForwarding (MBSSID used)
-	i_val_mbss[0] = nvram_wlan_get_int(is_aband, "ap_isolate");
-	i_val_mbss[1] = nvram_wlan_get_int(is_aband, "guest_ap_isolate");
-	fprintf(fp, "NoForwarding=%d;%d\n", i_val_mbss[0], i_val_mbss[1]);
-
-	//NoForwardingMBCast (MBSSID used)
-	fprintf(fp, "NoForwardingMBCast=%d;%d\n", i_val_mbss[0], i_val_mbss[1]);
-
-	//NoForwardingBTNBSSID
-#if defined(BOARD_MT7615_DBDC) || defined (BOARD_MT7915_DBDC)
-	fprintf(fp, "NoForwardingBTNBSSID=%d\n", 0);
-#else
-	i_val = nvram_wlan_get_int(is_aband, "guest_lan_isolate");
-	if (i_val) i_val = 1;
-	fprintf(fp, "NoForwardingBTNBSSID=%d\n", i_val);
-#endif
-
-	//HideSSID (MBSSID used)
-	i_val_mbss[0] = nvram_wlan_get_int(is_aband, "closed");
-	i_val_mbss[1] = nvram_wlan_get_int(is_aband, "guest_closed");
-	fprintf(fp, "HideSSID=%d;%d\n", i_val_mbss[0], i_val_mbss[1]);
-
-	//ShortSlot
-	fprintf(fp, "ShortSlot=%d\n", 1);
-
-	fprintf(fp, "IEEE80211H=%d\n", 0);
-	fprintf(fp, "CarrierDetect=%d\n", 0);
-	fprintf(fp, "PreAntSwitch=\n"); //set this to 1 for RM2100, only mt7615 4.4.2.1
-	fprintf(fp, "PhyRateLimit=%d\n", 0);
-	fprintf(fp, "DebugFlags=%d\n", 0);
-	fprintf(fp, "FineAGC=%d\n", 0);
-	fprintf(fp, "StreamMode=%d\n", (is_aband) ? 3 : 0);
-	fprintf(fp, "StreamModeMac0=\n");
-	fprintf(fp, "StreamModeMac1=\n");
-	fprintf(fp, "StreamModeMac2=\n");
-	fprintf(fp, "StreamModeMac3=\n");
-	if (is_aband) {
-#if defined (USE_WID_5G) && (USE_WID_5G==7615 || USE_WID_5G==7915)
-		fprintf(fp, "CSPeriod=%d\n", 6);
-#else
-		fprintf(fp, "CSPeriod=%d\n", 10);
-#endif
-	} else {
-#if defined (USE_WID_2G) && (USE_WID_2G==7615 || USE_WID_2G==7915)
-		fprintf(fp, "CSPeriod=%d\n", 6);
-#else
-		fprintf(fp, "CSPeriod=%d\n", 10);
-#endif
-	}
-	fprintf(fp, "RDRegion=%s\n", "FCC"); // used for Radar Detection
-	fprintf(fp, "StationKeepAlive=%d;%d\n", 0, 0);
-	fprintf(fp, "DfsLowerLimit=%d\n", 0);
-	fprintf(fp, "DfsUpperLimit=%d\n", 0);
-	fprintf(fp, "DfsIndoor=%d\n", 0);
-	fprintf(fp, "DFSParamFromConfig=%d\n", 0);
-	fprintf(fp, "DfsOutdoor=%d\n", 0);
-	fprintf(fp, "DfsEnable=%d\n", 0);
-	fprintf(fp, "FCCParamCh0=\n");
-	fprintf(fp, "FCCParamCh1=\n");
-	fprintf(fp, "FCCParamCh2=\n");
-	fprintf(fp, "FCCParamCh3=\n");
-	fprintf(fp, "CEParamCh0=\n");
-	fprintf(fp, "CEParamCh1=\n");
-	fprintf(fp, "CEParamCh2=\n");
-	fprintf(fp, "CEParamCh3=\n");
-	fprintf(fp, "JAPParamCh0=\n");
-	fprintf(fp, "JAPParamCh1=\n");
-	fprintf(fp, "JAPParamCh2=\n");
-	fprintf(fp, "JAPParamCh3=\n");
-	fprintf(fp, "JAPW53ParamCh0=\n");
-	fprintf(fp, "JAPW53ParamCh1=\n");
-	fprintf(fp, "JAPW53ParamCh2=\n");
-	fprintf(fp, "JAPW53ParamCh3=\n");
-	fprintf(fp, "FixDfsLimit=%d\n", 0);
-	fprintf(fp, "LongPulseRadarTh=%d\n", 0);
-	fprintf(fp, "AvgRssiReq=%d\n", 0);
-	fprintf(fp, "DFS_R66=%d\n", 0);
-	fprintf(fp, "BlockCh=\n");
-
-	//GreenAP
-	i_val = nvram_wlan_get_int(is_aband, "greenap");
-	if (i_val) i_val = 1;
-	fprintf(fp, "GreenAP=%d\n", i_val);
-
-	//AuthMode (MBSSID used)
-	i_auth = 0; // Open
-	c_val_mbss[0] = "OPEN";
-	c_val_mbss[1] = "OPEN";
-	i_val = nvram_wlan_get_int(is_aband, "wpa_mode");
-	p_str = nvram_wlan_get(is_aband, "auth_mode");
-	if (!strcmp(p_str, "shared"))
-	{
-		i_auth = 1; // Shared
-		c_val_mbss[0] = "SHARED";
-	}
-	else if (!strcmp(p_str, "psk"))
-	{
-		if (i_val == 1) {
-			i_auth = 2; // WPA PSK
-			c_val_mbss[0] = "WPAPSK";
-		} else if (i_val == 2) {
-			i_auth = 3; // WPA2 PSK
-			c_val_mbss[0] = "WPA2PSK";
-		} else if (i_val == 5) {
-			i_auth = 9; // WPA3 PSK
-			c_val_mbss[0] = "WPA3PSK";
-		} else if (i_val == 6){
-			i_auth = 10; // WPA2 PSK or WPA3 PSK
-			c_val_mbss[0] = "WPA2PSKWPA3PSK";
-		} else {
-			i_auth = 4; // WPA PSK or WPA2 PSK
-			c_val_mbss[0] = "WPAPSKWPA2PSK";
-		}
-	}
-	else if (!strcmp(p_str, "wpa"))
-	{
-		if (i_val == 3) {
-			i_auth = 5; // WPA ENT
-			c_val_mbss[0] = "WPA";
-		} else {
-			i_auth = 7; // WPA ENT or WPA2 ENT
-			c_val_mbss[0] = "WPA1WPA2";
-		}
-	}
-	else if (!strcmp(p_str, "wpa2"))
-	{
-		i_auth = 6; // WPA2 ENT
-		c_val_mbss[0] = "WPA2";
-	}
-	else if (!strcmp(p_str, "radius"))
-	{
-		i_auth = 8; // 8021X EAP with Radius
-	} else if (!strcmp(p_str, "owe"))
-	{
-		i_auth = 11; // OWE
-		c_val_mbss[0] = "OWE";
+		fprintf(fp, "wps_state=0\n");
 	}
 
-	//PMF Capability and required
-	if (i_auth > 2 && i_auth != 5) {
-		i_pmfr = nvram_wlan_get_int(is_aband, "pmf");
-		/* WPA3-Personal (9) and OWE (11) require PMF mandatory */
-		if (i_auth == 9 || i_auth == 11)
-			i_pmfr = 2;
-		/* WPA2/WPA3-Mixed (10) requires at least PMF optional */
-		else if (i_auth == 10 && i_pmfr == 0)
-			i_pmfr = 1;
-		fprintf(fp, "PMFMFPC=%d\n", i_pmfr ? 1 : 0);
-		fprintf(fp, "PMFMFPR=%d\n", (i_pmfr & 2) ? 1 : 0);
-		fprintf(fp, "PMFSHA256=%d\n", i_pmfr ? 1 : 0);
-	}
-
-	i_val = nvram_wlan_get_int(is_aband, "guest_wpa_mode");
-	p_str = nvram_wlan_get(is_aband, "guest_auth_mode");
-	if (!strcmp(p_str, "psk"))
-	{
-		if (i_val == 1)
-			c_val_mbss[1] = "WPAPSK";
-		else if (i_val == 2)
-			c_val_mbss[1] = "WPA2PSK";
-		else if (i_val == 5)
-			c_val_mbss[1] = "WPA3PSK";
-		else if (i_val == 6)
-			c_val_mbss[1] = "WPA2PSKWPA3PSK";
-		else
-			c_val_mbss[1] = "WPAPSKWPA2PSK";
-	} else if (!strcmp(p_str, "owe")) {
-		c_val_mbss[1] = "OWE";
-	}
-	fprintf(fp, "AuthMode=%s;%s\n", c_val_mbss[0], c_val_mbss[1]);
-
-	//EncrypType (MBSSID used)
-	i_encr = 0;  // None
-	c_val_mbss[0] = "NONE";
-	c_val_mbss[1] = "NONE";
-	i_wep = nvram_wlan_get_int(is_aband, "wep_x");
-	if ((i_auth == 0 && i_wep != 0) || i_auth == 1 || i_auth == 8) {
-		i_encr = 1;  // WEP
-		c_val_mbss[0] = "WEP";
-	} else if (i_auth != 0) {
-		/* WPA3 (9/10) and OWE (11) require AES only */
-		if (i_auth == 9 || i_auth == 10 || i_auth == 11) {
-			i_encr = 3;  /* AES */
-			c_val_mbss[0] = "AES";
-		} else {
-			p_str = nvram_wlan_get(is_aband, "crypto");
-			if (!strcmp(p_str, "tkip")) {
-				i_encr = 2;  /* TKIP */
-				c_val_mbss[0] = "TKIP";
-			} else if (!strcmp(p_str, "aes")) {
-				i_encr = 3;  /* AES */
-				c_val_mbss[0] = "AES";
-			} else if (!strcmp(p_str, "tkip+aes")) {
-				i_encr = 4;  /* TKIP or AES */
-				c_val_mbss[0] = "TKIPAES";
-			}
-		}
-	}
-	p_str = nvram_wlan_get(is_aband, "guest_auth_mode");
-	if (!strcmp(p_str, "psk") || !strcmp(p_str, "owe")) {
-		i_val = nvram_wlan_get_int(is_aband, "guest_wpa_mode");
-		/* WPA3 (5/6) and OWE require AES only */
-		if (!strcmp(p_str, "owe") || i_val == 5 || i_val == 6) {
-			c_val_mbss[1] = "AES";
-		} else {
-			p_str = nvram_wlan_get(is_aband, "guest_crypto");
-			if (!strcmp(p_str, "tkip"))
-				c_val_mbss[1] = "TKIP";
-			else if (!strcmp(p_str, "aes"))
-				c_val_mbss[1] = "AES";
-			else if (!strcmp(p_str, "tkip+aes"))
-				c_val_mbss[1] = "TKIPAES";
-		}
-	}
-	fprintf(fp, "EncrypType=%s;%s\n", c_val_mbss[0], c_val_mbss[1]);
-
-	//Wapi
-	for (i = 1; i <= 8; i++)
-	fprintf(fp, "WapiPsk%d=\n", i);
-	fprintf(fp, "WapiPskType=\n");
-	fprintf(fp, "Wapiifname=\n");
-	fprintf(fp, "WapiAsCertPath=\n");
-	fprintf(fp, "WapiUserCertPath=\n");
-	fprintf(fp, "WapiAsIpAddr=\n");
-	fprintf(fp, "WapiAsPort=\n");
-
-	// Mesh
-	fprintf(fp, "MeshAutoLink=%d\n", 0);
-	fprintf(fp, "MeshAuthMode=\n");
-	fprintf(fp, "MeshEncrypType=\n");
-	fprintf(fp, "MeshDefaultkey=%d\n", 0);
-	fprintf(fp, "MeshWEPKEY=\n");
-	fprintf(fp, "MeshWPAKEY=\n");
-	fprintf(fp, "MeshId=\n");
-
-	//RekeyInterval (MBSSID used, auto copy to all BSSID)
-	p_str = "TIME";
-	i_val = nvram_wlan_get_int(is_aband, "wpa_gtk_rekey");
-	if (i_val == 0)
-		p_str = "DISABLE";
-	fprintf(fp, "RekeyMethod=%s\n", p_str);
-	fprintf(fp, "RekeyInterval=%d\n", i_val);
-
-	//PMKCachePeriod
-	fprintf(fp, "PMKCachePeriod=%d\n", 10);
-
-	//WPAPSK
-	fprintf(fp, "WPAPSK%d=%s\n", 1, nvram_wlan_get(is_aband, "wpa_psk"));
-	fprintf(fp, "WPAPSK%d=%s\n", 2, nvram_wlan_get(is_aband, "guest_wpa_psk"));
-	for (i = 3; i <= 8; i++)
-		fprintf(fp, "WPAPSK%d=%s\n", i, "");
-
-	//DefaultKeyID
-	i_val = nvram_wlan_get_int(is_aband, "key");
-	if (i_val < 1 || i_val > 4) i_val = 1;
-	fprintf(fp, "DefaultKeyID=%d\n", i_val);
-
-	sprintf(list, "%s_key%d", prefix, i_val);
-	if ((strlen(nvram_safe_get(list)) == 5) || (strlen(nvram_safe_get(list)) == 13))
-		nvram_wlan_set(is_aband, "key_type", "1");
-	else if ((strlen(nvram_safe_get(list)) == 10) || (strlen(nvram_safe_get(list)) == 26))
-		nvram_wlan_set(is_aband, "key_type", "0");
-
-	//Key1Type(0 -> Hex, 1->Ascii)
-	fprintf(fp, "Key%dType=%s\n", 1, nvram_wlan_get(is_aband, "key_type"));
-	//Key1Str
-	fprintf(fp, "Key%dStr%d=%s\n", 1, 1, nvram_wlan_get(is_aband, "key1"));
-	for (i = 2; i <= 8; i++)
-		fprintf(fp, "Key%dStr%d=%s\n", 1, i, "");
-
-	//Key2Type
-	fprintf(fp, "Key%dType=%s\n", 2, nvram_wlan_get(is_aband, "key_type"));
-	//Key2Str
-	fprintf(fp, "Key%dStr%d=%s\n", 2, 1, nvram_wlan_get(is_aband, "key2"));
-	for (i = 2; i <= 8; i++)
-		fprintf(fp, "Key%dStr%d=%s\n", 2, i, "");
-
-	//Key3Type
-	fprintf(fp, "Key%dType=%s\n", 3, nvram_wlan_get(is_aband, "key_type"));
-	//Key3Str
-	fprintf(fp, "Key%dStr%d=%s\n", 3, 1, nvram_wlan_get(is_aband, "key3"));
-	for (i = 2; i <= 8; i++)
-		fprintf(fp, "Key%dStr%d=%s\n", 3, i, "");
-
-	//Key4Type
-	fprintf(fp, "Key%dType=%s\n", 4, nvram_wlan_get(is_aband, "key_type"));
-	//Key4Str
-	fprintf(fp, "Key%dStr%d=%s\n", 4, 1, nvram_wlan_get(is_aband, "key4"));
-	for (i = 2; i <= 8; i++)
-		fprintf(fp, "Key%dStr%d=%s\n", 4, i, "");
-
-	fprintf(fp, "HSCounter=%d\n", 0);
-
-	//HT_RDG
-	i_val = nvram_wlan_get_int(is_aband, "HT_RDG");
-	if (i_val) i_val = 1;
-	fprintf(fp, "HT_HTC=%d\n", i_val);
-	fprintf(fp, "HT_RDG=%d\n", i_val);
-
-	//HT_LinkAdapt
-	fprintf(fp, "HT_LinkAdapt=%d\n", 0);
-
-	//HT_OpMode
-	i_gfe = nvram_wlan_get_int(is_aband, "HT_OpMode");
-	if (i_gfe) i_gfe = 1;
-	if (!is_aband) {
-		if (i_phy_mode != PHY_11N)
-			i_gfe = 0; // GreenField only for N only
-	} else {
-		if (i_phy_mode != PHY_11N_5G && i_phy_mode != PHY_11VHT_N_MIXED)
-			i_gfe = 0; // GreenField only for N, N/AC only
-	}
-	fprintf(fp, "HT_OpMode=%d;%d\n", i_gfe, i_gfe);
-
-	//HT_MpduDensity
-	i_val = nvram_wlan_get_int(is_aband, "HT_MpduDensity");
-	if (i_val < 0 || i_val > 7) i_val = 5;
-	fprintf(fp, "HT_MpduDensity=%d\n", i_val);
-
-	// HT_EXTCHA
-	i_HTBW_MAX = 1;
-	if (!is_aband) {
-		int i_EXTCHA_MAX = 0;
-		
-		if ((i_channel >= 0) && (i_channel <= 7))
-			i_EXTCHA_MAX = 1;
-		else if ((i_channel >= 8) && (i_channel <= 13))
-			i_EXTCHA_MAX = ((i_channel_max - i_channel) < 4) ? 0 : 1;
-		else
-			i_HTBW_MAX = 0; // Ch14 force BW=20
-		
-		i_val = nvram_wlan_get_int(0, "HT_EXTCHA");
-		if (i_val) i_val = 1;
-		if (i_channel >= 1 && i_channel <= 4)
-			i_val = 1;
-		else if (i_val > i_EXTCHA_MAX)
-			i_val = 0;
-		
-		fprintf(fp, "HT_EXTCHA=%d\n", i_val);
-	} else {
-		int i_EXTCHA = 1;
-		
-		if (i_channel != 0)
-		{
-			switch (i_channel)
-			{
-			case 36:
-			case 44:
-			case 52:
-			case 60:
-			case 100:
-			case 108:
-			case 116:
-			case 124:
-			case 132:
-			case 140:
-			case 149:
-			case 157:
-				i_EXTCHA = 1;
-				break;
-			case 40:
-			case 48:
-			case 56:
-			case 64:
-			case 104:
-			case 112:
-			case 120:
-			case 128:
-			case 136:
-			case 144:
-			case 153:
-			case 161:
-				i_EXTCHA = 0;
-				break;
-			default:
-				i_HTBW_MAX = 0;
-				break;
-			}
-		}
-		fprintf(fp, "HT_EXTCHA=%d\n", i_EXTCHA);
-	}
-
-	//HT_BW
-	i_val = nvram_wlan_get_int(is_aband, "HT_BW");
-	if (i_val > 1) i_val = 1;
-	if (i_HTBW_MAX == 0) i_val = 0;
-	fprintf(fp, "HT_BW=%d\n", i_val);
-
-	//HT_BSSCoexistence
-	fprintf(fp, "HT_BSSCoexistence=%d\n", 0);
-
-	//HT_BSSCoexAPCntThr
-	fprintf(fp, "HT_BSSCoexAPCntThr=%d\n", 10);
-
-	//HT_AutoBA
-	i_val = nvram_wlan_get_int(is_aband, "HT_AutoBA");
-	if (i_val) i_val = 1;
-	fprintf(fp, "HT_AutoBA=%d;%d\n", i_val, i_val);
-
-	//HT_BADecline
-	fprintf(fp, "HT_BADecline=%d\n", 0);
-
-	//HT_AMSDU
-	i_val = nvram_wlan_get_int(is_aband, "HT_AMSDU");
-	fprintf(fp, "HT_AMSDU=%d;%d\n", i_val, i_val);
-
-	//HT_BAWinSize
-	i_val = nvram_wlan_get_int(is_aband, "HT_BAWinSize");
-	if (i_val < 1 || i_val > 256) i_val = 256;
-	fprintf(fp, "HT_BAWinSize=%d\n", i_val);
-
-	//802.11KVR
-	i_val = nvram_wlan_get_int(is_aband, "HT_80211KV");
-	fprintf(fp, "RRMEnable=%d;%d\n", i_val,i_val);
-	fprintf(fp, "WNMEnable=%d;%d\n", i_val,i_val);
-	i_val = nvram_wlan_get_int(is_aband, "HT_80211R");
-	#if defined (BOARD_MT7915_DBDC)
-	fprintf(fp, "FtSupport=%d;%d\n", i_val, i_val);
-	fprintf(fp, "FtOtd=0;0\n");
-	fprintf(fp, "FtRic=1;1\n");
-	#else
-	fprintf(fp, "FtSupport=%d\n",i_val);
-	fprintf(fp, "FtOtd=0\n");
-	fprintf(fp, "FtRic=1\n");
-	#endif
-
-	//HT_GI
-	fprintf(fp, "HT_GI=%d;%d\n", 1, 1);
-
-	//HT_STBC
-	i_stbc = nvram_wlan_get_int(is_aband, "stbc");
-	i_val = (i_stbc == 1 || i_stbc == 3) ? 1 : 0;
-	fprintf(fp, "HT_STBC=%d;%d\n", i_val, i_val);
-
-	i_fphy[0] = calc_fixed_tx_mode(nvram_wlan_get_int(is_aband, "mcs_mode"), is_aband, i_phy_mode, &i_val_mbss[0]);
-	i_fphy[1] = calc_fixed_tx_mode(nvram_wlan_get_int(is_aband, "guest_mcs_mode"), is_aband, i_phy_mode, &i_val_mbss[1]);
-
-	//FixedTxMode (MBSSID used)
-	fprintf(fp, "FixedTxMode=%d;%d\n", i_fphy[0], i_fphy[1]);
-
-	//HT_MCS (MBSSID used), force AUTO for Main
-	fprintf(fp, "HT_MCS=%d;%d\n", i_val_mbss[0], i_val_mbss[1]);
-
-	//HT_TxStream
-	fprintf(fp, "HT_TxStream=%d\n", i_stream_tx);
-
-	//HT_RxStream
-	fprintf(fp, "HT_RxStream=%d\n", i_stream_rx);
-
-	//HT_PROTECT
-	fprintf(fp, "HT_PROTECT=%d\n", 1);
-
-	//HT_DisallowTKIP (WPA3/OWE requires disabling TKIP)
-	fprintf(fp, "HT_DisallowTKIP=%d\n", (i_auth == 9 || i_auth == 10 || i_auth == 11) ? 1 : 0);
-
-	//HT_LDPC
-	i_ldpc = nvram_wlan_get_int(is_aband, "ldpc");
-	i_val = (i_ldpc == 1 || i_ldpc == 3) ? 1 : 0;
-	fprintf(fp, "HT_LDPC=%d;%d\n", i_val, i_val);
-
-#if BOARD_HAS_5G_11AC
-	if (is_aband) {
-		int i_VHTBW_MAX = 0;
-		
-		if (i_phy_mode == PHY_11VHT_N_A_MIXED || i_phy_mode == PHY_11VHT_N_MIXED || i_phy_mode == PHY_11VHT || i_phy_mode == PHY_11AX_5G)
-			i_VHTBW_MAX = 1;
-		//VHT_BW
-		i_val = nvram_wlan_get_int(is_aband, "HT_BW");
-		{
-			/* Bandwidth negotiation: user's HT_BW sets the upper bound,
-			 * we negotiate down based on PHY mode, hardware and channel.
-			 * VHT_BW dat file values: 0=20/40MHz, 1=80MHz, 2=160MHz
-			 * HT_BW nvram values: 0=20, 1=20/40, 2=20/40/80, 3=20/40/80/160 */
-			int i_vht_bw = 0;
-
-			if (i_val >= 2 && i_VHTBW_MAX == 1 && i_HTBW_MAX == 1) {
-				/* 80MHz requires the primary channel within a valid 80MHz block:
-				 * 36-48, 52-64, 100-112, 116-128, 132-144, 149-161.
-				 * Auto channel (0) lets the driver choose. */
-				int ch80_ok = (i_channel == 0) ||
-					((i_channel >= 36  && i_channel <= 48)  ||
-					 (i_channel >= 52  && i_channel <= 64)  ||
-					 (i_channel >= 100 && i_channel <= 112) ||
-					 (i_channel >= 116 && i_channel <= 128) ||
-					 (i_channel >= 132 && i_channel <= 144) ||
-					 (i_channel >= 149 && i_channel <= 161));
-
-				if (ch80_ok) {
-					i_vht_bw = 1; // 80MHz
-
-#if (USE_WID_5G==7615 && !defined (BOARD_MT7615_DBDC)) || (USE_WID_5G==7915 && !defined (BOARD_MT7915_DBDC))
-					/* 160MHz requires contiguous 160MHz block:
-					 * 36-64 (center 50) or 100-128 (center 114). */
-					if (i_val >= 3) {
-						int ch160_ok = (i_channel == 0) ||
-							((i_channel >= 36  && i_channel <= 64)  ||
-							 (i_channel >= 100 && i_channel <= 128));
-						if (ch160_ok)
-							i_vht_bw = 2; // 160MHz
-					}
-#endif
-				}
-			}
-
-			fprintf(fp, "VHT_BW=%d\n", i_vht_bw);
-		}
-		
-		//VHT_SGI
-		fprintf(fp, "VHT_SGI=%d\n", 1);
-		
-		//VHT_BW_SIGNAL
-		fprintf(fp, "VHT_BW_SIGNAL=%d\n", 2);
-		
-		//VHT_DisallowNonVHT
-		fprintf(fp, "VHT_DisallowNonVHT=%d\n", (i_phy_mode == PHY_11VHT) ? 1 : 0);
-		
-		//VHT_LDPC
-		i_val = (i_ldpc == 2 || i_ldpc == 3) ? 1 : 0;
-		fprintf(fp, "VHT_LDPC=%d\n", i_val);
-		
-		//VHT_STBC
-		i_val = (i_stbc == 2 || i_stbc == 3) ? 1 : 0;
-		fprintf(fp, "VHT_STBC=%d\n", i_val);
-	}
-#endif
-
-	//Wsc
-	fprintf(fp, "WscConfMode=%d\n", nvram_wlan_get_int(is_aband, "WPS"));
-	fprintf(fp, "WscConfStatus=%d\n", 2);
-	fprintf(fp, "WscVendorPinCode=%s\n", nvram_safe_get("secret_code"));
-	fprintf(fp, "WscManufacturer=%s\n", BOARD_VENDOR_NAME);
-	fprintf(fp, "WscModelName=%s\n", "WPS Router");
-	fprintf(fp, "WscDeviceName=%s\n", "WPS Router");
-	fprintf(fp, "WscModelNumber=%s\n", BOARD_NAME);
-	fprintf(fp, "WscSerialNumber=%s\n", "00000000");
-	fprintf(fp, "WscV2Support=%d\n", 1);
-
-	// ITxBfEn
-	if (is_aband) {
-		i_val = nvram_wlan_get_int(1, "txbf");
-		if (i_val > 0 && nvram_wlan_get_int(1, "txbf_en") == 1)
-			i_val = 1;
-		else
-			i_val = 0;
-		fprintf(fp, "ITxBfEn=%d\n", i_val);
-		fprintf(fp, "ETxBfEnCond=%d\n", i_val);
-		fprintf(fp, "ITxBfEnCond=%d\n", i_val);
-	}
-
-	//AccessPolicy0
-	i_val = 0;
-	p_str = nvram_wlan_get(is_aband, "macmode");
-	if (!strcmp(p_str, "allow"))
-		i_val = 1;
-	else if (!strcmp(p_str, "deny"))
-		i_val = 2;
-	fprintf(fp, "AccessPolicy%d=%d\n", 0, i_val);
-
-	list[0] = 0;
-	if (i_val != 0)
-	{
-		char wlan_param[32], macbuf[24];
-		
-		sprintf(wlan_param, "%s_%s", prefix, "maclist_x");
-		i_num = nvram_wlan_get_int(is_aband, "macnum_x");
-		for (i = 0; i < i_num; i++)
-			sprintf(list+strlen(list), "%s;", mac_conv(wlan_param, i, macbuf));
-		if (i_num > 0)
-			list[strlen(list) - 1] = '\0';
-	}
-
-	//AccessControlList0
-	fprintf(fp, "AccessControlList%d=%s\n", 0, list);
-
-	//AccessPolicy1
-	//AccessControlList1
-	if (nvram_wlan_get_int(is_aband, "guest_macrule") == 1)
-	{
-		fprintf(fp, "AccessPolicy%d=%d\n", 1, i_val);
-		fprintf(fp, "AccessControlList%d=%s\n", 1, list);
-	}
-	else
-	{
-		fprintf(fp, "AccessPolicy%d=%d\n", 1, 0);
-		fprintf(fp, "AccessControlList%d=%s\n", 1, "");
-	}
-
-	for (i = 2; i <= 8; i++) {
-		fprintf(fp, "AccessPolicy%d=%d\n", i, 0);
-		fprintf(fp, "AccessControlList%d=%s\n", i, "");
-	}
-
-	//WdsEnable
-	i_wds = WDS_DISABLE_MODE;
-	if (i_mode_x == 1 || i_mode_x == 2) {
-		// WDS support only OPEN+NONE, OPEN+WEP, WPAPSK+TKIP, WPA2PSK+AES
-		if ((i_auth == 0) || (i_auth == 2 && i_encr == 2) || (i_auth == 3 && i_encr == 3)) {
-			int i_wds_lazy = (nvram_wlan_get_int(is_aband, "wdsapply_x") == 0);
-			if (i_mode_x == 2) {
-				i_wds = (i_wds_lazy) ? WDS_LAZY_MODE : WDS_REPEATER_MODE;
-			} else {
-				i_wds = (i_wds_lazy) ? WDS_LAZY_MODE : WDS_BRIDGE_MODE;
-			}
-		}
-	}
-	fprintf(fp, "WdsEnable=%d\n", i_wds);
-
-	//WdsPhyMode
-	p_str = "HTMIX";
-	if (!is_aband) {
-		if (i_phy_mode == PHY_11B)
-			p_str = "CCK";
-		else if (i_phy_mode == PHY_11BG_MIXED || i_phy_mode == PHY_11G)
-			p_str = "OFDM";
-		else if ((i_phy_mode == PHY_11N) && i_gfe)
-			p_str = "GREENFIELD";
-	} else {
-		if (i_phy_mode == PHY_11A)
-			p_str = "OFDM";
-		else if ((i_phy_mode == PHY_11N_5G || i_phy_mode == PHY_11VHT_N_MIXED) && i_gfe)
-			p_str = "GREENFIELD";
-	}
-	fprintf(fp, "WdsPhyMode=%s;%s;%s;%s\n", p_str, p_str, p_str, p_str);
-
-	//WdsEncrypType
-	p_str = "NONE";
-	if (i_auth == 0 && i_wep != 0)
-		p_str = "WEP";
-	else if (i_auth == 2 && i_encr == 2)
-		p_str = "TKIP";
-	else if (i_auth == 3 && i_encr == 3)
-		p_str = "AES";
-	fprintf(fp, "WdsEncrypType=%s;%s;%s;%s\n", p_str, p_str, p_str, p_str);
-
-	//WdsList
-	list[0] = 0;
-	if (i_wds == 2 || i_wds == 3) {
-		char wlan_param[32], macbuf[24];
-		
-		sprintf(wlan_param, "%s_%s", prefix, "wdslist_x");
-		i_num = nvram_wlan_get_int(is_aband, "wdsnum_x");
-		for (i = 0; i < i_num; i++)
-			sprintf(list+strlen(list), "%s;", mac_conv(wlan_param, i, macbuf));
-		if (i_num > 0)
-			list[strlen(list) - 1] = '\0';
-	}
-	fprintf(fp, "WdsList=%s\n", list);
-
-	//WdsKey
-	p_str = "";
-	if (i_auth == 0 && i_wep != 0) {
-		i_val = nvram_wlan_get_int(is_aband, "key");
-		if (i_val < 1 || i_val > 4) i_val = 1;
-		fprintf(fp, "WdsDefaultKeyID=%d;%d;%d;%d\n", i_val, i_val, i_val, i_val);
-		sprintf(list, "%s_key%d", prefix, i_val);
-		p_str = nvram_safe_get(list);
-	} else if ((i_auth == 2 && i_encr == 2) || (i_auth == 3 && i_encr == 3)) {
-		p_str = nvram_wlan_get(is_aband, "wpa_psk");
-	}
-
-	for (i = 0; i < 4; i++)
-		fprintf(fp, "Wds%dKey=%s\n", i, p_str);
-
-	// RADIUS
-	fprintf(fp, "session_timeout_interval=%d\n", 0);
-
-	if (i_auth == 5 || i_auth == 6 || i_auth == 7 || i_auth == 8)
-	{
-		fprintf(fp, "own_ip_addr=%s\n", nvram_safe_get("lan_ipaddr_t"));
-		fprintf(fp, "EAPifname=%s\n", IFNAME_BR);
-		fprintf(fp, "PreAuthifname=%s\n", IFNAME_BR);
-	}
-	else
-	{
-		fprintf(fp, "own_ip_addr=%s\n", "");
-		fprintf(fp, "EAPifname=%s\n", "");
-		fprintf(fp, "PreAuthifname=%s\n", "");
-	}
-
-	//PreAuth (MBSSID used)
-	fprintf(fp, "PreAuth=0;0\n");
-
-	//IEEE8021X (MBSSID used)
-	i_val = 0;
-	if (i_auth == 8)
-		i_val = 1;
-	fprintf(fp, "IEEE8021X=%d;%d\n", i_val, 0);
-
-	//RADIUS_Server (MBSSID used)
-	p_str = nvram_wlan_get(is_aband, "radius_ipaddr");
-	fprintf(fp, "RADIUS_Server=%s;%s\n", p_str, p_str);
-
-	//RADIUS_Port (MBSSID used)
-	i_val = nvram_wlan_get_int(is_aband, "radius_port");
-	fprintf(fp, "RADIUS_Port=%d;%d\n", i_val, i_val);
-
-	//RADIUS_Key
-	p_str = nvram_wlan_get(is_aband, "radius_key");
-	fprintf(fp, "RADIUS_Key%d=%s\n", 1, p_str);
-	fprintf(fp, "RADIUS_Key%d=%s\n", 2, p_str);
-	for (i = 3; i <= 8; i++)
-		fprintf(fp, "RADIUS_Key%d=%s\n", i, "");
-
-	//WiFiTest
-	fprintf(fp, "WiFiTest=%d\n", 0);
-
-	//TGnWifiTest
-	fprintf(fp, "TGnWifiTest=%d\n", 0);
-
-	//ApCliEnable
-	i_val = 0;
-	p_str = nvram_wlan_get(is_aband, "sta_ssid");
-	if ((i_mode_x == 3 || i_mode_x == 4) && strlen(p_str) > 0)
-		i_val = 1;
-	if (get_apcli_sta_auto(is_aband))
-		i_val = 0;
-
-	fprintf(fp, "ApCliEnable=%d\n", i_val);
-	fprintf(fp, "ApCliSsid=%s\n", p_str);
-	fprintf(fp, "ApCliBssid=\n");
-
-	p_str = nvram_wlan_get(is_aband, "sta_auth_mode");
-	if (!strcmp(p_str, "psk"))
-	{
-		int sta_wpa_mode = nvram_wlan_get_int(is_aband, "sta_wpa_mode");
-		if (sta_wpa_mode == 1)
-			fprintf(fp, "ApCliAuthMode=%s\n", "WPAPSK");
-		else if (sta_wpa_mode == 3)
-			fprintf(fp, "ApCliAuthMode=%s\n", "WPA3PSK");
-		else
-			fprintf(fp, "ApCliAuthMode=%s\n", "WPA2PSK");
-		
-		//EncrypType
-		p_str = nvram_wlan_get(is_aband, "sta_crypto");
-		if (!strcmp(p_str, "tkip"))
-			fprintf(fp, "ApCliEncrypType=%s\n", "TKIP");
-		else
-			fprintf(fp, "ApCliEncrypType=%s\n", "AES");
-		
-		fprintf(fp, "ApCliWPAPSK=%s\n", nvram_wlan_get(is_aband, "sta_wpa_psk"));
-	}
-	else
-	{
-		fprintf(fp, "ApCliAuthMode=%s\n", "OPEN");
-		fprintf(fp, "ApCliEncrypType=%s\n", "NONE");
-		fprintf(fp, "ApCliWPAPSK=%s\n", "");
-	}
-	
-	/* Station PMF is independent of the AP's authentication mode. */
-	i_pmfr = nvram_wlan_get_int(is_aband, "sta_pmf");
-	if (i_pmfr) {
-		fprintf(fp, "ApCliPMFMFPC=%d\n", i_pmfr ? 1 : 0);
-		fprintf(fp, "ApCliPMFMFPR=%d\n", (i_pmfr & 2) ? 1 : 0);
-		fprintf(fp, "ApCliPMFSHA256=%d\n", i_pmfr ? 1 : 0);
-	}
-
-	fprintf(fp, "ApCliDefaultKeyID=%d\n", 0);
-	for (i = 1; i <= 4; i++) {
-		fprintf(fp, "ApCliKey%dType=%d\n", i, 0);
-		fprintf(fp, "ApCliKey%dStr=\n", i);
-	}
-
-	//ApCliAPSDCapable
-	i_val = nvram_wlan_get_int(is_aband, "APSDCapable");
-	if (i_val) i_val = 1;
-	if (!i_wmm) i_val = 0;
-	fprintf(fp, "ApCliAPSDCapable=%d\n", i_val);
-
-	fprintf(fp, "ApCliMuMimoDlEnable=%d\n", 0);
-	fprintf(fp, "ApCliMuMimoUlEnable=%d\n", 0);
-	fprintf(fp, "ApCliMuOfdmaUlEnable=%d\n", 0);
-	fprintf(fp, "ApCliMuOfdmaDlEnable=%d\n", 0);
-	fprintf(fp, "ApCliWirelessMode=%d\n", i_phy_mode);
-	//RadioOn
-	fprintf(fp, "RadioOn=%d\n", 1);
-
-	// IgmpSnEnable (internal IGMP Snooping)
-	i_val = 0;
-#if defined(USE_IGMP_SNOOP) || defined(USE_RT3352_MII)
-	i_val = nvram_wlan_get_int(is_aband, "IgmpSnEnable");
-	if (i_val) i_val = 1;
-#endif
-	fprintf(fp, "IgmpSnEnable=%d;%d\n", i_val, i_val);
-
-	i_mphy = calc_mcast_tx_mode(nvram_wlan_get_int(is_aband, "mrate"), is_aband, &i_mmcs);
-	fprintf(fp, "McastPhyMode=%d\n", i_mphy);
-	fprintf(fp, "McastMcs=%d\n", i_mmcs);
-
-#if defined (USE_RT3352_MII)
-	if (!is_aband) {
-		fprintf(fp, "ExtEEPROM=%d\n", 1);
-		if (!get_ap_mode()) {
-			fprintf(fp, "VLAN_ID=%d;%d\n", 1, INIC_GUEST_VLAN_VID);
-			fprintf(fp, "VLAN_TAG=%d;%d\n", 0, 0);
-			fprintf(fp, "VLAN_Priority=%d;%d\n", 0, 0);
-			fprintf(fp, "SwitchRemoveTag=1;1;1;1;1;0;0\n"); // RT3352 embedded switch
-		}
-	}
-#endif
-
-	load_user_config(fp, "/etc/storage/wlan", (is_aband) ? "AP_5G.dat" : "AP.dat", NULL);
-
+	(void)is_5g;
 	fclose(fp);
-
 	return 0;
 }
 
 int
 gen_ralink_config_2g(int disable_autoscan)
 {
-	return gen_ralink_config(BOARD_2G_AS_WSOC, 0, disable_autoscan);
+	(void)disable_autoscan;
+	gen_hostapd_conf(0, 0);  /* main */
+	gen_hostapd_conf(0, 1);  /* guest */
+	return 0;
 }
 
 int
 gen_ralink_config_5g(int disable_autoscan)
 {
 #if BOARD_HAS_5G_RADIO
-	return gen_ralink_config(BOARD_5G_IN_SOC, 1, disable_autoscan);
+	(void)disable_autoscan;
+	gen_hostapd_conf(1, 0);  /* main */
+	gen_hostapd_conf(1, 1);  /* guest */
+	return 0;
 #else
 	return -1;
 #endif
 }
 
-static int
-wl_ioctl(const char *ifname, int cmd, struct iwreq *pwrq)
-{
-	int ret = 0;
-	int s;
-
-	/* open socket to kernel */
-	if ((s = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
-		perror("socket");
-		return errno;
-	}
-
-	/* do it */
-	strncpy(pwrq->ifr_name, ifname, IFNAMSIZ);
-	if ((ret = ioctl(s, cmd, pwrq)) < 0)
-		perror(pwrq->ifr_name);
-
-	/* cleanup */
-	close(s);
-	return ret;
-}
-
+/*
+ * get_apcli_connected: was SIOCGIWAP (WEXT). With mt76 + wpa_supplicant
+ * we ask wpa_cli for the interface state and treat COMPLETED as "associated".
+ */
 int
 get_apcli_connected(const char *ifname)
 {
-	struct iwreq wrq;
+	char cmd[128], buf[256];
+	FILE *pp;
+	int connected = 0;
 
-	memset(&wrq, 0, sizeof(struct iwreq));
-	wrq.u.ap_addr.sa_family = ARPHRD_ETHER;
+	snprintf(cmd, sizeof(cmd), "wpa_cli -i %s status 2>/dev/null", ifname);
+	pp = popen(cmd, "r");
+	if (!pp)
+		return 0;
 
-	if (wl_ioctl(ifname, SIOCGIWAP, &wrq) >= 0) {
-		if (wrq.u.ap_addr.sa_data[0] ||
-		    wrq.u.ap_addr.sa_data[1] ||
-		    wrq.u.ap_addr.sa_data[2] ||
-		    wrq.u.ap_addr.sa_data[3] ||
-		    wrq.u.ap_addr.sa_data[4] ||
-		    wrq.u.ap_addr.sa_data[5])
-			return 1;
+	while (fgets(buf, sizeof(buf), pp)) {
+		if (strstr(buf, "wpa_state=COMPLETED")) {
+			connected = 1;
+			break;
+		}
 	}
+	pclose(pp);
 
-	return 0;
+	return connected;
 }

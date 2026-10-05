@@ -596,6 +596,9 @@ wl_ioctl(const char *ifname, int cmd, struct iwreq *pwrq)
 	int ret = 0;
  	int s;
 
+	if (!ifname || !*ifname)
+		return -1;
+
 	/* open socket to kernel */
 	if ((s = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
 		perror("socket");
@@ -609,6 +612,134 @@ wl_ioctl(const char *ifname, int cmd, struct iwreq *pwrq)
 
 	/* cleanup */
 	close(s);
+	return ret;
+}
+
+/* ==========================================================================
+ * stage2c: mt76 / hostapd data-source helpers.
+ *
+ * The closed-source Ralink SDK private ioctls (RTPRIV_IOCTL_*, RT_PRIV_IOCTL,
+ * SIOCGIWFREQ/SIOCGIWRANGE on ra0/rax0) do not exist on the new mt76/mac80211
+ * stack. These helpers shell out to the standard userspace tools:
+ *   - /bin/iw            (nl80211: dev info / station dump / scan dump)
+ *   - /bin/hostapd_cli   (hostapd control interface)
+ *
+ * The wireless-rc slice provides, via rtutils.h (frozen contract):
+ *   wifi_main_ifname(aband) / wifi_guest_ifname(aband) / wifi_apcli_ifname()
+ *   wifi_phy_name(aband)   aband: 1=5G, 0=2.4G
+ * ========================================================================== */
+
+/* Run a shell command, capture its stdout into out[] (NUL-terminated). */
+static int
+capture_cmd(const char *cmd, char *out, size_t outlen)
+{
+	FILE *fp;
+	size_t n;
+
+	if (!out || outlen == 0)
+		return -1;
+	out[0] = '\0';
+	fp = popen(cmd, "r");
+	if (!fp)
+		return -1;
+	n = fread(out, 1, outlen - 1, fp);
+	out[n] = '\0';
+	pclose(fp);
+	return 0;
+}
+
+/* hostapd_cli -i <ifname> <arg...> ; stdout captured. */
+static int
+run_hostapd_cli(const char *ifname, const char *arg, char *out, size_t outlen)
+{
+	char cmd[320];
+
+	if (!ifname || !*ifname)
+		return -1;
+	snprintf(cmd, sizeof(cmd), "/bin/hostapd_cli -i %s %s 2>/dev/null", ifname, arg);
+	return capture_cmd(cmd, out, outlen);
+}
+
+/* iw dev <ifname> <args...> ; stdout captured. */
+static int
+run_iw_dev(const char *ifname, const char *args, char *out, size_t outlen)
+{
+	char cmd[384];
+
+	if (!ifname || !*ifname)
+		return -1;
+	snprintf(cmd, sizeof(cmd), "/bin/iw dev %s %s 2>/dev/null", ifname, args);
+	return capture_cmd(cmd, out, outlen);
+}
+
+/* Current operating channel of <ifname> parsed from `iw dev <if> info`.
+ * Returns 0 if unknown/radio down. */
+static int
+iw_current_channel(const char *ifname)
+{
+	char out[2048], *p;
+	int ch = 0;
+
+	if (run_iw_dev(ifname, "info", out, sizeof(out)) < 0)
+		return 0;
+	for (p = out; (p = strstr(p, "channel")) != NULL; p += 7) {
+		if (sscanf(p, "channel %d", &ch) == 1 ||
+		    sscanf(p, "channel: %d", &ch) == 1)
+			return ch;
+	}
+	return 0;
+}
+
+/* Is MAC associated on <ifname>? If so and rssi!=NULL, fill signal (dBm). */
+static int
+iw_sta_has_mac(const char *ifname, const unsigned char *mac, int *rssi)
+{
+	char out[8192], macstr[18], *p;
+
+	snprintf(macstr, sizeof(macstr), "%02x:%02x:%02x:%02x:%02x:%02x",
+		mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+	if (run_iw_dev(ifname, "station dump", out, sizeof(out)) < 0)
+		return 0;
+	p = strcasestr(out, macstr);
+	if (!p)
+		return 0;
+	if (rssi) {
+		char *s = strstr(p, "signal:");
+		if (s && (s - p) < 600)
+			sscanf(s, "signal: %d", rssi);
+		else
+			*rssi = 0;
+	}
+	return 1;
+}
+
+/* Print an associated-STA list (MAC + RSSI) for <ifname> via `iw station dump`. */
+static int
+iw_print_sta_list(webs_t wp, const char *ifname, const char *caption)
+{
+	char out[16384], *p;
+	int ret = 0;
+
+	ret += websWrite(wp, "\nAP %s Stations List\n", caption);
+	ret += websWrite(wp, "----------------------------------------\n");
+	ret += websWrite(wp, "%-19s%-6s\n", "MAC", "RSSI");
+
+	if (run_iw_dev(ifname, "station dump", out, sizeof(out)) < 0)
+		return ret;
+
+	for (p = out; (p = strcasestr(p, "Station ")) != NULL; p += 8) {
+		char mac[18] = {0};
+		int sig = 0;
+
+		if (sscanf(p, "Station %17s", mac) != 1)
+			continue;
+		{
+			char *s = strstr(p, "signal:");
+			if (s && (s - p) < 600)
+				sscanf(s, "signal: %d", &sig);
+		}
+		ret += websWrite(wp, "%s  %4d\n", mac, sig);
+	}
 	return ret;
 }
 
@@ -901,66 +1032,31 @@ get_apcli_wds_entry(const char *ifname, RT_802_11_MAC_ENTRY *pme)
 int
 is_mac_in_sta_list(const unsigned char* p_mac)
 {
-	int i;
-	struct iwreq wrq;
-	char mac_table_data[4096];
+	/* stage2c: replaced RTPRIV_IOCTL_GET_MAC_TABLE_STRUCT on ra0/rax0 with
+	 * `iw dev <hostapd-instance> station dump` per band/main/guest.
+	 *
+	 * Return-value contract preserved (device-map / ACL pages depend on it):
+	 *   1 = 2.4G main, 2 = 2.4G guest, 3 = 5G main, 4 = 5G guest, 0 = none.
+	 * Band selection now comes from the frozen wifi_*_ifname(aband) helpers
+	 * (mt76 phyX-apY naming) instead of the ra0/rax0 ApIdx table.
+	 */
+	const char *if_main, *if_guest;
 
 #if BOARD_HAS_5G_RADIO
-	/* query wl for authenticated sta list */
-	memset(mac_table_data, 0, sizeof(mac_table_data));
-	wrq.u.data.pointer = mac_table_data;
-	wrq.u.data.length = sizeof(mac_table_data);
-	wrq.u.data.flags = 0;
-	if (wl_ioctl(IFNAME_5G_MAIN, RTPRIV_IOCTL_GET_MAC_TABLE_STRUCT, &wrq) >= 0) {
-		RT_802_11_MAC_TABLE *mp = (RT_802_11_MAC_TABLE *)wrq.u.data.pointer;
-		for (i = 0; i < mp->Num; i++) {
-			if (memcmp(mp->Entry[i].Addr, p_mac, ETHER_ADDR_LEN) == 0)
-#if defined (BOARD_MT7915_DBDC)
-				return (mp->Entry[i].ApIdx == 2) ? 3 : 4;
-#else
-				return (mp->Entry[i].ApIdx == 0) ? 3 : 4;
-#endif
-		}
-	}
+	if_main = wifi_main_ifname(1);
+	if (if_main && *if_main && iw_sta_has_mac(if_main, p_mac, NULL))
+		return 3;
+	if_guest = wifi_guest_ifname(1);
+	if (if_guest && *if_guest && iw_sta_has_mac(if_guest, p_mac, NULL))
+		return 4;
 #endif
 
-#if defined(USE_RT3352_MII)
-	if (nvram_get_int("inic_disable") == 1)
-		return 0;
-
-	if (nvram_get_int("mlme_radio_rt") == 0)
-		return 0;
-
-	/* query rt for authenticated sta list */
-	memset(mac_table_data, 0, sizeof(mac_table_data));
-	wrq.u.data.pointer = mac_table_data;
-	wrq.u.data.length = sizeof(mac_table_data);
-	wrq.u.data.flags = 0;
-	if (wl_ioctl(IFNAME_2G_MAIN, RTPRIV_IOCTL_GET_MAC_TABLE, &wrq) >= 0) {
-		RT_802_11_MAC_TABLE_INIC *mp = (RT_802_11_MAC_TABLE_INIC *)wrq.u.data.pointer;
-		for (i = 0; i < mp->Num; i++) {
-			if (memcmp(mp->Entry[i].Addr, p_mac, ETHER_ADDR_LEN) == 0)
-				return (mp->Entry[i].ApIdx == 0) ? 1 : 2;
-		}
-	}
-#else
-	/* query rt for authenticated sta list */
-	memset(mac_table_data, 0, sizeof(mac_table_data));
-	wrq.u.data.pointer = mac_table_data;
-	wrq.u.data.length = sizeof(mac_table_data);
-	wrq.u.data.flags = 0;
-	if (wl_ioctl(IFNAME_2G_MAIN, RTPRIV_IOCTL_GET_MAC_TABLE_STRUCT, &wrq) >= 0) {
-		RT_802_11_MAC_TABLE *mp = (RT_802_11_MAC_TABLE *)wrq.u.data.pointer;
-		for (i = 0; i < mp->Num; i++) {
-			if (memcmp(mp->Entry[i].Addr, p_mac, ETHER_ADDR_LEN) == 0)
-#if defined (BOARD_MT7615_DBDC)
-				return (mp->Entry[i].ApIdx == 2) ? 1 : 2;
-#else
-				return (mp->Entry[i].ApIdx == 0) ? 1 : 2;
-#endif
-		}
-	}
-#endif
+	if_main = wifi_main_ifname(0);
+	if (if_main && *if_main && iw_sta_has_mac(if_main, p_mac, NULL))
+		return 1;
+	if_guest = wifi_guest_ifname(0);
+	if (if_guest && *if_guest && iw_sta_has_mac(if_guest, p_mac, NULL))
+		return 2;
 
 	return 0;
 }
@@ -1327,13 +1423,13 @@ print_radio_status(webs_t wp, int is_aband)
 			return ret;
 		}
 		
-		wif_ap[0]  = IFNAME_5G_MAIN;
-		wif_ap[1]  = IFNAME_5G_GUEST;
-		wif_wds[0] = IFNAME_5G_WDS0;
-		wif_wds[1] = IFNAME_5G_WDS1;
-		wif_wds[2] = IFNAME_5G_WDS2;
-		wif_wds[3] = IFNAME_5G_WDS3;
-		wif_apcli  = IFNAME_5G_APCLI;
+		wif_ap[0]  = wifi_main_ifname(1);
+		wif_ap[1]  = wifi_guest_ifname(1);
+		wif_wds[0] = NULL;
+		wif_wds[1] = NULL;
+		wif_wds[2] = NULL;
+		wif_wds[3] = NULL;
+		wif_apcli  = wifi_apcli_ifname(1);
 	} else
 #endif
 	{
@@ -1345,14 +1441,14 @@ print_radio_status(webs_t wp, int is_aband)
 			ret += websWrite(wp, "Radio %s is disabled\n", "2.4GHz");
 			return ret;
 		}
-		
-		wif_ap[0]  = IFNAME_2G_MAIN;
-		wif_ap[1]  = IFNAME_2G_GUEST;
-		wif_wds[0] = IFNAME_2G_WDS0;
-		wif_wds[1] = IFNAME_2G_WDS1;
-		wif_wds[2] = IFNAME_2G_WDS2;
-		wif_wds[3] = IFNAME_2G_WDS3;
-		wif_apcli  = IFNAME_2G_APCLI;
+
+		wif_ap[0]  = wifi_main_ifname(0);
+		wif_ap[1]  = wifi_guest_ifname(0);
+		wif_wds[0] = NULL;
+		wif_wds[1] = NULL;
+		wif_wds[2] = NULL;
+		wif_wds[3] = NULL;
+		wif_apcli  = wifi_apcli_ifname(0);
 	}
 
 	op_mode = nvram_wlan_get_int(is_aband, "mode_x");
@@ -1363,30 +1459,18 @@ print_radio_status(webs_t wp, int is_aband)
 	caption = (op_mode == 1) ? "WDS" : "AP Main";
 
 	if (op_mode != 3) {
-		if (wl_ioctl(wif_ap[0], SIOCGIWAP, &wrq0) < 0) {
+		if (!wif_ap[0] || !*wif_ap[0] || get_interface_hwaddr(wif_ap[0], mac) < 0) {
 			ret += websWrite(wp, "Radio is disabled\n");
 			return ret;
 		}
-		wrq0.u.ap_addr.sa_family = ARPHRD_ETHER;
 		ret += websWrite(wp, "MAC (%s)\t: %02X:%02X:%02X:%02X:%02X:%02X\n", caption,
-			(unsigned char)wrq0.u.ap_addr.sa_data[0],
-			(unsigned char)wrq0.u.ap_addr.sa_data[1],
-			(unsigned char)wrq0.u.ap_addr.sa_data[2],
-			(unsigned char)wrq0.u.ap_addr.sa_data[3],
-			(unsigned char)wrq0.u.ap_addr.sa_data[4],
-			(unsigned char)wrq0.u.ap_addr.sa_data[5]);
+			mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 	}
 
 	if (op_mode != 1 && op_mode != 3 && is_guest_on) {
-		if (wl_ioctl(wif_ap[1], SIOCGIWAP, &wrq0) >= 0) {
-			wrq0.u.ap_addr.sa_family = ARPHRD_ETHER;
+		if (wif_ap[1] && *wif_ap[1] && get_interface_hwaddr(wif_ap[1], mac) == 0) {
 			ret += websWrite(wp, "MAC (%s)\t: %02X:%02X:%02X:%02X:%02X:%02X\n", "AP Guest",
-				(unsigned char)wrq0.u.ap_addr.sa_data[0],
-				(unsigned char)wrq0.u.ap_addr.sa_data[1],
-				(unsigned char)wrq0.u.ap_addr.sa_data[2],
-				(unsigned char)wrq0.u.ap_addr.sa_data[3],
-				(unsigned char)wrq0.u.ap_addr.sa_data[4],
-				(unsigned char)wrq0.u.ap_addr.sa_data[5]);
+				mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 		}
 	}
 
@@ -1397,50 +1481,14 @@ print_radio_status(webs_t wp, int is_aband)
 		}
 	}
 
-	if (wl_ioctl(wif_ap[0], SIOCGIWFREQ, &wrq1) < 0)
-		return ret;
-
-	bzero(buffer, sizeof(buffer));
-	wrq2.u.data.pointer = (caddr_t) buffer;
-	wrq2.u.data.length = sizeof(buffer);
-	wrq2.u.data.flags = 0;
-
-	if (wl_ioctl(wif_ap[0], SIOCGIWRANGE, &wrq2) < 0)
-		return ret;
-
-	if (ralink_get_range_info(&range, buffer, wrq2.u.data.length) < 0)
-		return ret;
+	/* stage2c: channel from `iw dev <if> info` (nl80211). The old
+	 * SIOCGIWFREQ/SIOCGIWRANGE and RT_PRIV_IOCTL PHY_MODE are closed-SDK
+	 * private calls with no mt76/mac80211 equivalent. PhyMode is rendered
+	 * from nvram gmode via calc_phy_mode() (driver no longer reports it). */
+	channel = iw_current_channel(wif_ap[0]);
 
 	wmode = 0;
-	phy_mode = 0;
-
-	bzero(buffer, sizeof(unsigned long));
-	wrq2.u.data.length = sizeof(unsigned long);
-	wrq2.u.data.pointer = (caddr_t) buffer;
-	wrq2.u.data.flags = RT_OID_802_11_PHY_MODE;
-
-	if (wl_ioctl(wif_ap[0], RT_PRIV_IOCTL, &wrq2) < 0) {
-		wrq2.u.data.flags = RT_OID_GET_PHY_MODE;
-		if (wl_ioctl(wif_ap[0], RT_PRIV_IOCTL, &wrq2) < 0) {
-			phy_mode = calc_phy_mode(ht_mode, is_aband);
-		} else {
-			if (wrq2.u.data.length == 1)
-				memcpy(&phy_mode, wrq2.u.data.pointer, wrq2.u.data.length);
-			else
-				phy_mode = wrq2.u.mode;
-		}
-	} else {
-		memcpy(&wmode, wrq2.u.data.pointer, wrq2.u.data.length);
-	}
-
-	freq = iw_freq2float(&(wrq1.u.freq));
-	if (freq < KILO) {
-		channel = (int) freq;
-	} else {
-		channel = iw_freq_to_channel(freq, &range);
-		if (channel < 0)
-			channel = 0;
-	}
+	phy_mode = calc_phy_mode(ht_mode, is_aband);
 
 	caption = "Operation Mode";
 
@@ -1503,12 +1551,11 @@ print_radio_status(webs_t wp, int is_aband)
 	}
 
 	if (op_mode != 1 && op_mode != 3) {
-#if defined(USE_RT3352_MII)
-		if (!is_aband)
-			ret += print_mac_table_inic(wp, wif_ap[0], num_ss_rx, is_guest_on);
-		else
-#endif
-		ret += print_mac_table(wp, wif_ap[0], num_ss_rx, is_guest_on);
+		/* stage2c: associated-STA list from `iw dev <if> station dump`,
+		 * one table per hostapd instance (main + guest). */
+		iw_print_sta_list(wp, wif_ap[0], "Main");
+		if (is_guest_on && wif_ap[1] && *wif_ap[1])
+			iw_print_sta_list(wp, wif_ap[1], "Guest");
 	}
 
 	return ret;
@@ -1528,96 +1575,64 @@ ej_wl_status_2g(int eid, webs_t wp, int argc, char **argv)
 	return print_radio_status(wp, 0);
 }
 
-int 
+/* stage2c: emit `"MAC":rssi` pairs (comma-separated, JS object body) for the
+ * associated STAs on <ifname>, parsed from `iw dev <if> station dump`.
+ * Used by ej_wl_auth_list (ACL / device-map pages). */
+static void
+iw_emit_sta_json(webs_t wp, const char *ifname, int *firstRow, int *ret)
+{
+	char out[16384], *p;
+
+	if (!ifname || !*ifname)
+		return;
+	if (run_iw_dev(ifname, "station dump", out, sizeof(out)) < 0)
+		return;
+
+	for (p = out; (p = strcasestr(p, "Station ")) != NULL; p += 8) {
+		char mac[18] = {0};
+		int sig = 0;
+
+		if (sscanf(p, "Station %17s", mac) != 1)
+			continue;
+		{
+			char *s = strstr(p, "signal:");
+			if (s && (s - p) < 600)
+				sscanf(s, "signal: %d", &sig);
+		}
+		if (*firstRow)
+			*firstRow = 0;
+		else
+			*ret += websWrite(wp, ", ");
+		/* keep MAC in upper-case to match the historical output */
+		{
+			char *q = mac;
+			while (*q) { *q = toupper((unsigned char)*q); q++; }
+		}
+		*ret += websWrite(wp, "\"%s\":%d", mac, sig);
+	}
+}
+
+int
 ej_wl_auth_list(int eid, webs_t wp, int argc, char **argv)
 {
-	struct iwreq wrq;
-	int i, firstRow = 1, ret = 0;
-	char mac_table_data[4096];
-	char mac[18];
-	int num_ss_rx;
+	/* stage2c: replaced RTPRIV_IOCTL_GET_MAC_TABLE_STRUCT on ra0/rax0 with
+	 * `iw dev <hostapd-instance> station dump`. Emits the same JS-object
+	 * body "MAC":rssi, ... consumed by Advanced_ACL / device-map pages
+	 * (var wireless = {<% wl_auth_list(); %>}). */
+	int firstRow = 1, ret = 0;
+	const char *if_main, *if_guest;
 
 #if BOARD_HAS_5G_RADIO
-	/* query wl for authenticated sta list */
-	memset(mac_table_data, 0, sizeof(mac_table_data));
-	wrq.u.data.pointer = mac_table_data;
-	wrq.u.data.length = sizeof(mac_table_data);
-	wrq.u.data.flags = 0;
-	if (wl_ioctl(IFNAME_5G_MAIN, RTPRIV_IOCTL_GET_MAC_TABLE_STRUCT, &wrq) >= 0)
-	{
-		RT_802_11_MAC_TABLE *mp = (RT_802_11_MAC_TABLE *)wrq.u.data.pointer;
-		num_ss_rx = nvram_wlan_get_int(1, "stream_rx");
-		for (i=0; i<mp->Num; i++)
-		{
-			sprintf(mac, "%02X:%02X:%02X:%02X:%02X:%02X",
-				mp->Entry[i].Addr[0], mp->Entry[i].Addr[1],
-				mp->Entry[i].Addr[2], mp->Entry[i].Addr[3],
-				mp->Entry[i].Addr[4], mp->Entry[i].Addr[5]);
-			
-			if (firstRow)
-				firstRow = 0;
-			else
-				ret+=websWrite(wp, ", ");
-			
-			ret+=websWrite(wp, "\"%s\":%d", mac, get_rssi_from_me(&mp->Entry[i], num_ss_rx));
-		}
-	}
+	if_main = wifi_main_ifname(1);
+	if_guest = wifi_guest_ifname(1);
+	iw_emit_sta_json(wp, if_main, &firstRow, &ret);
+	iw_emit_sta_json(wp, if_guest, &firstRow, &ret);
 #endif
 
-	num_ss_rx = nvram_wlan_get_int(0, "stream_rx");
-
-#if defined(USE_RT3352_MII)
-	if (nvram_get_int("inic_disable") == 1)
-		return ret;
-
-	/* query rt for authenticated sta list */
-	memset(mac_table_data, 0, sizeof(mac_table_data));
-	wrq.u.data.pointer = mac_table_data;
-	wrq.u.data.length = sizeof(mac_table_data);
-	wrq.u.data.flags = 0;
-	if (wl_ioctl(IFNAME_2G_MAIN, RTPRIV_IOCTL_GET_MAC_TABLE, &wrq) >= 0)
-	{
-		RT_802_11_MAC_TABLE_INIC *mp = (RT_802_11_MAC_TABLE_INIC *)wrq.u.data.pointer;
-		for (i = 0; i < mp->Num; i++)
-		{
-			sprintf(mac, "%02X:%02X:%02X:%02X:%02X:%02X",
-				mp->Entry[i].Addr[0], mp->Entry[i].Addr[1],
-				mp->Entry[i].Addr[2], mp->Entry[i].Addr[3],
-				mp->Entry[i].Addr[4], mp->Entry[i].Addr[5]);
-			
-			if (firstRow)
-				firstRow = 0;
-			else
-				ret+=websWrite(wp, ", ");
-			
-			ret+=websWrite(wp, "\"%s\":%d", mac, get_rssi_from_me(&mp->Entry[i], num_ss_rx));
-		}
-	}
-#else
-	/* query rt for authenticated sta list */
-	memset(mac_table_data, 0, sizeof(mac_table_data));
-	wrq.u.data.pointer = mac_table_data;
-	wrq.u.data.length = sizeof(mac_table_data);
-	wrq.u.data.flags = 0;
-	if (wl_ioctl(IFNAME_2G_MAIN, RTPRIV_IOCTL_GET_MAC_TABLE_STRUCT, &wrq) >= 0)
-	{
-		RT_802_11_MAC_TABLE *mp = (RT_802_11_MAC_TABLE *)wrq.u.data.pointer;
-		for (i = 0; i < mp->Num; i++)
-		{
-			sprintf(mac, "%02X:%02X:%02X:%02X:%02X:%02X",
-				mp->Entry[i].Addr[0], mp->Entry[i].Addr[1],
-				mp->Entry[i].Addr[2], mp->Entry[i].Addr[3],
-				mp->Entry[i].Addr[4], mp->Entry[i].Addr[5]);
-			
-			if (firstRow)
-				firstRow = 0;
-			else
-				ret+=websWrite(wp, ", ");
-			
-			ret+=websWrite(wp, "\"%s\":%d", mac, get_rssi_from_me(&mp->Entry[i], num_ss_rx));
-		}
-	}
-#endif
+	if_main = wifi_main_ifname(0);
+	if_guest = wifi_guest_ifname(0);
+	iw_emit_sta_json(wp, if_main, &firstRow, &ret);
+	iw_emit_sta_json(wp, if_guest, &firstRow, &ret);
 
 	return ret;
 }
@@ -1626,238 +1641,124 @@ ej_wl_auth_list(int eid, webs_t wp, int argc, char **argv)
 #define SSURV_LINE_LEN		(4+33+20+23+9+12+7+3)		// Channel+SSID+Bssid+Security+Signal+WiressMode+ExtCh+NetworkType
 #define SSURV_LINE_LEN_WPS	(4+33+20+23+9+7+7+3+4+5)	// Channel+SSID+Bssid+Security+Signal+WiressMode+ExtCh+NetworkType+WPS+PIN
 
+/* stage2c: approximate channel number from center frequency (MHz).
+ * Good enough for the WDS/scan-list display; DFS edge cases are approximate. */
+static int
+freq_mhz_to_channel(int freq)
+{
+	if (freq >= 2412 && freq <= 2472)
+		return (freq - 2407) / 5;
+	if (freq == 2484)
+		return 14;
+	if (freq >= 5000)
+		return (freq - 5000) / 5;
+	return 0;
+}
+
+/* stage2c: trigger a scan on the band's main hostapd interface and emit the
+ * result as the JSON array [["ssid","bssid","channel","signal"], ...].
+ * Replaces RTPRIV_IOCTL_SET(SiteSurvey=1) + RTPRIV_IOCTL_GSITESURVEY with
+ * `iw dev <if> scan` (trigger) + `iw dev <if> scan dump` (results). */
+static int
+ej_wl_scan_band(webs_t wp, int aband)
+{
+	const char *ifname = wifi_main_ifname(aband);
+	char out[32768], *p, *end;
+	int retval = 0, apCount = 0;
+	const char *empty = "[\"\", \"\", \"\", \"\"]";
+
+	if (!ifname || !*ifname)
+		return websWrite(wp, "[%s]", empty);
+
+	/* trigger scan (async) then give the driver time to populate results */
+	if (run_iw_dev(ifname, "scan", out, sizeof(out)) < 0) {
+		dbg("trigger scan fails\n");
+		return websWrite(wp, "[%s]", empty);
+	}
+	sleep(3);
+
+	if (run_iw_dev(ifname, "scan dump", out, sizeof(out)) < 0) {
+		dbg("read scan dump fails\n");
+		return websWrite(wp, "[%s]", empty);
+	}
+
+	retval += websWrite(wp, "[");
+
+	/* walk each "BSS <bssid>(on ...)" block */
+	for (p = out; (p = strcasestr(p, "BSS ")) != NULL; ) {
+		char bssid[24] = {0}, ssid[64] = {0};
+		int freq = 0, signal = 0;
+		char *nl;
+
+		p += 4;
+		if (sscanf(p, "%23[^(\n]", bssid) != 1)
+			continue;
+
+		/* block ends at the next "BSS " or EOF */
+		end = strcasestr(p, "BSS ");
+		nl = strchr(p, '\n');
+		/* limit scan window to end of this BSS block (~800 bytes) */
+		{
+			char *w = p, *wlim = p + 1024;
+			char *fq = strstr(w, "freq:");
+			if (fq && fq < wlim) sscanf(fq, "freq: %d", &freq);
+			{
+				char *sg = strstr(w, "signal:");
+				if (sg && sg < wlim) sscanf(sg, "signal: %d", &signal);
+			}
+			{
+				char *ss = strstr(w, "SSID:");
+				if (ss && ss < wlim) {
+					ss += 5;
+					while (*ss == ' ') ss++;
+					{
+						char *e = strchr(ss, '\n');
+						size_t l = e ? (size_t)(e - ss) : strlen(ss);
+						if (l >= sizeof(ssid)) l = sizeof(ssid) - 1;
+						memcpy(ssid, ss, l);
+						ssid[l] = '\0';
+					}
+				}
+			}
+		}
+
+		if (!strlen(ssid))
+			strcpy(ssid, "???");
+
+		if (apCount)
+			retval += websWrite(wp, ", ");
+		retval += websWrite(wp, "[\"%s\", \"%s\", \"%d\", \"%d\"]",
+			ssid, bssid, freq_mhz_to_channel(freq), signal);
+		apCount++;
+
+		if (!end)
+			break;
+		p = end;
+	}
+
+	if (apCount < 1)
+		retval += websWrite(wp, empty);
+
+	retval += websWrite(wp, "]");
+	return retval;
+}
+
 #if BOARD_HAS_5G_RADIO
 int
 ej_wl_scan_5g(int eid, webs_t wp, int argc, char **argv)
 {
-	int retval = 0;
-	int apCount = 0;
-	char data[8192];
-	char ssid_str[128];
-#if defined (USE_WSC_WPS)
-	char site_line[SSURV_LINE_LEN_WPS+1];
-#else
-	char site_line[SSURV_LINE_LEN+1];
-#endif
-	char site_chnl[4];
-	char site_ssid[34];
-	char site_bssid[24];
-	char site_signal[10];
-	struct iwreq wrq;
-	char *sp, *op, *empty;
-	int len, line_len;
-
-	empty = "[\"\", \"\", \"\", \"\"]";
-
-#if defined (BOARD_MT7615_DBDC)
-	memset(data, 0, 32);
-	strcpy(data, "ClearSiteSurvey=1");
-	wrq.u.data.length = strlen(data)+1; 
-	wrq.u.data.pointer = data;
-	wrq.u.data.flags = 0;
-
-	if (wl_ioctl(IFNAME_5G_MAIN, RTPRIV_IOCTL_SET, &wrq) < 0)
-	{
-		dbg("Clean Site Survey fails\n");
-		return websWrite(wp, "[%s]", empty);
-	}
-
-	sleep(1);
-#endif
-
-	memset(data, 0, 32);
-	strcpy(data, "SiteSurvey=1");
-	wrq.u.data.length = strlen(data)+1;
-	wrq.u.data.pointer = data;
-	wrq.u.data.flags = 0;
-
-	if (wl_ioctl(IFNAME_5G_MAIN, RTPRIV_IOCTL_SET, &wrq) < 0)
-	{
-		dbg("Site Survey fails\n");
-		return websWrite(wp, "[%s]", empty);
-	}
-
-	sleep(5);
-
-	memset(data, 0, sizeof(data));
-	wrq.u.data.length = sizeof(data);
-	wrq.u.data.pointer = data;
-	wrq.u.data.flags = 0;
-	if (wl_ioctl(IFNAME_5G_MAIN, RTPRIV_IOCTL_GSITESURVEY, &wrq) < 0)
-	{
-		dbg("errors in getting site survey result\n");
-		return websWrite(wp, "[%s]", empty);
-	}
-
-#if defined (USE_WSC_WPS)
-	line_len = SSURV_LINE_LEN_WPS;
-#else
-	line_len = SSURV_LINE_LEN;
-#endif
-
-	retval += websWrite(wp, "[");
-	if (wrq.u.data.length > 0)
-	{
-		op = sp = wrq.u.data.pointer+line_len+2; // skip \n+\n
-		len = strlen(op);
-
-		while (*sp && ((len - (sp-op)) >= 0))
-		{
-			memcpy(site_line, sp, line_len);
-
-			memcpy(site_chnl, sp, 3);
-			memcpy(site_ssid, sp+4, 33);
-			memcpy(site_bssid, sp+37, 20);
-			memcpy(site_signal, sp+80, 9);
-
-			site_line[line_len] = '\0';
-			site_chnl[3] = '\0';
-			site_ssid[33] = '\0';
-			site_bssid[20] = '\0';
-			site_signal[9] = '\0';
-
-			memset(ssid_str, 0, sizeof(ssid_str));
-			char_to_ascii(ssid_str, trim_r(site_ssid));
-
-			if (!strlen(ssid_str))
-				strcpy(ssid_str, "???");
-
-			if (apCount)
-				retval += websWrite(wp, "%s ", ",");
-
-			retval += websWrite(wp, "[\"%s\", \"%s\", \"%s\", \"%s\"]", ssid_str, trim_r(site_bssid), trim_r(site_chnl), trim_r(site_signal));
-
-//			dbg("%s\n", site_line);
-
-			sp+=line_len+1; // skip \n
-			apCount++;
-		}
-	}
-
-	if (apCount < 1)
-	{
-		retval += websWrite(wp, empty);
-	}
-
-	retval += websWrite(wp, "]");
-
-	return retval;
+	/* stage2c: ej endpoint name preserved (wds_aplist.asp contract);
+	 * data source switched to nl80211 `iw scan` on the 5G main instance. */
+	return ej_wl_scan_band(wp, 1);
 }
 #endif
 
-int 
+int
 ej_wl_scan_2g(int eid, webs_t wp, int argc, char **argv)
 {
-	int retval = 0, apCount = 0;
-	char data[8192];
-	char ssid_str[128];
-#if (defined (USE_WSC_WPS) || defined(USE_RT3352_MII))
-	char site_line[SSURV_LINE_LEN_WPS+1];
-#else
-	char site_line[SSURV_LINE_LEN+1];
-#endif
-	char site_chnl[4];
-	char site_ssid[34];
-	char site_bssid[24];
-	char site_signal[10];
-	struct iwreq wrq;
-	char *sp, *op, *empty;
-	int len, line_len;
-
-	empty = "[\"\", \"\", \"\", \"\"]";
-
-#if defined (BOARD_MT7615_DBDC)
-	memset(data, 0, 32);
-	strcpy(data, "ClearSiteSurvey=1");
-	wrq.u.data.length = strlen(data)+1; 
-	wrq.u.data.pointer = data;
-	wrq.u.data.flags = 0;
-
-	if (wl_ioctl(IFNAME_2G_MAIN, RTPRIV_IOCTL_SET, &wrq) < 0)
-	{
-		dbg("Clean Site Survey fails\n");
-		return websWrite(wp, "[%s]", empty);
-	}
-
-	sleep(1);
-#endif
-
-	memset(data, 0, 32);
-	strcpy(data, "SiteSurvey=1"); 
-	wrq.u.data.length = strlen(data)+1; 
-	wrq.u.data.pointer = data;
-	wrq.u.data.flags = 0;
-
-	if (wl_ioctl(IFNAME_2G_MAIN, RTPRIV_IOCTL_SET, &wrq) < 0)
-	{
-		dbg("Site Survey fails\n");
-		return websWrite(wp, "[%s]", empty);
-	}
-
-	sleep(5);
-
-	memset(data, 0, sizeof(data));
-	wrq.u.data.length = sizeof(data);
-	wrq.u.data.pointer = data;
-	wrq.u.data.flags = 0;
-	if (wl_ioctl(IFNAME_2G_MAIN, RTPRIV_IOCTL_GSITESURVEY, &wrq) < 0)
-	{
-		dbg("errors in getting site survey result\n");
-		return websWrite(wp, "[%s]",empty);
-	}
-
-#if (defined (USE_WSC_WPS) || defined(USE_RT3352_MII))
-	line_len = SSURV_LINE_LEN_WPS;
-#else
-	line_len = SSURV_LINE_LEN;
-#endif
-	retval += websWrite(wp, "[");
-	if (wrq.u.data.length > 0)
-	{
-		op = sp = wrq.u.data.pointer+line_len+2; // skip \n+\n
-		len = strlen(op);
-		
-		while (*sp && ((len - (sp-op)) >= 0))
-		{
-			memcpy(site_line, sp, line_len);
-
-			memcpy(site_chnl, sp, 3);
-			memcpy(site_ssid, sp+4, 33);
-			memcpy(site_bssid, sp+37, 20);
-			memcpy(site_signal, sp+80, 9);
-
-			site_line[line_len] = '\0';
-			site_chnl[3] = '\0';
-			site_ssid[33] = '\0';
-			site_bssid[20] = '\0';
-			site_signal[9] = '\0';
-			
-			memset(ssid_str, 0, sizeof(ssid_str));
-			char_to_ascii(ssid_str, trim_r(site_ssid));
-			
-			if (!strlen(ssid_str))
-				strcpy(ssid_str, "???");
-			
-			if (apCount)
-				retval += websWrite(wp, "%s ", ",");
-			
-			retval += websWrite(wp, "[\"%s\", \"%s\", \"%s\", \"%s\"]", ssid_str, trim_r(site_bssid), trim_r(site_chnl), trim_r(site_signal));
-			
-//			dbg("%s\n", site_line);
-			
-			sp+=line_len+1; // skip \n
-			apCount++;
-		}
-	}
-
-	if (apCount < 1)
-	{
-		retval += websWrite(wp, empty);
-	}
-
-	retval += websWrite(wp, "]");
-
-	return retval;
+	/* stage2c: ej endpoint name preserved (wds_aplist_2g.asp contract);
+	 * data source switched to nl80211 `iw scan` on the 2.4G main instance. */
+	return ej_wl_scan_band(wp, 0);
 }
 
 #if BOARD_HAS_5G_RADIO

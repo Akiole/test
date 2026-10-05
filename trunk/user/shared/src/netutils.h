@@ -24,78 +24,86 @@
 
 #include <ralink_boards.h>
 
+/*
+ * stage2c (mt76+hostapd / DSA) interface naming contract.
+ *
+ * Wired side (DSA / mt7530):
+ *   - CPU bridge            : br0
+ *   - LAN ports             : lan1..lan4  (DSA user ports)
+ *   - WAN port              : wan         (DSA user port)
+ *   - IFNAME_LAN  = "lan1"  (semantic: first LAN port; br0 membership
+ *                            iterates lan_port_names[] instead)
+ *   - IFNAME_MAC  = "br0"   (DSA carries LAN MAC on the bridge)
+ *   - IFNAME_MAC2 = "wan"   (WAN MAC carrier)
+ *
+ * Wireless side (mt76 DBDC, phy0/phy1 detected at runtime):
+ *   The legacy ra0/rax0/ra1/rax1/apcli0/apclix0 names are gone.
+ *   Instance names are produced by helpers in rtutils.c
+ *   (wifi_main_ifname / wifi_guest_ifname / wifi_apcli_ifname /
+ *    wifi_phy_name) which map band (0=2.4G, 1=5G) to the right
+ *    phyX-apY / phyX-staY after runtime phy<->band detection.
+ *
+ *   Function-style macros are used so that call sites in net.c,
+ *   smp.c, net6.c, defaults.c, netutils.c and httpd keep compiling
+ *   unchanged; any site that previously used these names in a
+ *   static initializer must be migrated to runtime lookup (see
+ *   stage2c report "cross-shard TODO list").
+ */
+
 //#define IFUP				(IFF_UP | IFF_RUNNING | IFF_BROADCAST | IFF_MULTICAST)
 #define IFUP				(IFF_UP | IFF_RUNNING)
 #define sin_addr(s)			(((struct sockaddr_in *)(s))->sin_addr)
 
 #define IFNAME_BR			"br0"
 
-#define IFNAME_MAC			"eth2"
-#define IFNAME_MAC2			"eth3"
-#if defined (USE_SINGLE_MAC)
-#define IFNAME_LAN			"eth2.1"
-#define IFNAME_WAN			"eth2.2"
-#else
-#define IFNAME_LAN			IFNAME_MAC
-#define IFNAME_WAN			IFNAME_MAC2
-#endif
+/* --- DSA wired naming (switch contract) --- */
+#define IFNAME_MAC			"br0"
+#define IFNAME_MAC2			"wan"
+#define IFNAME_LAN			"lan1"
+#define IFNAME_WAN			"wan"
+
+/* DSA LAN port set (lan1..lan4). br0 membership iterates this array. */
+#define IFNAME_LAN1			"lan1"
+#define IFNAME_LAN2			"lan2"
+#define IFNAME_LAN3			"lan3"
+#define IFNAME_LAN4			"lan4"
+extern const char *lan_port_names[];
 
 #define BOARD_2G_AS_WSOC		(BOARD_2G_IN_SOC || !BOARD_5G_IN_SOC)
 
-#if BOARD_2G_AS_WSOC
-#if defined (BOARD_MT7615_DBDC) || defined (BOARD_MT7915_DBDC)
-#define IFNAME_2G_MAIN			"rax0"
-#define IFNAME_2G_GUEST			"rax1"
-#define IFNAME_2G_APCLI			"apclix0"
-#else
-#define IFNAME_2G_MAIN			"ra0"
-#define IFNAME_2G_GUEST			"ra1"
-#define IFNAME_2G_APCLI			"apcli0"
-#endif
+/*
+ * Include rtutils.h for the wifi_*_ifname helper declarations.
+ * No circular include: rtutils.h does not include netutils.h.
+ */
+#include <rtutils.h>
+
+/* --- Wireless naming (function-style macros; band: 0=2.4G, 1=5G) --- */
+#define IFNAME_2G_MAIN			wifi_main_ifname(0)
+#define IFNAME_2G_GUEST			wifi_guest_ifname(0)
+#define IFNAME_2G_APCLI			wifi_apcli_ifname(0)
+#define IFNAME_5G_MAIN			wifi_main_ifname(1)
+#define IFNAME_5G_GUEST			wifi_guest_ifname(1)
+#define IFNAME_5G_APCLI			wifi_apcli_ifname(1)
+
+/*
+ * WDS: mt76 supports only single-link 4addr WDS; the legacy wds0..wds3
+ * multi-interface SDK model is degraded (design §6). Names are kept as
+ * static strings so that any lingering call sites still compile; the
+ * WDS start/stop paths in net_wifi.c are no-ops under hostapd.
+ */
 #define IFNAME_2G_WDS0			"wds0"
 #define IFNAME_2G_WDS1			"wds1"
 #define IFNAME_2G_WDS2			"wds2"
 #define IFNAME_2G_WDS3			"wds3"
-#else
-#define IFNAME_2G_MAIN			"rai0"
-#define IFNAME_2G_GUEST			"rai1"
-#define IFNAME_2G_APCLI			"apclii0"
-#define IFNAME_2G_WDS0			"wdsi0"
-#define IFNAME_2G_WDS1			"wdsi1"
-#define IFNAME_2G_WDS2			"wdsi2"
-#define IFNAME_2G_WDS3			"wdsi3"
-#endif
-
-#if BOARD_HAS_5G_RADIO
-#if BOARD_5G_IN_SOC
-#define IFNAME_5G_MAIN			"ra0"
-#define IFNAME_5G_GUEST			"ra1"
-#define IFNAME_5G_APCLI			"apcli0"
 #define IFNAME_5G_WDS0			"wds0"
 #define IFNAME_5G_WDS1			"wds1"
 #define IFNAME_5G_WDS2			"wds2"
 #define IFNAME_5G_WDS3			"wds3"
-#else
-#if defined (BOARD_MT7615_DBDC) || defined (BOARD_MT7915_DBDC)
-#define IFNAME_5G_MAIN			"ra0"
-#define IFNAME_5G_GUEST			"ra1"
-#define IFNAME_5G_APCLI			"apcli0"
-#else
-#define IFNAME_5G_MAIN			"rai0"
-#define IFNAME_5G_GUEST			"rai1"
-#define IFNAME_5G_APCLI			"apclii0"
-#endif
-#define IFNAME_5G_WDS0			"wdsi0"
-#define IFNAME_5G_WDS1			"wdsi1"
-#define IFNAME_5G_WDS2			"wdsi2"
-#define IFNAME_5G_WDS3			"wdsi3"
-#endif
-#endif
 
 #if defined(USE_RT3352_MII)
 #define IFNAME_INIC_MAIN		IFNAME_2G_MAIN
 #define IFNAME_INIC_GUEST		IFNAME_2G_GUEST
-#define IFNAME_INIC_GUEST_VLAN		"eth2.3"
+#define IFNAME_INIC_GUEST_VLAN		"lan1.3"
 #define INIC_GUEST_VLAN_VID		3
 #define MIN_EXT_VLAN_VID		4
 #else

@@ -325,7 +325,7 @@ EOF
 ### Custom user script
 ### Called after internal WAN up/down action
 ### \$1 - WAN action (up/down)
-### \$2 - WAN interface name (e.g. eth3 or ppp0)
+### \$2 - WAN interface name (e.g. wan or ppp0)
 ### \$3 - WAN IPv4 address
 
 ### Solution for UPnP working in case no delicated (no WHITE) external IP adress

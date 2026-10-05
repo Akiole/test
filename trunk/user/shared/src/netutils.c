@@ -46,7 +46,7 @@
 #include "netutils.h"
 #include "shutils.h"
 
-static const struct ifname_desc_t {
+static struct ifname_desc_t {
 	const char *ifname;
 	const char *ifdesc;
 	unsigned char is_dynamic;
@@ -63,17 +63,17 @@ static const struct ifname_desc_t {
 	{ IFNAME_LAN,        IFDESC_LAN,       0, 0, 0, 0 },
 #endif
 #if defined(USE_RT3352_MII)
-	{ IFNAME_2G_MAIN,    IFDESC_WLAN2_MII, 0, 0, 0, 0 },
+	{ NULL,              IFDESC_WLAN2_MII, 0, 0, 0, 0 },  /* IFNAME_2G_MAIN -> runtime */
 #else
-	{ IFNAME_2G_MAIN,    IFDESC_WLAN2_AP0, 0, 0, 0, 0 },
-	{ IFNAME_2G_GUEST,   IFDESC_WLAN2_AP1, 0, 0, 0, 0 },
-	{ IFNAME_2G_APCLI,   IFDESC_WLAN2_APC, 0, 0, 0, 2 },
+	{ NULL,              IFDESC_WLAN2_AP0, 0, 0, 0, 0 },  /* IFNAME_2G_MAIN -> runtime */
+	{ NULL,              IFDESC_WLAN2_AP1, 0, 0, 0, 0 },  /* IFNAME_2G_GUEST -> runtime */
+	{ NULL,              IFDESC_WLAN2_APC, 0, 0, 0, 2 },  /* IFNAME_2G_APCLI -> runtime */
 	{ IFNAME_2G_WDS0,    IFDESC_WLAN2_WDS, 0, 0, 0, 0 },
 #endif
 #if BOARD_HAS_5G_RADIO
-	{ IFNAME_5G_MAIN,    IFDESC_WLAN5_AP0, 0, 0, 0, 0 },
-	{ IFNAME_5G_GUEST,   IFDESC_WLAN5_AP1, 0, 0, 0, 0 },
-	{ IFNAME_5G_APCLI,   IFDESC_WLAN5_APC, 0, 0, 0, 2 },
+	{ NULL,              IFDESC_WLAN5_AP0, 0, 0, 0, 0 },  /* IFNAME_5G_MAIN -> runtime */
+	{ NULL,              IFDESC_WLAN5_AP1, 0, 0, 0, 0 },  /* IFNAME_5G_GUEST -> runtime */
+	{ NULL,              IFDESC_WLAN5_APC, 0, 0, 0, 2 },  /* IFNAME_5G_APCLI -> runtime */
 	{ IFNAME_5G_WDS0,    IFDESC_WLAN5_WDS, 0, 0, 0, 0 },
 #endif
 #if defined(USE_USB_SUPPORT)
@@ -88,10 +88,55 @@ static const struct ifname_desc_t {
 	{ NULL, NULL, 0, 0, 0, 0 }
 };
 
+/*
+ * stage2c: IFNAME_2G_MAIN / IFNAME_2G_GUEST / IFNAME_2G_APCLI /
+ * IFNAME_5G_MAIN / IFNAME_5G_GUEST / IFNAME_5G_APCLI are now function-style
+ * macros (wifi_main_ifname(aband) etc.) resolved at runtime after phy<->band
+ * detection in rtutils.c. C static initializers cannot call functions, so
+ * those rows get a NULL ifname placeholder above and are filled here on first
+ * use. Other rows use plain string-literal macros (compile-time constants)
+ * and need no runtime fill.
+ *
+ * Rows are matched by ifdesc content so the mapping survives #if layout
+ * shifts (USE_SINGLE_MAC / USE_RT3352_MII / USE_USB_SUPPORT).
+ */
+static int ifname_descs_inited = 0;
+
+static void
+init_ifname_descriptors(void)
+{
+	struct ifname_desc_t *ifd;
+
+	for (ifd = &ifname_descs[0]; ifd->ifdesc; ifd++) {
+		if (ifd->ifname != NULL)
+			continue;
+		if (!strcmp(ifd->ifdesc, IFDESC_WLAN2_MII))
+			ifd->ifname = wifi_main_ifname(0);
+		else if (!strcmp(ifd->ifdesc, IFDESC_WLAN2_AP0))
+			ifd->ifname = wifi_main_ifname(0);
+		else if (!strcmp(ifd->ifdesc, IFDESC_WLAN2_AP1))
+			ifd->ifname = wifi_guest_ifname(0);
+		else if (!strcmp(ifd->ifdesc, IFDESC_WLAN2_APC))
+			ifd->ifname = wifi_apcli_ifname(0);
+#if BOARD_HAS_5G_RADIO
+		else if (!strcmp(ifd->ifdesc, IFDESC_WLAN5_AP0))
+			ifd->ifname = wifi_main_ifname(1);
+		else if (!strcmp(ifd->ifdesc, IFDESC_WLAN5_AP1))
+			ifd->ifname = wifi_guest_ifname(1);
+		else if (!strcmp(ifd->ifdesc, IFDESC_WLAN5_APC))
+			ifd->ifname = wifi_apcli_ifname(1);
+#endif
+	}
+	ifname_descs_inited = 1;
+}
+
 const char*
 get_ifname_descriptor(const char* ifname, int ap_mode, int *ifindex, int *wan_no)
 {
 	struct ifname_desc_t *ifd;
+
+	if (!ifname_descs_inited)
+		init_ifname_descriptors();
 
 	for (ifd = (struct ifname_desc_t *)&ifname_descs[0]; ifd->ifname; ifd++) {
 		if (ap_mode && ifd->is_router_mode)

@@ -2373,12 +2373,18 @@ static int
 wps_action_hook(int eid, webs_t wp, int argc, char **argv)
 {
 	int sys_result;
-	sys_result = doSystem("/bin/iwpriv %s set WscMode=2", IFNAME_5G_MAIN);
-	if (sys_result != 0)
-		goto exit;
-	sys_result = doSystem("/bin/iwpriv %s set WscGetConf=1", IFNAME_5G_MAIN);
+	const char *if5 = wifi_main_ifname(1);
 
-exit:
+	/* stage2c: replaced `iwpriv ra0 set WscMode=2; WscGetConf=1` (closed SDK)
+	 * with hostapd WPS-PBC on the 5G main instance. The original action only
+	 * kicked 5G (ra0); preserve that. hostapd_cli wps_pbc opens the 2-minute
+	 * PBC window (README-WPS). */
+	if (!if5 || !*if5) {
+		websWrite(wp, "{\"status\": \"-1\"}");
+		return 0;
+	}
+	sys_result = doSystem("/bin/hostapd_cli -i %s wps_pbc", if5);
+
 	websWrite(wp, "{\"status\": \"%d\"}", sys_result);
 	return 0;
 }
@@ -2386,17 +2392,31 @@ exit:
 static int
 get_wsc_status(const char *ifname)
 {
+	/* stage2c: replaced `iwpriv <if> get_wsc_status` (WSC_Status=) with
+	 * `hostapd_cli -i <if> wps_get_status`. hostapd prints a text state;
+	 * map it onto the historical numeric status the page polls:
+	 *   <=1 = idle/complete, 2 = PBC/PIN in progress. */
 	FILE *fp = NULL;
-	char buf[128];
-	int status = -1;
+	char cmd[320], buf[160];
+	int status = 1; /* default: idle */
 
-	doSystem("/bin/iwpriv %s get_wsc_status > /tmp/wsc_status 2>&1", ifname);
+	if (!ifname || !*ifname)
+		return status;
+
+	snprintf(cmd, sizeof(cmd), "/bin/hostapd_cli -i %s wps_get_status > /tmp/wsc_status 2>&1", ifname);
+	doSystem(cmd);
 	fp = fopen("/tmp/wsc_status", "r");
 	if (fp) {
 		while (fgets(buf, sizeof(buf), fp)) {
-			char *p = strstr(buf, "WSC_Status=");
-			if (p && sscanf(p, "WSC_Status=%d", &status) == 1)
+			if (strstr(buf, "PBC-ACTIVE") || strstr(buf, "PIN-NOT-READY") ||
+			    strstr(buf, "PIN-ACTIVE") || strstr(buf, "PBC-PB-CFG")) {
+				status = 2;
 				break;
+			}
+			if (strstr(buf, "PBC-TIMEOUT") || strstr(buf, "SUCCESS") ||
+			    strstr(buf, "DISABLED") || strstr(buf, "Disabled")) {
+				status = 1;
+			}
 		}
 		fclose(fp);
 	}
@@ -2408,10 +2428,12 @@ wps_status_hook(int eid, webs_t wp, int argc, char **argv)
 {
 	int status;
 
-	/* Check 5G first, then 2.4G; return non-idle status if either is active */
-	status = get_wsc_status(IFNAME_5G_MAIN);
+	/* stage2c: check 5G main first, then 2.4G main; surface an active
+	 * (non-idle) PBC state from either band. Interfaces now come from the
+	 * frozen wifi_main_ifname() helpers instead of ra0/rax0. */
+	status = get_wsc_status(wifi_main_ifname(1));
 	if (status <= 1)
-		status = get_wsc_status(IFNAME_2G_MAIN);
+		status = get_wsc_status(wifi_main_ifname(0));
 	websWrite(wp, "{\"status\": %d}", status);
 	return 0;
 }
@@ -2747,6 +2769,10 @@ ej_firmware_caps_hook(int eid, webs_t wp, int argc, char **argv)
 #else
 	int has_switch_type = 10; // RT3052/RT3352/RT5350 Embedded ESW
 #endif
+#else
+	// 6.x trees have no vendor GSW symbols (CONFIG_RAETH etc.); the MT7621
+	// switch runs as MT7530 DSA, which reports the same MT7621/MT7530 type.
+	int has_switch_type = 5;
 #endif
 	int has_btn_mode = 0;
 #if defined (USE_WID_5G) && (USE_WID_5G==7610 || USE_WID_5G==7612 || USE_WID_5G==7615 || USE_WID_5G==7915)

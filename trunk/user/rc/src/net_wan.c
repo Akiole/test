@@ -491,9 +491,9 @@ config_vinet_wan(void)
 	if (!is_vlan_vid_valid(vlan_vid[1]))
 		vlan_vid[1] = pvid_wan;
 
-	/* update VLAN VID for raeth (HW_VLAN_TX) */
-	hw_vlan_tx_map(6, vlan_vid[0]);
-	hw_vlan_tx_map(7, vlan_vid[1]);
+	/* DSA: raeth private hw_vlan_tx_map() removed (no /proc/mt7620/vlan_tx on
+	 * 6.x).  WAN VLAN tagging is carried by the wan.<vid> 8021q sub-interface
+	 * created below; the CPU-port tagging is handled by the DSA framework. */
 
 	wan_hwaddr = nvram_safe_get("wan_hwaddr");
 

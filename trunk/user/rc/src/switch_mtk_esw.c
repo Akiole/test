@@ -15,638 +15,517 @@
  * MA 02111-1307 USA
  */
 
+/*
+ * stage2c: DSA (mt7530) replacement for the closed-source raeth/mtk_esw
+ * switch control plane.  On linux-6.x there is no /dev/mtk_esw (major 219);
+ * the switch is managed by the mainline DSA driver.  Every phy_* wrapper now
+ * maps to /sys/class/net/<port> attributes or to iproute2 (ip link / bridge
+ * vlan).  The exported signatures are kept identical so the upper layers
+ * (net_lan.c / net_wan.c / detect_link.c / rstats.c) need no signature change.
+ *
+ * DSA netdev mapping (mt7530 on MT7621):
+ *   UAPI 0 -> "wan"  (switch port@0)
+ *   UAPI 1 -> "lan1" (port@1)
+ *   UAPI 2 -> "lan2" (port@2)
+ *   UAPI 3 -> "lan3" (port@3)
+ *   UAPI 4 -> "lan4" (port@4)
+ *   gmac0 -> switch0 port@6 is the only CPU port; the DSA framework
+ *   aggregates its tagged/untagged membership automatically, so user space
+ *   never addresses port@6 directly.
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <string.h>
-#include <sys/stat.h>
-#include <sys/ioctl.h>
-#include <sys/sysmacros.h>
 #include <ctype.h>
 
 #include "rc.h"
 #include "switch.h"
 
 ////////////////////////////////////////////////////////////////////////////////
-// MIB COUNTERS
+// DSA port <-> netdev mapping + small sysfs helpers
 ////////////////////////////////////////////////////////////////////////////////
 
-#if defined (USE_MTK_GSW)
-typedef struct esw_mib_counters_s
+const char *
+dsa_port_netdev(int port_id_uapi)
 {
-	uint64_t TxGoodOctets;
-	uint32_t TxUcastFrames;
-	uint32_t TxMcastFrames;
-	uint32_t TxBcastFrames;
-	uint32_t TxDropFrames;
-	uint32_t TxPauseFrames;
-	uint32_t TxCollisions;
-	uint32_t TxCRCError;
-	uint64_t RxGoodOctets;
-	uint32_t RxUcastFrames;
-	uint32_t RxMcastFrames;
-	uint32_t RxBcastFrames;
-	uint32_t RxDropFrames;
-	uint32_t RxPauseFrames;
-	uint32_t RxFilterFrames;
-	uint32_t RxCRCError;
-	uint32_t RxAligmentError;
-} esw_mib_counters_t;
-#elif defined (CONFIG_RALINK_MT7620)
-typedef struct esw_mib_counters_s
-{
-	uint64_t TxGoodOctets;
-	uint32_t TxGoodFrames;
-	uint32_t TxBadOctets;
-	uint32_t TxBadFrames;
-	uint32_t TxDropFrames;
-	uint64_t RxGoodOctets;
-	uint32_t RxGoodFrames;
-	uint32_t RxBadOctets;
-	uint32_t RxBadFrames;
-	uint32_t RxDropFramesFilter;
-	uint32_t RxDropFramesErr;
-} esw_mib_counters_t;
-#else
-#define ESW_RT3X5X
-typedef struct esw_mib_counters_s
-{
-	uint32_t TxGoodFrames;
-	uint32_t TxBadFrames;
-	uint32_t RxGoodFrames;
-	uint32_t RxBadFrames;
-} esw_mib_counters_t;
-#endif
+	switch (port_id_uapi) {
+	case SWAPI_PORT_WAN:	return "wan";
+	case SWAPI_PORT_LAN1:	return "lan1";
+	case SWAPI_PORT_LAN2:	return "lan2";
+	case SWAPI_PORT_LAN3:	return "lan3";
+	case SWAPI_PORT_LAN4:	return "lan4";
+	default:		return NULL;
+	}
+}
 
-////////////////////////////////////////////////////////////////////////////////
-// IOCTL
-////////////////////////////////////////////////////////////////////////////////
+/* All user DSA ports (order: wan, lan1..lan4). CPU port@6 excluded. */
+static const int dsa_all_ports[] = {
+	SWAPI_PORT_WAN, SWAPI_PORT_LAN1, SWAPI_PORT_LAN2, SWAPI_PORT_LAN3, SWAPI_PORT_LAN4
+};
+#define DSA_ALL_PORTS_NUM  (sizeof(dsa_all_ports)/sizeof(dsa_all_ports[0]))
 
+/* read a single-attribute sysfs file into a long; returns 0 on success */
 static int
-mtk_esw_ioctl(unsigned int cmd, unsigned int par, unsigned int *value)
+dsa_read_sysfs_long(const char *ifname, const char *attr, long *out)
 {
-	int fd, retVal = 0;
+	char path[128];
+	char buf[32];
+	int fd, ret = -1;
+	ssize_t n;
 
-	fd = open(MTK_ESW_DEVPATH, O_RDONLY);
+	snprintf(path, sizeof(path), "/sys/class/net/%s/%s", ifname, attr);
+	fd = open(path, O_RDONLY);
 	if (fd < 0)
-	{
-		perror(MTK_ESW_DEVPATH);
-		return errno;
+		return -1;
+	n = read(fd, buf, sizeof(buf) - 1);
+	if (n > 0) {
+		buf[n] = '\0';
+		*out = strtol(buf, NULL, 10);
+		ret = 0;
 	}
-
-	cmd &= ((1u << MTK_ESW_IOCTL_CMD_LENGTH_BITS) - 1);
-	cmd |= (par << MTK_ESW_IOCTL_CMD_LENGTH_BITS);
-
-	if (ioctl(fd, cmd, value) < 0) {
-		perror("ioctl");
-		retVal = errno;
-	}
-
 	close(fd);
+	return ret;
+}
 
-	return retVal;
+/* read a string sysfs attribute (e.g. operstate/duplex) into buf, trimmed */
+static int
+dsa_read_sysfs_str(const char *ifname, const char *attr, char *buf, size_t len)
+{
+	char path[128];
+	int fd, ret = -1;
+	ssize_t n;
+	size_t i;
+
+	snprintf(path, sizeof(path), "/sys/class/net/%s/%s", ifname, attr);
+	fd = open(path, O_RDONLY);
+	if (fd < 0)
+		return -1;
+	n = read(fd, buf, len - 1);
+	if (n > 0) {
+		buf[n] = '\0';
+		for (i = 0; buf[i] && i < len; i++)
+			if (buf[i] == '\n' || buf[i] == '\r') { buf[i] = '\0'; break; }
+		ret = 0;
+	}
+	close(fd);
+	return ret;
+}
+
+/* physical link state of one DSA port: operstate == "up" -> 1 */
+static int
+dsa_port_link_up(const char *ifname)
+{
+	char state[16];
+
+	if (dsa_read_sysfs_str(ifname, "operstate", state, sizeof(state)) != 0)
+		return 0;
+	return (strcmp(state, "up") == 0) ? 1 : 0;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// ESW STATUS
+// SWITCH STATUS (read-only)
 ////////////////////////////////////////////////////////////////////////////////
 
-int phy_status_port_link(int port_id_uapi, unsigned int *p_link_on)
+int
+phy_status_port_link(int port_id_uapi, unsigned int *p_link_on)
 {
-	return mtk_esw_ioctl(MTK_ESW_IOCTL_STATUS_LINK_PORT, port_id_uapi, p_link_on);
-}
+	const char *ifname = dsa_port_netdev(port_id_uapi);
 
-int phy_status_port_link_wan_all(unsigned int *p_link_on)
-{
-	return mtk_esw_ioctl(MTK_ESW_IOCTL_STATUS_LINK_PORTS_WAN, 0, p_link_on);
-}
-
-int phy_status_port_link_lan_all(unsigned int *p_link_on)
-{
-	return mtk_esw_ioctl(MTK_ESW_IOCTL_STATUS_LINK_PORTS_LAN, 0, p_link_on);
-}
-
-int phy_status_port_link_changed(unsigned int *p_link_changed)
-{
-	return mtk_esw_ioctl(MTK_ESW_IOCTL_STATUS_LINK_CHANGED, 0, p_link_changed);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-int phy_status_port_speed(int port_id_uapi, unsigned int *p_speed_mode)
-{
-	return mtk_esw_ioctl(MTK_ESW_IOCTL_STATUS_SPEED_PORT, port_id_uapi, p_speed_mode);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-int phy_set_link_port(int port_id_uapi, unsigned int link_mode, unsigned int flow_mode)
-{
-	unsigned int port_control = (flow_mode << 8) | link_mode;
-	return mtk_esw_ioctl(MTK_ESW_IOCTL_SPEED_PORT, port_id_uapi, &port_control);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-int phy_status_port_bytes(int port_id_uapi, uint64_t *rx, uint64_t *tx)
-{
-	port_bytes_t pb;
-	int ioctl_result;
-
-	ioctl_result = mtk_esw_ioctl(MTK_ESW_IOCTL_STATUS_BYTES_PORT, port_id_uapi, (unsigned int *)&pb);
-	if (ioctl_result < 0)
-		return ioctl_result;
-
-	*rx = pb.RX;
-	*tx = pb.TX;
-
-	return ioctl_result;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-inline int phy_storm_unicast_unknown(unsigned int storm_rate_mbps)
-{
-	// N.A.
+	if (!ifname)
+		return -EINVAL;
+	*p_link_on = dsa_port_link_up(ifname);
 	return 0;
 }
 
-inline int phy_storm_multicast_unknown(unsigned int storm_rate_mbps)
+int
+phy_status_port_link_wan_all(unsigned int *p_link_on)
 {
-	// N.A.
+	/* single WAN port on this board (port@0 == "wan") */
+	*p_link_on = dsa_port_link_up("wan") ? (1u << SWAPI_PORT_WAN) : 0;
 	return 0;
 }
 
-inline int phy_storm_multicast(unsigned int storm_rate_mbps)
+int
+phy_status_port_link_lan_all(unsigned int *p_link_on)
 {
-	// N.A.
+	unsigned int mask = 0;
+	int i;
+
+	for (i = SWAPI_PORT_LAN1; i <= SWAPI_PORT_LAN4; i++) {
+		const char *ifname = dsa_port_netdev(i);
+		if (ifname && dsa_port_link_up(ifname))
+			mask |= (1u << i);
+	}
+	*p_link_on = mask;
 	return 0;
 }
 
-int phy_storm_broadcast(unsigned int storm_rate_mbps)
+/* Edge detection via polling: DSA has no private "link changed" event.  We
+ * snapshot each port's operstate and report "changed" when any differs from
+ * the previous poll.  detect_link.c calls us on a timer, so this is the
+ * accepted poll fallback (design §1.1). */
+int
+phy_status_port_link_changed(unsigned int *p_link_changed)
 {
-	return mtk_esw_ioctl(MTK_ESW_IOCTL_STORM_BROADCAST, 0, &storm_rate_mbps);
+	static unsigned int last_mask = 0;
+	unsigned int cur_mask = 0;
+	int i;
+
+	for (i = SWAPI_PORT_WAN; i <= SWAPI_PORT_LAN4; i++) {
+		const char *ifname = dsa_port_netdev(i);
+		if (ifname && dsa_port_link_up(ifname))
+			cur_mask |= (1u << i);
+	}
+
+	*p_link_changed = (cur_mask != last_mask) ? 1 : 0;
+	last_mask = cur_mask;
+	return 0;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-int phy_led_mode_green(unsigned int led_green)
+int
+phy_status_port_speed(int port_id_uapi, unsigned int *p_speed_mode)
 {
-	return mtk_esw_ioctl(MTK_ESW_IOCTL_LED_MODE, 0, &led_green);
-}
+	const char *ifname = dsa_port_netdev(port_id_uapi);
+	unsigned int mode = 0;
+	long speed = 0;
+	char duplex[16] = {0};
 
-inline int phy_led_mode_yellow(unsigned int led_yellow)
-{
-	// N.A.
+	if (!ifname)
+		return -EINVAL;
+
+	if (dsa_port_link_up(ifname)) {
+		mode |= (1u << 16);			/* link up */
+		if (dsa_read_sysfs_long(ifname, "speed", &speed) == 0) {
+			if (speed >= 1000)	mode |= 2;	/* 1000M */
+			else if (speed >= 100)	mode |= 1;	/* 100M */
+			else			mode |= 0;	/* 10M */
+		}
+		if (dsa_read_sysfs_str(ifname, "duplex", duplex, sizeof(duplex)) == 0
+		    && strcmp(duplex, "full") == 0) {
+			mode |= (1u << 8);		/* full duplex */
+			mode |= (3u << 9);		/* FC tx/rx (best-effort hint) */
+		}
+	}
+
+	*p_speed_mode = mode;
 	return 0;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-inline int phy_green_ethernet(unsigned int green_ethernet_on)
+int
+phy_set_link_port(int port_id_uapi, unsigned int link_mode, unsigned int flow_mode)
 {
-	// N.A.
+	const char *ifname = dsa_port_netdev(port_id_uapi);
+
+	(void) flow_mode;	/* pause/flow control not reliably mappable; best-effort */
+	if (!ifname)
+		return -EINVAL;
+
+	switch (link_mode) {
+	case SWAPI_LINK_SPEED_MODE_AUTO:
+	case SWAPI_LINK_SPEED_MODE_AUTO_1000_FD:
+	case SWAPI_LINK_SPEED_MODE_AUTO_100_FD:
+	case SWAPI_LINK_SPEED_MODE_AUTO_100_HD:
+	case SWAPI_LINK_SPEED_MODE_AUTO_10_FD:
+	case SWAPI_LINK_SPEED_MODE_AUTO_10_HD:
+		doSystem("ethtool -s %s autoneg on", ifname);
+		break;
+	case SWAPI_LINK_SPEED_MODE_FORCE_POWER_OFF:
+		doSystem("ip link set %s down", ifname);
+		break;
+	case SWAPI_LINK_SPEED_MODE_FORCE_100_FD:
+		doSystem("ethtool -s %s speed 100 duplex full autoneg off", ifname);
+		break;
+	case SWAPI_LINK_SPEED_MODE_FORCE_100_HD:
+		doSystem("ethtool -s %s speed 100 duplex half autoneg off", ifname);
+		break;
+	case SWAPI_LINK_SPEED_MODE_FORCE_10_FD:
+		doSystem("ethtool -s %s speed 10 duplex full autoneg off", ifname);
+		break;
+	case SWAPI_LINK_SPEED_MODE_FORCE_10_HD:
+		doSystem("ethtool -s %s speed 10 duplex half autoneg off", ifname);
+		break;
+	default:
+		break;
+	}
+
 	return 0;
-}
-
-int phy_eee_lpi(unsigned int eee_lpi_on)
-{
-	return 0;
-}
-
-int phy_jumbo_frames(unsigned int jumbo_frames_on)
-{
-	return mtk_esw_ioctl(MTK_ESW_IOCTL_JUMBO_FRAMES, 0, &jumbo_frames_on);
-}
-
-int phy_igmp_static_port(int static_port)
-{
-	unsigned int ports_mask = 0;
-
-	if (static_port >= 0 && static_port <= 5)
-		ports_mask |= (1u << static_port);
-
-	return mtk_esw_ioctl(MTK_ESW_IOCTL_IGMP_STATIC_PORTS, 0, &ports_mask);
-}
-
-int phy_igmp_snooping(unsigned int igmp_snooping_on)
-{
-	return mtk_esw_ioctl(MTK_ESW_IOCTL_IGMP_SNOOPING, 0, &igmp_snooping_on);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-int phy_ports_power(int power_on)
+int
+phy_status_port_bytes(int port_id_uapi, uint64_t *rx, uint64_t *tx)
 {
-	unsigned int ports_mask = (SWAPI_PORTMASK_LAN1 |
-				   SWAPI_PORTMASK_LAN2 |
-				   SWAPI_PORTMASK_LAN3 |
-				   SWAPI_PORTMASK_LAN4 |
-				   SWAPI_PORTMASK_LAN5 |
-				   SWAPI_PORTMASK_WAN);
-	return mtk_esw_ioctl(MTK_ESW_IOCTL_PORTS_POWER, power_on, &ports_mask);
-}
+	const char *ifname = dsa_port_netdev(port_id_uapi);
+	char path[128];
+	char buf[32];
+	int fd;
+	ssize_t n;
 
-int phy_ports_wan_power(int power_on)
-{
-	unsigned int ports_wan = 1;
-	return mtk_esw_ioctl(MTK_ESW_IOCTL_PORTS_WAN_LAN_POWER, power_on, &ports_wan);
-}
+	if (!ifname)
+		return -EINVAL;
 
-int phy_ports_lan_power(int power_on)
-{
-	unsigned int ports_wan = 0;
-	return mtk_esw_ioctl(MTK_ESW_IOCTL_PORTS_WAN_LAN_POWER, power_on, &ports_wan);
+	*rx = 0;
+	*tx = 0;
+
+	snprintf(path, sizeof(path), "/sys/class/net/%s/statistics/rx_bytes", ifname);
+	if ((fd = open(path, O_RDONLY)) >= 0) {
+		n = read(fd, buf, sizeof(buf) - 1);
+		if (n > 0) { buf[n] = '\0'; *rx = strtoull(buf, NULL, 10); }
+		close(fd);
+	}
+
+	snprintf(path, sizeof(path), "/sys/class/net/%s/statistics/tx_bytes", ifname);
+	if ((fd = open(path, O_RDONLY)) >= 0) {
+		n = read(fd, buf, sizeof(buf) - 1);
+		if (n > 0) { buf[n] = '\0'; *tx = strtoull(buf, NULL, 10); }
+		close(fd);
+	}
+
+	return 0;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// User-tunable features
+////////////////////////////////////////////////////////////////////////////////
 
-int phy_bridge_mode(unsigned int bridge_mode, int isolated_mode)
-{
-	return mtk_esw_ioctl(MTK_ESW_IOCTL_BRIDGE_MODE, isolated_mode, &bridge_mode);
-}
+/* Storm rate limiting: no user-space equivalent on mt7530 DSA.  Kept as
+ * no-ops (design §1.5 "保不住"). */
+int phy_storm_unicast_unknown(unsigned int storm_rate_mbps) { (void) storm_rate_mbps; return 0; }
+int phy_storm_multicast_unknown(unsigned int storm_rate_mbps) { (void) storm_rate_mbps; return 0; }
+int phy_storm_multicast(unsigned int storm_rate_mbps) { (void) storm_rate_mbps; return 0; }
+int phy_storm_broadcast(unsigned int storm_rate_mbps) { (void) storm_rate_mbps; return 0; }
 
-inline int phy_isolate_inic(unsigned int inic_isolated)
+/* Ethernet port LEDs: BOARD_NUM_ETH_LEDS=0 on FCJ; kept as no-ops. */
+int phy_led_mode_green(unsigned int led_green)   { (void) led_green; return 0; }
+int phy_led_mode_yellow(unsigned int led_yellow) { (void) led_yellow; return 0; }
+
+int phy_green_ethernet(unsigned int green_ethernet_on) { (void) green_ethernet_on; return 0; }
+int phy_eee_lpi(unsigned int eee_lpi_on) { (void) eee_lpi_on; return 0; }
+
+/* Jumbo frames: bump MTU on every DSA user port (DSA ports follow CPU port). */
+int
+phy_jumbo_frames(unsigned int jumbo_frames_on)
 {
-	// N.A.
+	int mtu = jumbo_frames_on ? 9000 : 1500;
+	size_t i;
+
+	for (i = 0; i < DSA_ALL_PORTS_NUM; i++) {
+		const char *ifname = dsa_port_netdev(dsa_all_ports[i]);
+		if (ifname)
+			doSystem("ip link set %s mtu %d", ifname, mtu);
+	}
 	return 0;
 }
 
-inline int phy_disable_inic(unsigned int inic_disabled)
+/* IGMP static ports: bridge has no direct "static group port"; would need
+ * `bridge mdb add`.  No-op for now (design §1.5 "保不住"). */
+int phy_igmp_static_port(int static_port) { (void) static_port; return 0; }
+
+/* Bridge IGMP snooping is controlled by the bridge itself. */
+int
+phy_igmp_snooping(unsigned int igmp_snooping_on)
 {
-	// N.A.
+	int fd = open("/sys/class/net/br0/bridge/multicast_snooping", O_WRONLY);
+	if (fd >= 0) {
+		dprintf(fd, "%u", igmp_snooping_on ? 1u : 0u);
+		close(fd);
+	}
 	return 0;
 }
 
-int phy_clear_mac_table(void)
+////////////////////////////////////////////////////////////////////////////////
+// Port power (link up/down) -- DSA port "power" == netdev admin state
+////////////////////////////////////////////////////////////////////////////////
+
+int
+phy_ports_power(int power_on)
 {
-	unsigned int unused = 0;
-	return mtk_esw_ioctl(MTK_ESW_IOCTL_MAC_TABLE_CLEAR, 0, &unused);
+	size_t i;
+
+	for (i = 0; i < DSA_ALL_PORTS_NUM; i++) {
+		const char *ifname = dsa_port_netdev(dsa_all_ports[i]);
+		if (ifname)
+			doSystem("ip link set %s %s", ifname, power_on ? "up" : "down");
+	}
+	return 0;
 }
 
-int phy_vlan_reset_table(void)
+int
+phy_ports_wan_power(int power_on)
 {
-	unsigned int unused = 0;
-	return mtk_esw_ioctl(MTK_ESW_IOCTL_VLAN_RESET_TABLE, 0, &unused);
+	doSystem("ip link set %s %s", "wan", power_on ? "up" : "down");
+	return 0;
 }
 
-int phy_vlan_pvid_wan_get(void)
+int
+phy_ports_lan_power(int power_on)
 {
-	unsigned int pvid = 2;
-	mtk_esw_ioctl(MTK_ESW_IOCTL_VLAN_PVID_WAN_GET, 0, &pvid);
-	return (int)pvid;
+	int i;
+
+	for (i = SWAPI_PORT_LAN1; i <= SWAPI_PORT_LAN4; i++) {
+		const char *ifname = dsa_port_netdev(i);
+		if (ifname)
+			doSystem("ip link set %s %s", ifname, power_on ? "up" : "down");
+	}
+	return 0;
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// WAN<->LAN hardware isolation / STB pass-through
+////////////////////////////////////////////////////////////////////////////////
+
+/* wan_stb_x hardware cut-through (port-to-port bypass inside the switch ASIC)
+ * has no DSA user-space equivalent.  A CPU soft bridge (brwan) could approximate
+ * it but that path is gated behind the (unbuilt) USE_GMAC2 branch.  Degraded
+ * to a documented no-op (design §3.3): STB/IPTV single-line reuse falls back to
+ * the IPTV VLAN sub-interface (wan.<vid>) + normal bridging. */
+int
+phy_bridge_mode(unsigned int bridge_mode, int isolated_mode)
+{
+	(void) bridge_mode;
+	(void) isolated_mode;
+	return 0;
+}
+
+int phy_isolate_inic(unsigned int inic_isolated) { (void) inic_isolated; return 0; }
+int phy_disable_inic(unsigned int inic_disabled) { (void) inic_disabled; return 0; }
+
+/* L2 forwarding table is managed by the kernel/DSA; flush not needed. */
+int phy_clear_mac_table(void) { return 0; }
+
+////////////////////////////////////////////////////////////////////////////////
+// VLAN configuration -> `bridge vlan add`
+////////////////////////////////////////////////////////////////////////////////
+
+int phy_vlan_reset_table(void) { return 0; }
+
+/* Historical default WAN PVID; DSA reads it back via `bridge vlan show dev wan`
+ * if needed.  Callers only use this as a fallback VID when nvram is invalid. */
+int phy_vlan_pvid_wan_get(void) { return 2; }
+
+/* Port accept-mode is implicit in bridge vlan pvid/untagged semantics. */
 int phy_vlan_accept_port_mode(int accept_mode, unsigned int port_pask)
 {
-	return mtk_esw_ioctl(MTK_ESW_IOCTL_VLAN_ACCEPT_PORT_MODE, accept_mode, &port_pask);
+	(void) accept_mode;
+	(void) port_pask;
+	return 0;
 }
 
-int phy_vlan_create_port_vid(int pvid, int priority, unsigned int member, unsigned int untag, int fid)
+/* Emit `bridge vlan add vid=<vid> dev <port> [pvid untagged]` for every port
+ * bit set in the member mask (bit0=wan, bit1..4=lan1..4). */
+static int
+dsa_bridge_vlan_add_ports(int vid, unsigned int member, unsigned int untag, int as_pvid)
 {
-	unsigned int vlan4k_info = (((fid & 0xFF) << 16) | ((priority & 0x07) << 12) | (pvid & 0x0FFF));
-	unsigned int vlan4k_mask = (((untag & 0xFFFF) << 16) | (member & 0xFFFF));
+	int i;
 
-	return mtk_esw_ioctl(MTK_ESW_IOCTL_VLAN_CREATE_PORT_VID, vlan4k_info, &vlan4k_mask);
-}
+	if (vid < 2 || vid >= 4095)
+		return 0;
 
-int phy_vlan_create_entry(int vid, unsigned int member, unsigned int untag, int fid)
-{
-	unsigned int vlan4k_info = (((fid & 0xFF) << 16) | (vid & 0x0FFF));
-	unsigned int vlan4k_mask = (((untag & 0xFFFF) << 16) | (member & 0xFFFF));
+	for (i = SWAPI_PORT_WAN; i <= SWAPI_PORT_LAN4; i++) {
+		const char *ifname;
+		int is_member = (member >> i) & 1u;
+		int is_untag = (untag >> i) & 1u;
 
-	return mtk_esw_ioctl(MTK_ESW_IOCTL_VLAN_CREATE_ENTRY, vlan4k_info, &vlan4k_mask);
-}
+		if (!is_member)
+			continue;
 
-int phy_vlan_rule_set(unsigned int rule_id, int vid, int priority, int tagged)
-{
-	unsigned int vlan_rule = (((tagged & 0xFF) << 24) | ((priority & 0xFF) << 16) | (vid & 0xFFFF));
+		ifname = dsa_port_netdev(i);
+		if (!ifname)
+			continue;
 
-	return mtk_esw_ioctl(MTK_ESW_IOCTL_VLAN_RULE_SET, rule_id, &vlan_rule);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// STATUS
-////////////////////////////////////////////////////////////////////////////////
-
-static int show_usage(char *cmd)
-{
-	printf("Usage: %s COMMAND [ARG1] [ARG2]\n"
-	" COMMAND:\n"
-	"   10 [PORT]        Show port link status\n"
-	"   11               Show WAN ports link status\n"
-	"   12               Show LAN ports link status\n"
-	"\n"
-	"   20 [PORT]        Show port speed status\n"
-	"\n"
-	"   30 [PORT]        Show port MIB counters\n"
-	"   38               Reset all ports MIB counters\n"
-	"\n"
-	"   40 [0x25252525]  Full reset and reinit switch\n"
-	"   41 [MASK] [0|1]  Set power off/on for ports mask\n"
-	"   42 [W|L]  [0|1]  Set power off/on for WAN or LAN ports\n"
-	"   43               Clear switch L2 MAC table\n"
-	"\n"
-	"   50 [0..8] [0..3] Config WAN bridge mode and isolation\n"
-#if defined (USE_MTK_GSW)
-	"   55 [MASK] [PORT] Override port matrix mask\n"
-#endif
-	"\n"
-	"   60               Reset VLAN table and init VLAN1\n"
-	"   61               Show untagged WAN PVID\n"
-	"   62 [MASK] [0..2] Set VLAN accept mode for ports mask\n"
-	"   63 [MASK] [DATA] Create port-based VLAN entry\n"
-	"   64 [MASK] [DATA] Create VLAN entry\n"
-	"\n"
-	"   73 [0..1000]     Set Broadcast storm rate limit for all PHY ports\n"
-#if !defined (ESW_RT3X5X)
-	"   75 [1|0]         Set Jumbo Frames accept on/off\n"
-#endif
-	"   77 [1|0]         Set 802.3az EEE on/off\n"
-	"\n"
-	"   78 [1|0]         Set IGMP/MLD snooping on/off\n"
-	"   79 [MASK]        Set IGMP/MLD static ports mask\n"
-	"\n"
-	"   80 [7,11]        Set EPHY LED action\n"
-	"\n"
-	"   90 [MODE] [PORT] Set port link mode (fc|link)\n"
-	, cmd);
-
-	return 1;
-}
-
-static const char *get_port_name(unsigned int port_id)
-{
-	switch (port_id)
-	{
-	case SWAPI_PORT_WAN:
-		return "WAN";
-	case SWAPI_PORT_LAN1:
-		return "LAN1";
-	case SWAPI_PORT_LAN2:
-		return "LAN2";
-	case SWAPI_PORT_LAN3:
-		return "LAN3";
-	case SWAPI_PORT_LAN4:
-		return "LAN4";
-	case SWAPI_PORT_LAN5:
-		return "LAN5";
-	case SWAPI_PORT_CPU_LAN:
-		return "CPU LAN";
-	case SWAPI_PORT_CPU_WAN:
-		return "CPU WAN";
+		if (as_pvid && is_untag)
+			doSystem("bridge vlan add vid=%d dev %s pvid untagged", vid, ifname);
+		else if (is_untag)
+			doSystem("bridge vlan add vid=%d dev %s untagged", vid, ifname);
+		else
+			doSystem("bridge vlan add vid=%d dev %s", vid, ifname);
 	}
 
-	return NULL;
+	return 0;
 }
 
-static int show_status_link(unsigned int cmd, unsigned int port_id)
+int
+phy_vlan_create_port_vid(int pvid, int priority, unsigned int member, unsigned int untag, int fid)
 {
-	int retVal;
-	unsigned int link_value = 0;
-	const char *portname = NULL;
+	(void) priority;
+	(void) fid;
+	return dsa_bridge_vlan_add_ports(pvid, member, untag, 1);
+}
 
-	retVal = mtk_esw_ioctl(cmd, port_id, &link_value);
-	if (retVal != 0)
-		return retVal;
+int
+phy_vlan_create_entry(int vid, unsigned int member, unsigned int untag, int fid)
+{
+	(void) fid;
+	return dsa_bridge_vlan_add_ports(vid, member, untag, 0);
+}
 
-	switch (cmd)
-	{
-	case MTK_ESW_IOCTL_STATUS_LINK_PORT:
-		portname = get_port_name(port_id);
-		break;
-	case MTK_ESW_IOCTL_STATUS_LINK_PORTS_WAN:
-		portname = "WAN ports";
-		break;
-	case MTK_ESW_IOCTL_STATUS_LINK_PORTS_LAN:
-		portname = "LAN ports";
-		break;
+/* switch_config_vlan() issues one call per rule_id (0..5):
+ *   0 = WAN INET, 1 = WAN IPTV, 2..5 = LAN1..LAN4.
+ * WAN-side tagging is realised by the 802.1q sub-interfaces wan.<vid> created
+ * in net_wan.c, so rules 0/1 need no per-port bridge vlan here.  LAN rules
+ * translate to `bridge vlan add vid=<vid> dev lanX [pvid untagged]`. */
+int
+phy_vlan_rule_set(unsigned int rule_id, int vid, int priority, int tagged)
+{
+	const char *ifname = NULL;
+
+	(void) priority;
+
+	if (vid < 2 || vid >= 4095)
+		return 0;
+
+	switch (rule_id) {
+	case SWAPI_VLAN_RULE_WAN_INET:
+	case SWAPI_VLAN_RULE_WAN_IPTV:
+		/* WAN uplink VLAN: handled by wan.<vid> sub-interface (net_wan.c). */
+		return 0;
+	case SWAPI_VLAN_RULE_WAN_LAN1:
+		ifname = "lan1"; break;
+	case SWAPI_VLAN_RULE_WAN_LAN2:
+		ifname = "lan2"; break;
+	case SWAPI_VLAN_RULE_WAN_LAN3:
+		ifname = "lan3"; break;
+	case SWAPI_VLAN_RULE_WAN_LAN4:
+		ifname = "lan4"; break;
+	default:
+		return 0;
 	}
 
-	if (!portname)
-		return -1;
+	if (!ifname)
+		return 0;
 
-	printf("%s link state: %d\n", portname, link_value);
+	if (tagged)
+		doSystem("bridge vlan add vid=%d dev %s", vid, ifname);
+	else
+		doSystem("bridge vlan add vid=%d dev %s pvid untagged", vid, ifname);
 
-	return retVal;
-}
-
-static int show_status_speed(unsigned int port_id)
-{
-	int retVal;
-	unsigned int link_value = 0;
-	const char *portname;
-	char linkstate[32];
-
-	retVal = mtk_esw_ioctl(MTK_ESW_IOCTL_STATUS_SPEED_PORT, port_id, &link_value);
-	if (retVal != 0)
-		return retVal;
-
-	portname = get_port_name(port_id);
-	if (!portname)
-		return -1;
-
-	if ((link_value >> 16) & 0x01) {
-		int lspeed;
-		const char *text_fc = "";
-		const char *text_dup = "HD";
-		const char *text_eee = "";
-		
-		switch (link_value & 0x03)
-		{
-		case 3:
-		case 2:
-			lspeed = 1000;
-			break;
-		case 1:
-			lspeed = 100;
-			break;
-		default:
-			lspeed = 10;
-			break;
-		}
-		
-		if ((link_value >> 8) & 0x01) {
-			unsigned int link_fc = (link_value >> 9) & 0x03;
-			if (link_fc)
-				text_fc = ", FC";
-			text_dup = "FD";
-		}
-		
-		if ((link_value >> 11) & 0x03)
-			text_eee = ", EEE";
-		
-		/* 1000FD, FC, EEE */
-		snprintf(linkstate, sizeof(linkstate), "%d%s%s%s", lspeed, text_dup, text_fc, text_eee);
-	} else
-		strcpy(linkstate, "NO");
-
-	printf("%s link: %s\n", portname, linkstate);
-
-	return retVal;
-}
-
-static int show_mib_counters(unsigned int port_id)
-{
-	int retVal;
-	esw_mib_counters_t mibc;
-	const char *portname;
-
-	memset(&mibc, 0, sizeof(esw_mib_counters_t));
-	retVal = mtk_esw_ioctl(MTK_ESW_IOCTL_STATUS_MIB_PORT, port_id, (unsigned int *)&mibc);
-	if (retVal != 0)
-		return retVal;
-
-	portname = get_port_name(port_id);
-	if (!portname)
-		return -1;
-
-#if defined (USE_MTK_GSW)
-		printf("%s MIB counters:\n"
-			"  TxGoodOctets: %llu\n"
-			"  TxUcastFrames: %u\n"
-			"  TxMcastFrames: %u\n"
-			"  TxBcastFrames: %u\n"
-			"  TxDropFrames: %u\n"
-			"  TxPauseFrames: %u\n"
-			"  TxCollisions: %u\n"
-			"  TxCRCError: %u\n"
-			"  RxGoodOctets: %llu\n"
-			"  RxUcastFrames: %u\n"
-			"  RxMcastFrames: %u\n"
-			"  RxBcastFrames: %u\n"
-			"  RxDropFrames: %u\n"
-			"  RxPauseFrames: %u\n"
-			"  RxFilterFrames: %u\n"
-			"  RxCRCError: %u\n"
-			"  RxAligmentError: %u\n"
-			,
-			portname,
-			mibc.TxGoodOctets,
-			mibc.TxUcastFrames,
-			mibc.TxMcastFrames,
-			mibc.TxBcastFrames,
-			mibc.TxDropFrames,
-			mibc.TxPauseFrames,
-			mibc.TxCollisions,
-			mibc.TxCRCError,
-			mibc.RxGoodOctets,
-			mibc.RxUcastFrames,
-			mibc.RxMcastFrames,
-			mibc.RxBcastFrames,
-			mibc.RxDropFrames,
-			mibc.RxPauseFrames,
-			mibc.RxFilterFrames,
-			mibc.RxCRCError,
-			mibc.RxAligmentError
-			);
-#elif !defined (ESW_RT3X5X)
-		printf("%s MIB counters:\n"
-			"  TxGoodOctets: %llu\n"
-			"  TxGoodFrames: %u\n"
-			"  TxBadOctets: %u\n"
-			"  TxBadFrames: %u\n"
-			"  TxDropFrames: %u\n"
-			"  RxGoodOctets: %llu\n"
-			"  RxGoodFrames: %u\n"
-			"  RxBadOctets: %u\n"
-			"  RxBadFrames: %u\n"
-			"  RxDropFramesFilter: %u\n"
-			"  RxDropFramesErr: %u\n"
-			,
-			portname,
-			mibc.TxGoodOctets,
-			mibc.TxGoodFrames,
-			mibc.TxBadOctets,
-			mibc.TxBadFrames,
-			mibc.TxDropFrames,
-			mibc.RxGoodOctets,
-			mibc.RxGoodFrames,
-			mibc.RxBadOctets,
-			mibc.RxBadFrames,
-			mibc.RxDropFramesFilter,
-			mibc.RxDropFramesErr
-			);
-#else
-		printf("%s MIB counters:\n"
-			"  TxGoodFrames: %u\n"
-			"  TxBadFrames: %u\n"
-			"  RxGoodFrames: %u\n"
-			"  RxBadFrames: %u\n"
-			,
-			portname,
-			mibc.TxGoodFrames,
-			mibc.TxBadFrames,
-			mibc.RxGoodFrames,
-			mibc.RxBadFrames
-			);
-#endif
-
-	return retVal;
-}
-
-static int show_vlan_pvid_wan(void)
-{
-	int retVal;
-	unsigned int arg = 2;
-
-	retVal = mtk_esw_ioctl(MTK_ESW_IOCTL_VLAN_PVID_WAN_GET, 0, &arg);
-	if (retVal != 0)
-		arg = 2;
-
-	printf("%d\n", arg);
-
-	return retVal;
+	return 0;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// MTK_ESW PROCESS
+// /dev/mtk_esw node + CLI: no longer exists on 6.x.  Kept as inert symbols so
+// rc.c (mtk_esw_node() call, "mtk_esw" command table entry) still links.
+// The esw node creation is removed by the wireless/rc shard; these stubs make
+// the deletion safe even before that edit lands.
 ////////////////////////////////////////////////////////////////////////////////
 
-int mtk_esw_node(void)
+int mtk_esw_node(void) { return 0; }
+
+int
+mtk_esw_main(int argc, char **argv)
 {
-	return mknod(MTK_ESW_DEVPATH, S_IFCHR | 0666, makedev(MTK_ESW_DEVMAJOR, 0));
+	(void) argc;
+	(void) argv;
+	/* On linux-6.x the switch is DSA; use `ip -br link`, `bridge vlan show`,
+	 * `ethtool <port>` instead of the legacy mtk_esw ioctl CLI. */
+	return 0;
 }
-
-int mtk_esw_main(int argc, char **argv)
-{
-	unsigned int cmd, par = 0, arg = 0;
-
-	if (argc < 2)
-		return show_usage(argv[0]);
-
-	if (!isdigit(argv[1][0]))
-		return show_usage(argv[0]);
-
-	cmd = atoi(argv[1]);
-
-	if (argc > 2)
-		arg = get_param_int_hex(argv[2]);
-	if (argc > 3)
-		par = get_param_int_hex(argv[3]);
-
-	switch (cmd)
-	{
-	case MTK_ESW_IOCTL_STATUS_BYTES_PORT:
-		return 1;
-	
-	case MTK_ESW_IOCTL_STATUS_LINK_PORT:
-	case MTK_ESW_IOCTL_STATUS_LINK_PORTS_WAN:
-	case MTK_ESW_IOCTL_STATUS_LINK_PORTS_LAN:
-		return show_status_link(cmd, arg);
-	
-	case MTK_ESW_IOCTL_STATUS_SPEED_PORT:
-		return show_status_speed(arg);
-	
-	case MTK_ESW_IOCTL_STATUS_MIB_PORT:
-		return show_mib_counters(arg);
-	
-	case MTK_ESW_IOCTL_VLAN_PVID_WAN_GET:
-		return show_vlan_pvid_wan();
-	}
-
-	return mtk_esw_ioctl(cmd, par, &arg);
-}
-

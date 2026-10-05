@@ -34,9 +34,9 @@ if [ -d /proc/sys/net/ipv6 ] ; then
   echo 16384  > /proc/sys/net/ipv6/route/max_size
 fi
 
-# reverse-path filter
+# reverse-path filter (DSA: LAN face is br0, not eth2)
 echo 1        > /proc/sys/net/ipv4/conf/default/rp_filter
-echo 1        > /proc/sys/net/ipv4/conf/eth2/rp_filter
+echo 1        > /proc/sys/net/ipv4/conf/br0/rp_filter
 
 # conntrack
 echo 0 > /proc/sys/net/netfilter/nf_conntrack_checksum
@@ -59,7 +59,7 @@ echo 600 > /proc/sys/net/netfilter/nf_conntrack_generic_timeout
 set_rps_rfs() {
     [ -f /proc/irq/11/smp_affinity ] && echo f >/proc/irq/11/smp_affinity
     [ -f /proc/irq/12/smp_affinity ] && echo f >/proc/irq/12/smp_affinity
-    for device in eth2 eth3 gre0 gretap0 lo rax0 ra0 sit0; do
+    for device in br0 wan lan1 lan2 lan3 lan4 gre0 gretap0 lo rax0 ra0 sit0; do
         [ -d /sys/class/net/$device/queues/rx-0 ] || continue
         echo f >/sys/class/net/$device/queues/rx-0/rps_cpus
         echo 32768 >/sys/class/net/$device/queues/rx-0/rps_flow_cnt
@@ -69,7 +69,7 @@ set_rps_rfs() {
 get_rps_rfs() {
     [ -f /proc/irq/11/smp_affinity ] && cat /proc/irq/11/smp_affinity
     [ -f /proc/irq/12/smp_affinity ] && cat /proc/irq/12/smp_affinity
-    for device in eth2 eth3 gre0 gretap0 lo rax0 ra0 sit0; do
+    for device in br0 wan lan1 lan2 lan3 lan4 gre0 gretap0 lo rax0 ra0 sit0; do
         [ -d /sys/class/net/$device/queues/rx-0 ] || continue
         printf "%-10s %-5s %-10s\n" "$device" "$(cat /sys/class/net/$device/queues/rx-0/rps_cpus 2>/dev/null)" "$(cat /sys/class/net/$device/queues/rx-0/rps_flow_cnt 2>/dev/null)"
     done

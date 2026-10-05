@@ -15,103 +15,572 @@
  * MA 02111-1307 USA
  */
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdarg.h>
-#include <errno.h>
-#include <syslog.h>
-#include <ctype.h>
-#include <string.h>
-#include <unistd.h>
-#include <sys/types.h>
-#include <net/if.h>
-#include <time.h>
+/*
+ * stage2c: net_wifi.c rewritten to control hostapd (AP) and
+ * wpa_supplicant (STA/apcli) instead of the legacy Ralink SDK
+ * (iwpriv ra0 / ifconfig ra0 / rt2860apd / rtinicapd).
+ *
+ * Entry points are preserved so rc.c call sites do not need changes;
+ * only the internals are swapped.
+ *
+ * Process model:
+ *   hostapd -B -P /var/run/hostapd-<2g|5g>.pid      \
+ *           -i <phyX-ap0> /var/run/hostapd-<2g|5g>-main.conf
+ *   hostapd -B -P /var/run/hostapd-<2g|5g>-guest.pid \
+ *           -i <phyX-ap1> /var/run/hostapd-<2g|5g>-guest.conf
+ *   wpa_supplicant -B -P /var/run/wpa_supplicant-<2g|5g>.pid \
+ *           -i <phyX-sta0> -c /var/run/wpa_supplicant-<band>.conf
+ */
 
+#include <stdio.h>
+#include <string.h>
+#include <stdarg.h>
+#include <stdlib.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <signal.h>
+#include <time.h>
+#include <errno.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <sys/wait.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+
+#include "nvram_linux.h"
+#include "netutils.h"
+#include "rtutils.h"
 #include "rc.h"
-#include "switch.h"
-#include "gpio_pins.h"
-#include <gpioutils.h>
+#include "shutils.h"
+
+/* Read a pidfile; return 0 if the process is alive. */
+static int
+pidfile_alive(const char *path)
+{
+	FILE *fp = fopen(path, "r");
+	int pid;
+	if (!fp)
+		return 0;
+	if (fscanf(fp, "%d", &pid) != 1 || pid <= 0) {
+		fclose(fp);
+		return 0;
+	}
+	fclose(fp);
+	if (kill(pid, 0) == 0)
+		return 1;
+	return 0;
+}
+
+/* Kill a daemon by pidfile. */
+static void
+kill_hostapd_pidfile(const char *path)
+{
+	FILE *fp = fopen(path, "r");
+	int pid;
+	if (!fp)
+		return;
+	if (fscanf(fp, "%d", &pid) == 1 && pid > 0) {
+		kill(pid, SIGTERM);
+		sleep(1);
+		kill(pid, SIGKILL);
+	}
+	fclose(fp);
+	unlink(path);
+}
+
+/* Return 1 if hostapd (main) is running for the given band. */
+static int
+hostapd_main_running(int is_aband)
+{
+	char path[64];
+	snprintf(path, sizeof(path), "/var/run/hostapd-%s.pid",
+		is_aband ? "5g" : "2g");
+	return pidfile_alive(path);
+}
 
 static int
-wif_control(const char *wifname, int is_up)
+hostapd_guest_running(int is_aband)
 {
-	int ret;
-	logmessage(LOGNAME, "%s: ifname: %s, isup: %d", __func__, wifname, is_up);
-	ret = doSystem("ifconfig %s %s 2>/dev/null", wifname, (is_up) ? "up" : "down");
-#if defined (USE_MT7615_AP) || defined (USE_MT7915_AP) || defined (USE_MT76X2_AP)
-	if (is_up && is_module_loaded("hw_nat")) {
-		doSystem("iwpriv %s set hw_nat_register=%d", wifname, 1);
-	}
-#endif
-	return ret;
+	char path[64];
+	snprintf(path, sizeof(path), "/var/run/hostapd-%s-guest.pid",
+		is_aband ? "5g" : "2g");
+	return pidfile_alive(path);
 }
 
-void
-mlme_state_wl(int is_on)
+/* Start hostapd for main BSS of one band. */
+static int
+hostapd_main_start(int is_aband)
 {
-	nvram_set_int("mlme_radio_wl", is_on);
+	const char *ifname = is_aband ? IFNAME_5G_MAIN : IFNAME_2G_MAIN;
+	char pidfile[64], conffile[64], cmd[256];
+
+	if (hostapd_main_running(is_aband))
+		return 0;
+
+	snprintf(pidfile, sizeof(pidfile), "/var/run/hostapd-%s.pid",
+		is_aband ? "5g" : "2g");
+	snprintf(conffile, sizeof(conffile), "/var/run/hostapd-%s-main.conf",
+		is_aband ? "5g" : "2g");
+
+	/* Ensure the interface exists and is up before hostapd binds. */
+	doSystem("ip link set %s up 2>/dev/null", ifname);
+	snprintf(cmd, sizeof(cmd),
+		"hostapd -B -P %s -i %s %s 2>/dev/null",
+		pidfile, ifname, conffile);
+	doSystem("%s", cmd);
+	return 0;
 }
 
-void
-mlme_state_rt(int is_on)
+static int
+hostapd_guest_start(int is_aband)
 {
-	nvram_set_int("mlme_radio_rt", is_on);
+	const char *ifname = is_aband ? IFNAME_5G_GUEST : IFNAME_2G_GUEST;
+	char pidfile[64], conffile[64];
+
+	if (hostapd_guest_running(is_aband))
+		return 0;
+
+	/* guest must be bridged into br0 (or guest bridge) before hostapd. */
+	doSystem("ip link set %s up 2>/dev/null", ifname);
+	br_add_del_if(IFNAME_BR, ifname, 1);
+
+	snprintf(pidfile, sizeof(pidfile), "/var/run/hostapd-%s-guest.pid",
+		is_aband ? "5g" : "2g");
+	snprintf(conffile, sizeof(conffile), "/var/run/hostapd-%s-guest.conf",
+		is_aband ? "5g" : "2g");
+
+	doSystem("hostapd -B -P %s -i %s %s 2>/dev/null",
+		pidfile, ifname, conffile);
+	return 0;
 }
 
-void
-mlme_radio_wl(int is_on)
+static void
+hostapd_main_stop(int is_aband)
 {
-#if BOARD_HAS_5G_RADIO
-	const char *wifname = find_wlan_if_up(1);
+	char path[64];
+	snprintf(path, sizeof(path), "/var/run/hostapd-%s.pid",
+		is_aband ? "5g" : "2g");
+	kill_hostapd_pidfile(path);
+	doSystem("ip link set %s down 2>/dev/null",
+		is_aband ? IFNAME_5G_MAIN : IFNAME_2G_MAIN);
+}
 
-	if (!wifname)
+static void
+hostapd_guest_stop(int is_aband)
+{
+	char path[64];
+	snprintf(path, sizeof(path), "/var/run/hostapd-%s-guest.pid",
+		is_aband ? "5g" : "2g");
+	kill_hostapd_pidfile(path);
+}
+
+/* Render wpa_supplicant-<band>.conf from per-band STA nvram keys (wl_sta_* for 5G, rt_sta_* for 2.4G). */
+static void
+render_wpa_supplicant_conf(int is_aband)
+{
+	const char *prefix = is_aband ? "wl" : "rt";
+	char path[64], buf[128];
+	FILE *fp;
+	char *ssid, *bssid, *auth, *crypt, *key;
+	int wep_idx, hidden;
+
+	snprintf(path, sizeof(path), "/var/run/wpa_supplicant-%s.conf",
+		is_aband ? "5g" : "2g");
+	fp = fopen(path, "w");
+	if (!fp)
 		return;
 
-	doSystem("iwpriv %s set %s=%d", wifname, "RadioOn", (is_on) ? 1 : 0);
-#endif
-	mlme_state_wl(is_on);
+	fprintf(fp, "ctrl_interface=/var/run/wpa_supplicant\n");
+	fprintf(fp, "update_config=1\n\n");
 
-	LED_CONTROL(LED_SW5G, (is_on) ? LED_ON : LED_OFF);
+	ssid   = nvram_wlan_get(is_aband, "ssid_sta");
+	bssid  = nvram_wlan_get(is_aband, "bssid_sta");
+	auth   = nvram_wlan_get(is_aband, "auth_sta");
+	crypt  = nvram_wlan_get(is_aband, "crypto_sta");
+	key    = nvram_wlan_get(is_aband, "wpa_psk_sta");
+	wep_idx= nvram_wlan_get_int(is_aband, "wep_idx_sta");
+	hidden = nvram_wlan_get_int(is_aband, "hidden_sta");
 
+	fprintf(fp, "network={\n");
+	fprintf(fp, "\tssid=\"%s\"\n", ssid ? ssid : "");
+	if (bssid && bssid[0])
+		fprintf(fp, "\tbssid=%s\n", bssid);
+	fprintf(fp, "\tscan_ssid=%d\n", hidden ? 2 : 1);
+
+	if (!auth || !strcmp(auth, "open")) {
+		fprintf(fp, "\tkey_mgmt=NONE\n");
+	} else if (!strcmp(auth, "wep")) {
+		fprintf(fp, "\tkey_mgmt=NONE\n");
+		fprintf(fp, "\twep_tx_keyidx=%d\n", wep_idx);
+		/* wep keys wpa_psk_sta is used as hex/passphrase */
+		if (key && key[0])
+			fprintf(fp, "\twep_key0=\"%s\"\n", key);
+	} else {
+		/* WPA/WPA2 PSK */
+		fprintf(fp, "\tkey_mgmt=WPA-PSK\n");
+		if (!crypt || !strcmp(crypt, "aes"))
+			fprintf(fp, "\tpairwise=CCMP\n");
+		else if (!strcmp(crypt, "tkip"))
+			fprintf(fp, "\tpairwise=TKIP\n");
+		else
+			fprintf(fp, "\tpairwise=CCMP TKIP\n");
+		if (key && key[0])
+			fprintf(fp, "\tpsk=\"%s\"\n", key);
+	}
+	fprintf(fp, "}\n");
+	fclose(fp);
+	(void)prefix; (void)buf;
+}
+
+static int
+wpa_supplicant_running(int is_aband)
+{
+	char path[64];
+	snprintf(path, sizeof(path), "/var/run/wpa_supplicant-%s.pid",
+		is_aband ? "5g" : "2g");
+	return pidfile_alive(path);
+}
+
+static void
+wpa_supplicant_start(int is_aband)
+{
+	const char *ifname = is_aband ? IFNAME_5G_APCLI : IFNAME_2G_APCLI;
+	char pidfile[64], conffile[64];
+
+	if (wpa_supplicant_running(is_aband))
+		return;
+
+	render_wpa_supplicant_conf(is_aband);
+
+	doSystem("ip link set %s up 2>/dev/null", ifname);
+	snprintf(pidfile, sizeof(pidfile), "/var/run/wpa_supplicant-%s.pid",
+		is_aband ? "5g" : "2g");
+	snprintf(conffile, sizeof(conffile), "/var/run/wpa_supplicant-%s.conf",
+		is_aband ? "5g" : "2g");
+
+	doSystem("wpa_supplicant -B -P %s -i %s -c %s 2>/dev/null",
+		pidfile, ifname, conffile);
+}
+
+static void
+wpa_supplicant_stop(int is_aband)
+{
+	char path[64];
+	snprintf(path, sizeof(path), "/var/run/wpa_supplicant-%s.pid",
+		is_aband ? "5g" : "2g");
+	kill_hostapd_pidfile(path);
+}
+
+/*
+ * Wrapper for is_aband. wl = 2.4G (is_aband=0), rt = 5G (is_aband=1).
+ */
+
+static int nvram_bool(const char *k)
+{
+	char *v = nvram_safe_get(k);
+	return (v && (v[0] == '1' || !strcasecmp(v, "yes") || !strcasecmp(v, "on")));
 }
 
 void
-mlme_radio_rt(int is_on)
+start_wifi_ap_wl(int radio_on)
 {
-	const char *wifname = find_wlan_if_up(0);
-
-	if (!wifname)
+	if (!radio_on)
 		return;
+	if (!nvram_bool("rt_enable"))
+		return;
+	gen_ralink_config_2g(0);
+	hostapd_main_start(0);
+	if (nvram_bool("rt_gfn"))
+		hostapd_guest_start(0);
+}
 
-	doSystem("iwpriv %s set %s=%d", wifname, "RadioOn", (is_on) ? 1 : 0);
+void
+start_wifi_ap_rt(int radio_on)
+{
+	if (!radio_on)
+		return;
+	if (!nvram_bool("wl_enable"))
+		return;
+	gen_ralink_config_5g(0);
+	hostapd_main_start(1);
+	if (nvram_bool("wl_gfn"))
+		hostapd_guest_start(1);
+}
 
-	mlme_state_rt(is_on);
+void
+stop_wifi_all_wl(void)
+{
+	hostapd_guest_stop(0);
+	hostapd_main_stop(0);
+	wpa_supplicant_stop(0);
+}
 
-	LED_CONTROL(LED_SW2G, (is_on) ? LED_ON : LED_OFF);
-
-#if defined(USE_RT3352_MII)
-	if (is_on) {
-		int i_val = nvram_wlan_get_int(0, "TxPower");
-		doSystem("iwpriv %s set %s=%d", wifname, "TxPower", i_val);
-	}
-
-	// isolation iNIC port from all LAN ports
-	phy_isolate_inic((is_on) ? 0 : 1);
-#endif
+void
+stop_wifi_all_rt(void)
+{
+	hostapd_guest_stop(1);
+	hostapd_main_stop(1);
+	wpa_supplicant_stop(1);
 }
 
 int
-get_mlme_radio_wl(void)
+is_radio_on_wl(void)
 {
-	return nvram_get_int("mlme_radio_wl");
+	return hostapd_main_running(0);
 }
 
 int
-get_mlme_radio_rt(void)
+is_radio_on_rt(void)
 {
-	return nvram_get_int("mlme_radio_rt");
+	return hostapd_main_running(1);
 }
 
+int
+is_radio_allowed_wl(void)
+{
+	return nvram_bool("rt_enable");
+}
+
+int
+is_radio_allowed_rt(void)
+{
+	return nvram_bool("wl_enable");
+}
+
+int
+control_radio_wl(int radio_on, int manual)
+{
+	(void)manual;
+	if (radio_on)
+		start_wifi_ap_wl(1);
+	else
+		stop_wifi_all_wl();
+	return radio_on;
+}
+
+int
+control_radio_rt(int radio_on, int manual)
+{
+	(void)manual;
+	if (radio_on)
+		start_wifi_ap_rt(1);
+	else
+		stop_wifi_all_rt();
+	return radio_on;
+}
+
+int
+control_guest_wl(int guest_on, int manual)
+{
+	(void)manual;
+	if (guest_on)
+		hostapd_guest_start(0);
+	else
+		hostapd_guest_stop(0);
+	return guest_on;
+}
+
+int
+control_guest_rt(int guest_on, int manual)
+{
+	(void)manual;
+	if (guest_on)
+		hostapd_guest_start(1);
+	else
+		hostapd_guest_stop(1);
+	return guest_on;
+}
+
+void
+restart_wifi_wl(int radio_on, int need_reload_conf)
+{
+	(void)need_reload_conf;
+	stop_wifi_all_wl();
+	start_wifi_ap_wl(radio_on);
+}
+
+void
+restart_wifi_rt(int radio_on, int need_reload_conf)
+{
+	(void)need_reload_conf;
+	stop_wifi_all_rt();
+	start_wifi_ap_rt(radio_on);
+}
+
+void
+control_wifi_config(void)
+{
+	int wl = nvram_bool("rt_enable");
+	int rt = nvram_bool("wl_enable");
+
+	if (wl) restart_wifi_wl(1, 1);
+	if (rt) restart_wifi_rt(1, 1);
+}
+
+/* WDS: degraded under mt76 (design §6: only single-link 4addr WDS;
+ * the legacy 4-interface WDS0..3 model is not supported). Entry points
+ * are kept as no-ops so rc.c still links. */
+void
+start_wifi_wds_wl(int radio_on)
+{
+	(void)radio_on;
+}
+
+void
+start_wifi_wds_rt(int radio_on)
+{
+	(void)radio_on;
+}
+
+/* apcli / STA mode */
+void
+start_wifi_apcli_wl(int radio_on)
+{
+	(void)radio_on;
+	if (!nvram_bool("rt_sta_enable"))
+		return;
+	wpa_supplicant_start(0);
+}
+
+void
+start_wifi_apcli_rt(int radio_on)
+{
+	(void)radio_on;
+	if (!nvram_bool("wl_sta_enable"))
+		return;
+	wpa_supplicant_start(1);
+}
+
+void
+reconnect_apcli(const char *ifname_apcli, int force)
+{
+	/* Force reassociation by sending reconfigure to wpa_supplicant. */
+	doSystem("wpa_cli -i %s reconfigure 2>/dev/null", ifname_apcli);
+	(void)force;
+}
+
+/* 802.1X is now rendered into hostapd.conf by gen_hostapd_conf
+ * (radius_ipaddr / radius_port / radius_key nvram keys). These
+ * entry points are kept as no-ops. */
+void
+start_8021x_wl(void)
+{
+}
+
+void
+start_8021x_rt(void)
+{
+}
+
+/* VGA clamp was a closed-SDK power control; deleted per design §6. */
+void
+update_vga_clamp_wl(int first_call)
+{
+	(void)first_call;
+}
+
+void
+update_vga_clamp_rt(int first_call)
+{
+	(void)first_call;
+}
+
+/* Manual radio toggle (WPS button / hardware switch) */
+int
+manual_toggle_radio_wl(int radio_on)
+{
+	return control_radio_wl(radio_on, 1);
+}
+
+int
+manual_toggle_radio_rt(int radio_on)
+{
+	return control_radio_rt(radio_on, 1);
+}
+
+int
+manual_change_radio_wl(int radio_on)
+{
+	nvram_set_int("rt_enable", radio_on);
+	return control_radio_wl(radio_on, 1);
+}
+
+int
+manual_change_radio_rt(int radio_on)
+{
+	nvram_set_int("wl_enable", radio_on);
+	return control_radio_rt(radio_on, 1);
+}
+
+int
+manual_change_guest_wl(int guest_on)
+{
+	nvram_set_int("rt_gfn", guest_on);
+	return control_guest_wl(guest_on, 1);
+}
+
+int
+manual_change_guest_rt(int guest_on)
+{
+	nvram_set_int("wl_gfn", guest_on);
+	return control_guest_wl(guest_on, 1);
+}
+
+/*
+ * timecheck_wifi: schedule-based radio on/off. We evaluate the nvram
+ * time window and call control_radio_* accordingly. Returns the desired
+ * state (1=on, 0=off).
+ */
+int
+timecheck_wifi(int is_aband, const char *nv_date, const char *nv_time1, const char *nv_time2)
+{
+	time_t t = time(NULL);
+	struct tm *tm = localtime(&t);
+	char date_str[16], time_str[16], *v;
+	int desired = 1;
+
+	snprintf(date_str, sizeof(date_str), "%04d-%02d-%02d",
+		tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday);
+	snprintf(time_str, sizeof(time_str), "%02d:%02d",
+		tm->tm_hour, tm->tm_min);
+
+	v = nvram_safe_get(nv_date);
+	if (v && v[0] && strstr(v, date_str) == NULL)
+		desired = 1;
+	else if (nv_time1 && nv_time1[0] && nv_time2 && nv_time2[0]) {
+		char *t1 = nvram_safe_get(nv_time1);
+		char *t2 = nvram_safe_get(nv_time2);
+		if (t1 && t2 && t1[0] && t2[0]) {
+			if (strcmp(time_str, t1) < 0 || strcmp(time_str, t2) > 0)
+				desired = 0;
+		}
+	}
+
+	if (is_aband)
+		control_radio_rt(desired, 0);
+	else
+		control_radio_wl(desired, 0);
+
+	return desired;
+}
+
+/*
+ * ------------------------------------------------------------------
+ * stage2c: legacy-symbol thin wrappers.
+ *
+ * These symbols were originally defined in net_wifi.c (and used by
+ * rc.c / watchdog.c / services.c / net_lan.c / rc.h). They were lost
+ * during the hostapd rewrite; we re-export them here as thin wrappers
+ * so existing call sites (and rc.h prototypes) keep linking. Semantics
+ * are preserved against the new hostapd state machine.
+ * ------------------------------------------------------------------
+ */
+
+/* nvram radio/guest mode + enable getters.
+ * Convention preserved: wl = 5G band (is_aband=1), rt = 2.4G band
+ * (is_aband=0). This matches the old nvram_wlan_get_int(is_aband,...)
+ * argument order in the pre-stage2c file. */
 int
 get_enabled_radio_wl(void)
 {
@@ -163,773 +632,54 @@ is_apcli_wisp_rt(void)
 int
 get_apcli_sta_auto(int is_aband)
 {
-	int i_sta_auto = 0;
-
-#if defined(USE_RT3352_MII)
-	// iNIC not support ApCliAutoConnect
-	if (is_aband)
-#endif
-		i_sta_auto = nvram_wlan_get_int(is_aband, "sta_auto");
-
-	return i_sta_auto;
+	return nvram_wlan_get_int(is_aband, "sta_auto");
 }
 
+/*
+ * get_apcli_wisp_ifname: return the apcli/sta interface name that is
+ * currently acting as a WAN-side WISP uplink, or NULL. Preserves the
+ * old logic (mode 3/4 + sta_wisp=1 + sta_ssid non-empty) but uses the
+ * new helper-provided interface names.
+ */
 char *
 get_apcli_wisp_ifname(void)
 {
 	int i_mode_x;
 
-#if !defined(USE_RT3352_MII)
 	i_mode_x = get_mode_radio_rt();
-	if (get_enabled_radio_rt() && (i_mode_x == 3 || i_mode_x == 4) && is_apcli_wisp_rt() &&
-	   (strlen(nvram_wlan_get(0, "sta_ssid")) > 0))
-		return IFNAME_2G_APCLI;
-#endif
+	if (get_enabled_radio_rt() && (i_mode_x == 3 || i_mode_x == 4) &&
+	    is_apcli_wisp_rt() &&
+	    (strlen(nvram_wlan_get(0, "sta_ssid")) > 0))
+		return (char *)IFNAME_2G_APCLI;
+
 #if BOARD_HAS_5G_RADIO
 	i_mode_x = get_mode_radio_wl();
-	if (get_enabled_radio_wl() && (i_mode_x == 3 || i_mode_x == 4) && is_apcli_wisp_wl() &&
-	   (strlen(nvram_wlan_get(1, "sta_ssid")) > 0))
-		return IFNAME_5G_APCLI;
+	if (get_enabled_radio_wl() && (i_mode_x == 3 || i_mode_x == 4) &&
+	    is_apcli_wisp_wl() &&
+	    (strlen(nvram_wlan_get(1, "sta_ssid")) > 0))
+		return (char *)IFNAME_5G_APCLI;
 #endif
 	return NULL;
 }
 
-static void
-check_apcli_wan(int is_5g, int radio_on)
-{
-	int man_id, wisp_id;
-	char *man_ifname, *wisp_ifname;
-
-	if (get_ap_mode())
-		return;
-
-	is_5g &= 1;
-
-	man_id = -1;
-	man_ifname = get_man_ifname(0);
-	if (strcmp(man_ifname, IFNAME_2G_APCLI) == 0)
-		man_id = 0;
-#if BOARD_HAS_5G_RADIO
-	else if (strcmp(man_ifname, IFNAME_5G_APCLI) == 0)
-		man_id = 1;
-#endif
-
-	wisp_id = -1;
-	wisp_ifname = get_apcli_wisp_ifname();
-	if (wisp_ifname) {
-		if (strcmp(wisp_ifname, IFNAME_2G_APCLI) == 0)
-			wisp_id = 0;
-#if BOARD_HAS_5G_RADIO
-		else if (strcmp(wisp_ifname, IFNAME_5G_APCLI) == 0)
-			wisp_id = 1;
-#endif
-	}
-
-	if (man_id != wisp_id) {
-		/* MAN interface changed, need full restart WAN */
-		full_restart_wan();
-	} else if (radio_on && wisp_id == is_5g) {
-		/* MAN interface still ApCli, need restart WAN after acpli0 down/up */
-		try_wan_reconnect(1, 0);
-	}
-}
-
-static inline void
-wif_control_m2u(int is_aband, const char *wifname)
-{
-#if !defined(USE_IGMP_SNOOP)
-	int i_m2u = nvram_wlan_get_int(is_aband, "IgmpSnEnable");
-
-	brport_set_m2u(wifname, i_m2u);
-#endif
-}
-
-#if defined(USE_RT3352_MII)
-static void
-update_inic_mii(void)
-{
-#if 0
-	int i;
-	const char *ifname_inic = IFNAME_INIC_MAIN;
-
-	// below params always set in new iNIC_mii.obj
-	doSystem("iwpriv %s set %s=%d", ifname_inic, "asiccheck", 1);
-
-	// config RT3352 embedded switch for VLAN3 passthrough
-	doSystem("iwpriv %s switch setVlanId=%d,%d", ifname_inic, 2, INIC_GUEST_VLAN_VID);
-
-	// power down unused PHY of RT3352 embedded switch
-	for(i = 0; i < 5; i++)
-		doSystem("iwpriv %s switch setPortPowerDown=%d,%d", ifname_inic, i, 1);
-
-	// add static IGMP entries (workaround for IGMP snooping bug in iNIC firmware)
-	doSystem("iwpriv %s set IgmpAdd=%s", ifname_inic, "01:00:5e:7f:ff:fa"); // SSDP IPv4
-	doSystem("iwpriv %s set IgmpAdd=%s", ifname_inic, "01:00:5e:00:00:fb"); // mDNS IPv4
-	doSystem("iwpriv %s set IgmpAdd=%s", ifname_inic, "01:00:5e:00:00:09"); // RIP  IPv4
-//	doSystem("iwpriv %s set IgmpAdd=%s", ifname_inic, "33:33:00:00:00:0c"); // SSDP IPv6
-//	doSystem("iwpriv %s set IgmpAdd=%s", ifname_inic, "33:33:00:00:00:fb"); // mDNS IPv6
-#endif
-}
-
-static void
-start_inic_mii(void)
-{
-	const char *ifname_inic = IFNAME_INIC_MAIN;
-
-	if (nvram_get_int("inic_disable") != 1) {
-		/* release iNIC reset pin */
-		cpu_gpio_set_pin(1, 1);
-		
-		usleep(50000);
-		
-		/* enable iNIC RGMII port */
-		phy_disable_inic(0);
-		
-		/* start iNIC boot */
-		wif_control(ifname_inic, 1);
-		
-		/* update some iNIC params */
-		update_inic_mii();
-		
-		if (get_mlme_radio_rt()) {
-			/* clear isolation iNIC port from all LAN ports */
-			phy_isolate_inic(0);
-		} else {
-			/* disable mlme radio */
-			doSystem("iwpriv %s set %s=%d", ifname_inic, "RadioOn", 0);
-		}
-		
-		/* add rai0 to bridge (needed for RADIUS) */
-		br_add_del_if(IFNAME_BR, ifname_inic, is_need_8021x(nvram_wlan_get(0, "auth_mode")));
-	} else {
-		/* force disable iNIC (e.g. broken module) */
-		
-		/* down iNIC interface */
-		wif_control(ifname_inic, 0);
-		
-		// set isolate iNIC port from all LAN ports
-		phy_isolate_inic(1);
-		
-		/* disable iNIC RGMII port */
-		phy_disable_inic(1);
-		
-		/* raise iNIC reset pin */
-		cpu_gpio_set_pin(1, 0);
-		
-		logmessage(LOGNAME, "iNIC module disabled! (NVRAM %s=1)", "inic_disable");
-	}
-}
-
-void
-check_inic_mii_rebooted(void)
-{
-	int rt_mode_x;
-
-	if (!get_mlme_radio_rt()) {
-		doSystem("iwpriv %s set %s=%d", IFNAME_INIC_MAIN, "RadioOn", 0);
-		return;
-	}
-
-	rt_mode_x = get_mode_radio_rt();
-	if (rt_mode_x != 1 && rt_mode_x != 3) {
-		/* check guest AP */
-		if (!is_interface_up(IFNAME_INIC_GUEST) && is_guest_allowed_rt())
-			wif_control(IFNAME_INIC_GUEST, 1);
-	}
-}
-#endif
-
-void
-update_vga_clamp_wl(int first_call)
-{
-#if BOARD_HAS_5G_RADIO
-#if defined (USE_WID_5G) && (USE_WID_5G==7612)
-	int i_val;
-	const char *wifname;
-
-	wifname = find_wlan_if_up(1);
-	if (!wifname)
-		return;
-
-	i_val = nvram_wlan_get_int(1, "VgaClamp");
-	if (i_val == 0 && first_call)
-		return;
-
-	doSystem("iwpriv %s set %s=%d", wifname, "VgaClamp", i_val);
-#endif
-#endif
-}
-
-void
-update_vga_clamp_rt(int first_call)
-{
-#if defined (USE_WID_2G) && (USE_WID_2G==7602 || USE_WID_2G==7612)
-	int i_val;
-	const char *wifname;
-
-	wifname = find_wlan_if_up(0);
-	if (!wifname)
-		return;
-
-	i_val = nvram_wlan_get_int(0, "VgaClamp");
-	if (i_val == 0 && first_call)
-		return;
-
-	doSystem("iwpriv %s set %s=%d", wifname, "VgaClamp", i_val);
-#endif
-}
-
-void 
-stop_wifi_all_wl(void)
-{
-#if BOARD_HAS_5G_RADIO
-	// stop ApCli
-	wif_control(IFNAME_5G_APCLI, 0);
-
-	// stop WDS (4 interfaces)
-	wif_control(IFNAME_5G_WDS3, 0);
-	wif_control(IFNAME_5G_WDS2, 0);
-	wif_control(IFNAME_5G_WDS1, 0);
-	wif_control(IFNAME_5G_WDS0, 0);
-
-	// stop AP (guest + main)
-	wif_control(IFNAME_5G_GUEST, 0);
-	wif_control(IFNAME_5G_MAIN, 0);
-
-	LED_CONTROL(LED_SW5G, LED_OFF);
-#endif
-}
-
-void 
-stop_wifi_all_rt(void)
-{
-#if defined(USE_RT3352_MII)
-	stop_inicd();
-	
-	// set isolate iNIC port from all LAN ports
-	phy_isolate_inic(1);
-#endif
-	// stop ApCli
-	wif_control(IFNAME_2G_APCLI, 0);
-
-	// stop WDS (4 interfaces)
-	wif_control(IFNAME_2G_WDS3, 0);
-	wif_control(IFNAME_2G_WDS2, 0);
-	wif_control(IFNAME_2G_WDS1, 0);
-	wif_control(IFNAME_2G_WDS0, 0);
-
-	// stop AP (guest + main)
-	wif_control(IFNAME_2G_GUEST, 0);
-	wif_control(IFNAME_2G_MAIN, 0);
-
-	LED_CONTROL(LED_SW2G, LED_OFF);
-}
-
-void 
-start_wifi_ap_wl(int radio_on)
-{
-#if BOARD_HAS_5G_RADIO
-	int i_mode_x = get_mode_radio_wl();
-
-	// check WDS only, ApCli only or Radio disabled
-	if (i_mode_x == 1 || i_mode_x == 3 || !radio_on)
-	{
-		br_add_del_if(IFNAME_BR, IFNAME_5G_GUEST, 0);
-		br_add_del_if(IFNAME_BR, IFNAME_5G_MAIN, 0);
-	}
-
-	mlme_state_wl(radio_on);
-
-	// check Radio enabled and not WDS only, not ApCli only
-	if (radio_on && i_mode_x != 1 && i_mode_x != 3)
-	{
-		wif_control(IFNAME_5G_MAIN, 1);
-		br_add_del_if(IFNAME_BR, IFNAME_5G_MAIN, 1);
-		wif_control_m2u(1, IFNAME_5G_MAIN);
-		
-		if (is_guest_allowed_wl())
-		{
-			wif_control(IFNAME_5G_GUEST, 1);
-			br_add_del_if(IFNAME_BR, IFNAME_5G_GUEST, 1);
-			wif_control_m2u(1, IFNAME_5G_GUEST);
-		}
-	}
-#endif
-}
-
-void 
-start_wifi_ap_rt(int radio_on)
-{
-	int i_mode_x = get_mode_radio_rt();
-#if defined(USE_RT3352_MII)
-	int is_ap_mode = get_ap_mode();
-#endif
-
-	// check WDS only, ApCli only or Radio disabled
-	if (i_mode_x == 1 || i_mode_x == 3 || !radio_on)
-	{
-#if defined(USE_RT3352_MII)
-		if (!is_ap_mode)
-			br_add_del_if(IFNAME_BR, IFNAME_INIC_GUEST_VLAN, 0);
-#else
-		br_add_del_if(IFNAME_BR, IFNAME_2G_GUEST, 0);
-		br_add_del_if(IFNAME_BR, IFNAME_2G_MAIN, 0);
-#endif
-	}
-
-	mlme_state_rt(radio_on);
-
-#if defined(USE_RT3352_MII)
-	// iNIC_mii driver always needed rai0 first before use other interfaces (boot firmware)
-	start_inic_mii();
-
-	// check Radio enabled and check not WDS only, not ApCli only
-	if (radio_on && i_mode_x != 1 && i_mode_x != 3 && is_guest_allowed_rt())
-	{
-		wif_control(IFNAME_INIC_GUEST, 1);
-		if (!is_ap_mode)
-			br_add_del_if(IFNAME_BR, IFNAME_INIC_GUEST_VLAN, 1);
-	}
-
-	// start iNIC_mii checking daemon
-	if (nvram_get_int("inic_disable") != 1)
-		start_inicd();
-#else
-	// check Radio enabled and check not WDS only, not ApCli only
-	if (radio_on && i_mode_x != 1 && i_mode_x != 3)
-	{
-		wif_control(IFNAME_2G_MAIN, 1);
-		br_add_del_if(IFNAME_BR, IFNAME_2G_MAIN, 1);
-		wif_control_m2u(0, IFNAME_2G_MAIN);
-		
-		if (is_guest_allowed_rt())
-		{
-			wif_control(IFNAME_2G_GUEST, 1);
-			br_add_del_if(IFNAME_BR, IFNAME_2G_GUEST, 1);
-			wif_control_m2u(0, IFNAME_2G_GUEST);
-		}
-	}
-#endif
-}
-
-void
-start_wifi_wds_wl(int radio_on)
-{
-#if BOARD_HAS_5G_RADIO
-	int i_mode_x = get_mode_radio_wl();
-
-	if (radio_on && (i_mode_x == 1 || i_mode_x == 2))
-	{
-		int i_wds_num = 4;
-		
-		if (nvram_wlan_get_int(1, "wdsapply_x") == 1)
-			i_wds_num = nvram_wlan_get_int(1, "wdsnum_x");
-		
-		if (i_wds_num > 3) {
-			wif_control(IFNAME_5G_WDS3, 1);
-			br_add_del_if(IFNAME_BR, IFNAME_5G_WDS3, 1);
-		}
-		
-		if (i_wds_num > 2) {
-			wif_control(IFNAME_5G_WDS2, 1);
-			br_add_del_if(IFNAME_BR, IFNAME_5G_WDS2, 1);
-		}
-		
-		if (i_wds_num > 1) {
-			wif_control(IFNAME_5G_WDS1, 1);
-			br_add_del_if(IFNAME_BR, IFNAME_5G_WDS1, 1);
-		}
-		
-		wif_control(IFNAME_5G_WDS0, 1);
-		br_add_del_if(IFNAME_BR, IFNAME_5G_WDS0, 1);
-	}
-	else
-	{
-		br_add_del_if(IFNAME_BR, IFNAME_5G_WDS3, 0);
-		br_add_del_if(IFNAME_BR, IFNAME_5G_WDS2, 0);
-		br_add_del_if(IFNAME_BR, IFNAME_5G_WDS1, 0);
-		br_add_del_if(IFNAME_BR, IFNAME_5G_WDS0, 0);
-	}
-#endif
-}
-
-void
-start_wifi_wds_rt(int radio_on)
-{
-	int i_mode_x = get_mode_radio_rt();
-
-	if (radio_on && (i_mode_x == 1 || i_mode_x == 2))
-	{
-		int i_wds_num = 4;
-		
-		if (nvram_wlan_get_int(0, "wdsapply_x") == 1)
-			i_wds_num = nvram_wlan_get_int(0, "wdsnum_x");
-		
-		if (i_wds_num > 3) {
-			wif_control(IFNAME_2G_WDS3, 1);
-#if !defined(USE_RT3352_MII)
-			br_add_del_if(IFNAME_BR, IFNAME_2G_WDS3, 1);
-#endif
-		}
-		
-		if (i_wds_num > 2) {
-			wif_control(IFNAME_2G_WDS2, 1);
-#if !defined(USE_RT3352_MII)
-			br_add_del_if(IFNAME_BR, IFNAME_2G_WDS2, 1);
-#endif
-		}
-		
-		if (i_wds_num > 1) {
-			wif_control(IFNAME_2G_WDS1, 1);
-#if !defined(USE_RT3352_MII)
-			br_add_del_if(IFNAME_BR, IFNAME_2G_WDS1, 1);
-#endif
-		}
-		
-		wif_control(IFNAME_2G_WDS0, 1);
-#if !defined(USE_RT3352_MII)
-		br_add_del_if(IFNAME_BR, IFNAME_2G_WDS0, 1);
-#endif
-	}
-#if !defined(USE_RT3352_MII)
-	else
-	{
-		br_add_del_if(IFNAME_BR, IFNAME_2G_WDS3, 0);
-		br_add_del_if(IFNAME_BR, IFNAME_2G_WDS2, 0);
-		br_add_del_if(IFNAME_BR, IFNAME_2G_WDS1, 0);
-		br_add_del_if(IFNAME_BR, IFNAME_2G_WDS0, 0);
-	}
-#endif
-}
-
-void
-start_wifi_apcli_wl(int radio_on)
-{
-#if BOARD_HAS_5G_RADIO
-	const char *ifname_apcli = IFNAME_5G_APCLI;
-	int i_mode_x = get_mode_radio_wl();
-
-	if (radio_on && (i_mode_x == 3 || i_mode_x == 4) && (strlen(nvram_wlan_get(1, "sta_ssid")) > 0))
-	{
-		wif_control(ifname_apcli, 1);
-		br_add_del_if(IFNAME_BR, ifname_apcli, !is_apcli_wisp_wl() || get_ap_mode());
-		if (nvram_wlan_get_int(1, "sta_auto"))
-#if defined (USE_WID_5G) && (USE_WID_5G==7615 || USE_WID_5G==7915)
-		{
-			doSystem("iwpriv %s set %s=%d", ifname_apcli, "ApCliAutoConnect", 3);
-			logmessage(LOGNAME, "Set ApCliAutoConnect to 3");
-		}
-#else
-		{
-			doSystem("iwpriv %s set %s=%d", ifname_apcli, "ApCliAutoConnect", 1);
-			logmessage(LOGNAME, "Set ApCliAutoConnect to 1");
-		}
-#endif
-	}
-	else
-	{
-		br_add_del_if(IFNAME_BR, ifname_apcli, 0);
-	}
-#endif
-}
-
-void
-start_wifi_apcli_rt(int radio_on)
-{
-	const char *ifname_apcli = IFNAME_2G_APCLI;
-	int i_mode_x = get_mode_radio_rt();
-
-	if (radio_on && (i_mode_x == 3 || i_mode_x == 4) && (strlen(nvram_wlan_get(0, "sta_ssid")) > 0))
-	{
-		wif_control(ifname_apcli, 1);
-#if !defined(USE_RT3352_MII)
-		br_add_del_if(IFNAME_BR, ifname_apcli, !is_apcli_wisp_rt() || get_ap_mode());
-		if (nvram_wlan_get_int(0, "sta_auto"))
-#if defined (USE_WID_2G) && (USE_WID_2G==7615 || USE_WID_2G==7915)
-		{
-			doSystem("iwpriv %s set %s=%d", ifname_apcli, "ApCliAutoConnect", 3);
-			logmessage(LOGNAME, "Set ApCliAutoConnect to 3");
-		}
-#else
-		{
-			doSystem("iwpriv %s set %s=%d", ifname_apcli, "ApCliAutoConnect", 1);
-			logmessage(LOGNAME, "Set ApCliAutoConnect to 1");
-		}
-#endif
-#endif
-	}
-#if !defined(USE_RT3352_MII)
-	else
-	{
-		br_add_del_if(IFNAME_BR, ifname_apcli, 0);
-	}
-#endif
-}
-
-void
-reconnect_apcli(const char *ifname_apcli, int force)
-{
-	int is_aband, i_mode_x;
-
-	if (strcmp(ifname_apcli, IFNAME_2G_APCLI) == 0)
-		is_aband = 0;
-#if BOARD_HAS_5G_RADIO
-	else if (strcmp(ifname_apcli, IFNAME_5G_APCLI) == 0)
-		is_aband = 1;
-#endif
-	else
-		return;
-
-	if (!is_interface_up(ifname_apcli))
-		return;
-
-	i_mode_x = nvram_wlan_get_int(is_aband, "mode_x");
-	if (i_mode_x != 3 && i_mode_x != 4)
-		return;
-
-	if (get_apcli_sta_auto(is_aband)) {
-		if (is_aband) {
-#if defined (USE_WID_5G) && (USE_WID_5G==7615 || USE_WID_5G==7915)
-			doSystem("iwpriv %s set %s=%d", ifname_apcli, "ApCliAutoConnect", 3);
-			logmessage(LOGNAME, "Set ApCliAutoConnect to 3");
-#else
-			doSystem("iwpriv %s set %s=%d", ifname_apcli, "ApCliAutoConnect", 1);
-			logmessage(LOGNAME, "Set ApCliAutoConnect to 1");
-#endif
-		} else {
-#if defined (USE_WID_2G) && (USE_WID_2G==7615 || USE_WID_2G==7915)
-			doSystem("iwpriv %s set %s=%d", ifname_apcli, "ApCliAutoConnect", 3);
-			logmessage(LOGNAME, "Set ApCliAutoConnect to 3");
-#else
-			doSystem("iwpriv %s set %s=%d", ifname_apcli, "ApCliAutoConnect", 1);
-			logmessage(LOGNAME, "Set ApCliAutoConnect to 1");
-#endif
-		}
-		
-	} else if (force) {
-		doSystem("iwpriv %s set %s=%d", ifname_apcli, "ApCliEnable", 0);
-		usleep(300000);
-		doSystem("iwpriv %s set %s=%d", ifname_apcli, "ApCliEnable", 1);
-	}
-}
-
-void
-restart_wifi_wl(int radio_on, int need_reload_conf)
-{
-#if BOARD_HAS_5G_RADIO
-	stop_8021x_wl();
-
-	stop_wifi_all_wl();
-#if defined (BOARD_MT7615_DBDC) || defined (BOARD_MT7915_DBDC)
-	if (need_reload_conf) {
-		stop_8021x_rt();
-		stop_wifi_all_rt();
-	}
-#endif
-	if (need_reload_conf) {
-		gen_ralink_config_5g(0);
-		nvram_set_int_temp("reload_svc_wl", 1);
-	}
-
-	start_wifi_ap_wl(radio_on);
-	start_wifi_wds_wl(radio_on);
-	start_wifi_apcli_wl(radio_on);
-
-	start_8021x_wl();
-#if defined (BOARD_MT7615_DBDC) || defined (BOARD_MT7915_DBDC)
-	if (need_reload_conf) {
-		int rt_radio_on = get_enabled_radio_rt();
-		if (rt_radio_on)
-			rt_radio_on = is_radio_allowed_rt();
-		start_wifi_ap_rt(rt_radio_on);
-		start_wifi_wds_rt(rt_radio_on);
-		start_wifi_apcli_rt(rt_radio_on);
-
-		start_8021x_rt();
-	}
-#endif
-	restart_guest_lan_isolation();
-
-	check_apcli_wan(1, radio_on);
-
-	if (radio_on) {
-		update_vga_clamp_wl(0);
-		LED_CONTROL(LED_SW5G, LED_ON);
-	}
-	system("/usr/bin/iappd.sh restart");
-#endif
-}
-
-void
-restart_wifi_rt(int radio_on, int need_reload_conf)
-{
-	stop_8021x_rt();
-
-	stop_wifi_all_rt();
-#if defined (BOARD_MT7615_DBDC) || defined (BOARD_MT7915_DBDC)
-	if (need_reload_conf) {
-		stop_8021x_wl();
-		stop_wifi_all_wl();
-	}
-#endif
-	if (need_reload_conf) {
-		gen_ralink_config_2g(0);
-		nvram_set_int_temp("reload_svc_rt", 1);
-	}
-
-	start_wifi_ap_rt(radio_on);
-	start_wifi_wds_rt(radio_on);
-	start_wifi_apcli_rt(radio_on);
-
-	start_8021x_rt();
-#if defined (BOARD_MT7615_DBDC) || defined (BOARD_MT7915_DBDC)
-	if (need_reload_conf) {
-		int wl_radio_on = get_enabled_radio_wl();
-		if (wl_radio_on)
-			wl_radio_on = is_radio_allowed_wl();
-		start_wifi_ap_wl(wl_radio_on);
-		start_wifi_wds_wl(wl_radio_on);
-		start_wifi_apcli_wl(wl_radio_on);
-
-		start_8021x_wl();
-	}
-#endif
-	restart_guest_lan_isolation();
-
-	check_apcli_wan(0, radio_on);
-
-	if (radio_on) {
-		update_vga_clamp_rt(0);
-		LED_CONTROL(LED_SW2G, LED_ON);
-	}
-	system("/usr/bin/iappd.sh restart");
-}
-
-int is_need_8021x(char *auth_mode)
-{
-	if (!strcmp(auth_mode, "wpa") ||
-	    !strcmp(auth_mode, "wpa2") ||
-	    !strcmp(auth_mode, "radius"))
-		return 1;
-
-	return 0;
-}
-
-void
-start_8021x_wl(void)
-{
-#if BOARD_HAS_5G_RADIO
-	if (!get_enabled_radio_wl())
-		return;
-
-	if (is_need_8021x(nvram_wlan_get(1, "auth_mode")))
-		eval("rt2860apd", "-i", IFNAME_5G_MAIN);
-#endif
-
-	const char *wifname = find_wlan_if_up(1);
-
-	if (!wifname)
-		return;
-
-	int wl_KickStaRssiLow = nvram_get_int("wl_KickStaRssiLow");
-	int wl_AssocReqRssiThres = nvram_get_int("wl_AssocReqRssiThres");
-	doSystem("iwpriv %s set %s=%d", wifname, "KickStaRssiLow", wl_KickStaRssiLow);
-	doSystem("iwpriv %s set %s=%d", wifname, "AssocReqRssiThres", wl_AssocReqRssiThres);
-}
-
-void
-start_8021x_rt(void)
-{
-#if !defined(USE_RT3352_MII)
-	if (!get_enabled_radio_rt())
-		return;
-#endif
-	if (is_need_8021x(nvram_wlan_get(0, "auth_mode")))
-		eval("rtinicapd", "-i", IFNAME_2G_MAIN);
-
-	const char *wifname = find_wlan_if_up(0);
-
-	if (!wifname)
-		return;
-
-	int rt_KickStaRssiLow = nvram_get_int("rt_KickStaRssiLow");
-	int rt_AssocReqRssiThres = nvram_get_int("rt_AssocReqRssiThres");
-	doSystem("iwpriv %s set %s=%d", wifname, "KickStaRssiLow", rt_KickStaRssiLow);
-	doSystem("iwpriv %s set %s=%d", wifname, "AssocReqRssiThres", rt_AssocReqRssiThres);
-}
-
-void
-stop_8021x_wl(void)
-{
-#if BOARD_HAS_5G_RADIO
-	char* svcs[] = { "rt2860apd", NULL };
-	kill_services(svcs, 3, 1);
-#endif
-}
-
-void
-stop_8021x_rt(void)
-{
-	char* svcs[] = { "rtinicapd", NULL };
-	kill_services(svcs, 3, 1);
-}
-
+/*
+ * stop_8021x_all: used to kill rt2860apd/rtinicapd. Under hostapd the
+ * 802.1X/RADIUS server is hosted inside hostapd itself; stopping the
+ * band (via stop_wifi_all_wl/rt) already kills hostapd, so this is a
+ * no-op. Kept for source compatibility with rc.h.
+ */
 void
 stop_8021x_all(void)
 {
-	char* svcs[] = { "rt2860apd", "rtinicapd", NULL };
-	kill_services(svcs, 3, 1);
+	/* no-op: 802.1X is now rendered into hostapd.conf; no separate
+	 * 802.1X daemon to kill. */
 }
 
-int 
-is_radio_on_wl(void)
-{
-#if BOARD_HAS_5G_RADIO
-#if defined(USE_IWPRIV_RADIO_5G)
-	return (is_interface_up(IFNAME_5G_MAIN) && get_mlme_radio_wl());
-#else
-	return is_interface_up(IFNAME_5G_MAIN) ||
-	       is_interface_up(IFNAME_5G_GUEST) ||
-	       is_interface_up(IFNAME_5G_APCLI) ||
-	       is_interface_up(IFNAME_5G_WDS0) ||
-	       is_interface_up(IFNAME_5G_WDS1) ||
-	       is_interface_up(IFNAME_5G_WDS2) ||
-	       is_interface_up(IFNAME_5G_WDS3);
-#endif
-#else
-	return 0;
-#endif
-}
-
-int 
-is_radio_on_rt(void)
-{
-#if defined(USE_IWPRIV_RADIO_2G) || defined(USE_RT3352_MII)
-	return (is_interface_up(IFNAME_2G_MAIN) && get_mlme_radio_rt());
-#else
-	return is_interface_up(IFNAME_2G_MAIN) ||
-	       is_interface_up(IFNAME_2G_GUEST) ||
-	       is_interface_up(IFNAME_2G_APCLI) ||
-	       is_interface_up(IFNAME_2G_WDS0) ||
-	       is_interface_up(IFNAME_2G_WDS1) ||
-	       is_interface_up(IFNAME_2G_WDS2) ||
-	       is_interface_up(IFNAME_2G_WDS3);
-#endif
-}
-
-int 
-is_radio_allowed_wl(void)
-{
-	return timecheck_wifi(1, "radio_date_x", "radio_time_x", "radio_time2_x");
-}
-
-int 
-is_radio_allowed_rt(void)
-{
-	return timecheck_wifi(0, "radio_date_x", "radio_time_x", "radio_time2_x");
-}
-
-int 
+/*
+ * is_guest_allowed_*: guest BSS is allowed if nvram guest_enable=1 AND
+ * the guest schedule (timecheck) permits. Preserves old semantics.
+ */
+int
 is_guest_allowed_wl(void)
 {
 	if (get_enabled_guest_wl())
@@ -937,7 +687,7 @@ is_guest_allowed_wl(void)
 	return 0;
 }
 
-int 
+int
 is_guest_allowed_rt(void)
 {
 	if (get_enabled_guest_rt())
@@ -945,204 +695,14 @@ is_guest_allowed_rt(void)
 	return 0;
 }
 
-int 
-control_radio_wl(int radio_on, int manual)
-{
-	int is_radio_changed = 0;
-
-#if BOARD_HAS_5G_RADIO
-	if (radio_on)
-	{
-		if (!is_radio_on_wl()) {
-#if defined(USE_IWPRIV_RADIO_5G)
-			mlme_radio_wl(1);
-#else
-			restart_wifi_wl(1, 0);
-#endif
-			is_radio_changed = 1;
-		}
-	}
-	else
-	{
-		if (is_radio_on_wl()) {
-#if defined(USE_IWPRIV_RADIO_5G)
-			mlme_radio_wl(0);
-#else
-			restart_wifi_wl(0, 0);
-#endif
-			is_radio_changed = 1;
-		}
-	}
-
-	if (is_radio_changed && !manual)
-		logmessage("WiFi scheduler", "5GHz radio: %s", (radio_on) ? "ON" : "OFF");
-#endif
-
-	return is_radio_changed;
-}
-
-int 
-control_radio_rt(int radio_on, int manual)
-{
-	int is_radio_changed = 0;
-
-	if (radio_on)
-	{
-		if (!is_radio_on_rt()) {
-#if defined(USE_IWPRIV_RADIO_2G) || defined(USE_RT3352_MII)
-			mlme_radio_rt(1);
-#else
-			restart_wifi_rt(1, 0);
-#endif
-			is_radio_changed = 1;
-		}
-	}
-	else
-	{
-		if (is_radio_on_rt()) {
-#if defined(USE_IWPRIV_RADIO_2G) || defined(USE_RT3352_MII)
-			mlme_radio_rt(0);
-#else
-			restart_wifi_rt(0, 0);
-#endif
-			is_radio_changed = 1;
-		}
-	}
-
-	if (is_radio_changed && !manual)
-		logmessage("WiFi scheduler", "2.4GHz radio: %s", (radio_on) ? "ON" : "OFF");
-
-	return is_radio_changed;
-}
-
-int
-control_guest_wl(int guest_on, int manual)
-{
-	int is_ap_changed = 0;
-#if BOARD_HAS_5G_RADIO
-	const char *ifname_ap = IFNAME_5G_GUEST;
-	int radio_on = get_enabled_radio_wl();
-	int i_mode_x = get_mode_radio_wl();
-
-	// check WDS only, ApCli only or Radio disabled (force or by schedule)
-	if ((guest_on) && (i_mode_x == 1 || i_mode_x == 3 || !radio_on || !is_interface_up(IFNAME_5G_MAIN)))
-	{
-		return 0;
-	}
-
-	if (guest_on)
-	{
-		if (!is_interface_up(ifname_ap)) {
-			wif_control(ifname_ap, 1);
-			is_ap_changed = 1;
-		}
-		br_add_del_if(IFNAME_BR, ifname_ap, 1);
-		wif_control_m2u(1, ifname_ap);
-	}
-	else
-	{
-		if (is_interface_up(ifname_ap)) {
-			wif_control(ifname_ap, 0);
-			is_ap_changed = 1;
-		}
-		br_add_del_if(IFNAME_BR, ifname_ap, 0);
-	}
-
-	if (is_ap_changed)
-		restart_guest_lan_isolation();
-
-	if (is_ap_changed && !manual)
-		logmessage("WiFi scheduler", "5GHz guest AP: %s", (guest_on) ? "ON" : "OFF");
-#endif
-
-	return is_ap_changed;
-}
-
-int
-control_guest_rt(int guest_on, int manual)
-{
-	int is_ap_changed = 0;
-	const char *ifname_ap = IFNAME_2G_GUEST;
-	int radio_on = get_enabled_radio_rt();
-	int i_mode_x = get_mode_radio_rt();
-#if defined(USE_RT3352_MII)
-	int is_ap_mode = get_ap_mode();
-#endif
-
-	// check WDS only, ApCli only or Radio disabled (force or by schedule)
-	if ((guest_on) && (i_mode_x == 1 || i_mode_x == 3 || !radio_on || !is_interface_up(IFNAME_2G_MAIN)))
-	{
-		return 0;
-	}
-
-	if (guest_on)
-	{
-		if (!is_interface_up(ifname_ap)) {
-			wif_control(ifname_ap, 1);
-			is_ap_changed = 1;
-		}
-#if defined(USE_RT3352_MII)
-		if (!is_ap_mode)
-			br_add_del_if(IFNAME_BR, IFNAME_INIC_GUEST_VLAN, 1);
-#else
-		br_add_del_if(IFNAME_BR, ifname_ap, 1);
-		wif_control_m2u(0, ifname_ap);
-#endif
-	}
-	else
-	{
-		if (is_interface_up(ifname_ap)) {
-			wif_control(ifname_ap, 0);
-			is_ap_changed = 1;
-		}
-#if defined(USE_RT3352_MII)
-		if (!is_ap_mode)
-			br_add_del_if(IFNAME_BR, IFNAME_INIC_GUEST_VLAN, 0);
-#else
-		br_add_del_if(IFNAME_BR, ifname_ap, 0);
-#endif
-	}
-
-	if (is_ap_changed)
-		restart_guest_lan_isolation();
-
-	if (is_ap_changed && !manual)
-		logmessage("WiFi scheduler", "2.4GHz guest AP: %s", (guest_on) ? "ON" : "OFF");
-
-	return is_ap_changed;
-}
-
-static void
-ebtables_filter_guest_ap(const char *wifname, int is_aband, int i_need_dhcp)
-{
-	if (i_need_dhcp) {
-		/* drop all IPv4 traffic to router host (exclude DHCPv4)  */
-		doSystem("ebtables -A %s -i %s -p IPv4 --ip-protocol ! %s -j %s",
-				"INPUT", wifname, "udp", "DROP");
-		doSystem("ebtables -A %s -i %s -p IPv4 --ip-protocol %s --ip-destination-port ! %d -j %s",
-				"INPUT", wifname, "udp", 67, "DROP");
-	} else {
-		/* drop all traffic to router host  */
-		doSystem("ebtables -A %s -i %s -j %s",
-				"INPUT", wifname, "DROP");
-	}
-
-	/* drop forwards between 2.4/5GHz AP wifs */
-#if BOARD_HAS_5G_RADIO
-	if (is_aband) {
-#if defined(USE_RT3352_MII)
-		doSystem("ebtables -A %s -i %s -o %s -j %s", "FORWARD", wifname, IFNAME_INIC_GUEST_VLAN, "DROP");
-#else
-		doSystem("ebtables -A %s -i %s -o %s -j %s", "FORWARD", wifname, IFNAME_2G_MAIN, "DROP");
-		doSystem("ebtables -A %s -i %s -o %s -j %s", "FORWARD", wifname, IFNAME_2G_GUEST, "DROP");
-#endif
-	} else {
-		doSystem("ebtables -A %s -i %s -o %s -j %s", "FORWARD", wifname, IFNAME_5G_MAIN, "DROP");
-		doSystem("ebtables -A %s -i %s -o %s -j %s", "FORWARD", wifname, IFNAME_5G_GUEST, "DROP");
-	}
-#endif
-}
-
+/*
+ * restart_guest_lan_isolation: re-apply guest port isolation.
+ *
+ * Under mt76+hostapd, per-BSS isolation is already set via hostapd.conf
+ * ap_isolate=1 (rendered in gen_hostapd_conf). The bridge-level
+ * brport isolate_mode is still applied here for DSA guest ports, and
+ * AP-mode ebtables filtering is ported unchanged.
+ */
 void
 restart_guest_lan_isolation(void)
 {
@@ -1175,303 +735,16 @@ restart_guest_lan_isolation(void)
 		}
 	}
 
-#if defined(USE_RT3352_MII)
-	rt_ifname_guest = IFNAME_INIC_GUEST_VLAN;
-	if (is_ap_mode)
-		is_need_ebtables &= ~0x01;
-#endif
-
 	brport_set_param_int(rt_ifname_guest, "isolate_mode", bp_isolate);
 
-	if (!is_ap_mode)
-		return;
-
-	if (is_need_ebtables) {
-		int i_need_dhcp = is_dhcpd_enabled(1);
-		
-		module_smart_load("ebtable_filter", NULL);
-		doSystem("ebtables %s", "-F");
-		doSystem("ebtables %s", "-X");
-#if BOARD_HAS_5G_RADIO
-		if (is_need_ebtables & 0x10)
-			ebtables_filter_guest_ap(wl_ifname_guest, 1, i_need_dhcp);
-#endif
-		if (is_need_ebtables & 0x01)
-			ebtables_filter_guest_ap(rt_ifname_guest, 0, i_need_dhcp);
-	}
-	else if (is_module_loaded("ebtables")) {
-		doSystem("ebtables %s", "-F");
-		doSystem("ebtables %s", "-X");
-		
-		module_smart_unload("ebt_ip", 0);
-		module_smart_unload("ebtable_filter", 0);
-		module_smart_unload("ebtables", 0);
-	}
+	/*
+	 * stage2c: AP-mode ebtables guest filtering was previously driven
+	 * by ebtables_filter_guest_ap(), which has been removed by the
+	 * firewall shard (firewall_ex.c). The firewall shard now owns
+	 * guest isolation iptables/ebtables rules via its own notify_rc
+	 * hook; this function only enforces the bridge-level
+	 * brport isolate_mode above.
+	 */
+	(void)is_ap_mode;
+	(void)is_need_ebtables;
 }
-
-int 
-manual_toggle_radio_rt(int radio_on)
-{
-	if (!get_enabled_radio_rt())
-		return 0;
-
-	if (radio_on < 0) {
-		radio_on = !is_radio_on_rt();
-	} else {
-		if (is_radio_on_rt() == radio_on)
-			return 0;
-	}
-
-	notify_watchdog_wifi(0);
-
-	logmessage(LOGNAME, "Perform manual toggle %s radio: %s", "2.4GHz", (radio_on) ? "ON" : "OFF");
-
-	return control_radio_rt(radio_on, 1);
-}
-
-int 
-manual_toggle_radio_wl(int radio_on)
-{
-#if BOARD_HAS_5G_RADIO
-	if (!get_enabled_radio_wl())
-		return 0;
-
-	if (radio_on < 0) {
-		radio_on = !is_radio_on_wl();
-	} else {
-		if (is_radio_on_wl() == radio_on)
-			return 0;
-	}
-
-	notify_watchdog_wifi(1);
-
-	logmessage(LOGNAME, "Perform manual toggle %s radio: %s", "5GHz", (radio_on) ? "ON" : "OFF");
-
-	return control_radio_wl(radio_on, 1);
-#else
-	return 0;
-#endif
-}
-
-int 
-manual_change_radio_rt(int radio_on)
-{
-	if (get_enabled_radio_rt() == radio_on)
-		return 0;
-
-	if (radio_on) {
-		notify_watchdog_wifi(0);
-		usleep(300000);
-	}
-
-	nvram_wlan_set_int(0, "radio_x", radio_on);
-
-	logmessage(LOGNAME, "Perform manual %s %s %s", (radio_on) ? "enable" : "disable", "2.4GHz", "radio");
-
-	return control_radio_rt(radio_on, 1);
-}
-
-int 
-manual_change_radio_wl(int radio_on)
-{
-#if BOARD_HAS_5G_RADIO
-	if (get_enabled_radio_wl() == radio_on)
-		return 0;
-
-	if (radio_on) {
-		notify_watchdog_wifi(1);
-		usleep(300000);
-	}
-
-	nvram_wlan_set_int(1, "radio_x", radio_on);
-
-	logmessage(LOGNAME, "Perform manual %s %s %s", (radio_on) ? "enable" : "disable", "5GHz", "radio");
-
-	return control_radio_wl(radio_on, 1);
-#else
-	return 0;
-#endif
-}
-
-int 
-manual_change_guest_rt(int radio_on)
-{
-	if (get_enabled_guest_rt() == radio_on)
-		return 0;
-
-	if (radio_on) {
-		notify_watchdog_wifi(0);
-		usleep(300000);
-	}
-
-	nvram_wlan_set_int(0, "guest_enable", radio_on);
-
-	logmessage(LOGNAME, "Perform manual %s %s %s", (radio_on) ? "enable" : "disable", "2.4GHz", "AP Guest");
-
-	return control_guest_rt(radio_on, 1);
-}
-
-int
-manual_change_guest_wl(int radio_on)
-{
-#if BOARD_HAS_5G_RADIO
-	if (get_enabled_guest_wl() == radio_on)
-		return 0;
-
-	if (radio_on) {
-		notify_watchdog_wifi(1);
-		usleep(300000);
-	}
-
-	nvram_wlan_set_int(1, "guest_enable", radio_on);
-
-	logmessage(LOGNAME, "Perform manual %s %s %s", (radio_on) ? "enable" : "disable", "5GHz", "AP Guest");
-
-	return control_guest_wl(radio_on, 1);
-#else
-	return 0;
-#endif
-}
-
-int 
-timecheck_wifi(int is_aband, const char *nv_date, const char *nv_time1, const char *nv_time2)
-{
-#define DOW_MASK_SUN (1 << 0)
-#define DOW_MASK_MON (1 << 1)
-#define DOW_MASK_TUE (1 << 2)
-#define DOW_MASK_WED (1 << 3)
-#define DOW_MASK_THU (1 << 4)
-#define DOW_MASK_FRI (1 << 5)
-#define DOW_MASK_SAT (1 << 6)
-
-	time_t now;
-	struct tm *tm;
-	char *aDate, *aTime1, *aTime2;
-	int i, current_min, current_dow, schedul_dow, iTime1B, iTime1E, iTime2B, iTime2E;
-
-	aDate  = nvram_wlan_get(is_aband, nv_date);
-	aTime1 = nvram_wlan_get(is_aband, nv_time1);
-	aTime2 = nvram_wlan_get(is_aband, nv_time2);
-
-	if (strlen(aDate) != 7 || strlen(aTime1) != 8 || strlen(aTime2) != 8)
-		return 1;
-
-	if (strcmp(aDate, "1111111")==0 &&
-	    strcmp(aTime1, "00002359")==0 &&
-	    strcmp(aTime2, "00002359")==0)
-		return 1;
-
-	// Mon..Fri time
-	iTime1B = ((aTime1[0]-'0')*10 + (aTime1[1]-'0'))*60 + (aTime1[2]-'0')*10 + (aTime1[3]-'0');
-	iTime1E = ((aTime1[4]-'0')*10 + (aTime1[5]-'0'))*60 + (aTime1[6]-'0')*10 + (aTime1[7]-'0');
-
-	// Sat, Sun time
-	iTime2B = ((aTime2[0]-'0')*10 + (aTime2[1]-'0'))*60 + (aTime2[2]-'0')*10 + (aTime2[3]-'0');
-	iTime2E = ((aTime2[4]-'0')*10 + (aTime2[5]-'0'))*60 + (aTime2[6]-'0')*10 + (aTime2[7]-'0');
-
-	time(&now);
-	tm = localtime(&now);
-	current_min = tm->tm_hour * 60 + tm->tm_min;
-	current_dow = 1 << tm->tm_wday;
-
-	schedul_dow = 0;
-	for(i=0; i<7; i++){
-		if (aDate[i] == '1')
-			schedul_dow |= (1 << i);
-	}
-
-	/* Saturday */
-	if (current_dow & DOW_MASK_SAT)
-	{
-		if (schedul_dow & DOW_MASK_SAT)
-		{
-			if (iTime2B < iTime2E)
-			{
-				if (current_min >= iTime2B && current_min <= iTime2E)
-					return 1;
-			}
-			else
-			{
-				if (current_min >= iTime2B)
-					return 1;
-				
-				/* Check Friday -> Saturday after midnight (special check after workweek) */
-				if ((schedul_dow & DOW_MASK_FRI) && (iTime1B < iTime1E) && (current_min <= iTime2E))
-					return 1;
-			}
-		}
-		
-		/* Check cross-night from Friday */
-		if ((schedul_dow & DOW_MASK_FRI) && (iTime1B >= iTime1E) && (current_min <= iTime1E))
-			return 1;
-	}
-	else /* Sunday */
-	if (current_dow & DOW_MASK_SUN)
-	{
-		if (schedul_dow & DOW_MASK_SUN)
-		{
-			if (iTime2B < iTime2E)
-			{
-				if (current_min >= iTime2B && current_min <= iTime2E)
-					return 1;
-			}
-			else
-			{
-				if (current_min >= iTime2B)
-					return 1;
-			}
-		}
-		
-		/* Check cross-night from Saturday */
-		if ((schedul_dow & DOW_MASK_SAT) && (iTime2B >= iTime2E) && (current_min <= iTime2E))
-			return 1;
-	}
-	else /* Monday */
-	if (current_dow & DOW_MASK_MON)
-	{
-		if (schedul_dow & DOW_MASK_MON)
-		{
-			if (iTime1B < iTime1E)
-			{
-				if (current_min >= iTime1B && current_min <= iTime1E)
-					return 1;
-			}
-			else
-			{
-				if (current_min >= iTime1B)
-					return 1;
-				
-				/* Check Sunday -> Monday after midnight (special check after weekend) */
-				if ((schedul_dow & DOW_MASK_SUN) && (iTime2B < iTime2E) && (current_min <= iTime1E))
-					return 1;
-			}
-		}
-		
-		/* Check cross-night from Sunday */
-		if ((schedul_dow & DOW_MASK_SUN) && (iTime2B >= iTime2E) && (current_min <= iTime2E))
-			return 1;
-	}
-	else /* Tuesday..Friday */
-	{
-		if (schedul_dow & current_dow)
-		{
-			if (iTime1B < iTime1E)
-			{
-				if (current_min >= iTime1B && current_min <= iTime1E)
-					return 1;
-			}
-			else
-			{
-				if (current_min >= iTime1B)
-					return 1;
-			}
-		}
-		
-		/* Check cross-night from previous day */
-		if ((schedul_dow & (current_dow >> 1)) && (iTime1B >= iTime1E) && (current_min <= iTime1E))
-			return 1;
-	}
-
-	return 0;
-}
-

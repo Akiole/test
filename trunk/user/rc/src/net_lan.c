@@ -42,6 +42,24 @@
 
 static char udhcpc_lan_state[16] = {0};
 
+/* stage2c (DSA): br0 members are the four DSA user ports lan1..lan4
+ * (mt7530 port@1..4), not the single closed-source raeth "eth2".  Bring each
+ * DSA port up and enslave it to br0.  Port names come from dsa_port_netdev()
+ * and MUST match netutils.h IFNAME_LAN1..4 / lan_port_names[]. */
+static void
+bridge_add_dsa_lan_ports(void)
+{
+	int i;
+
+	for (i = SWAPI_PORT_LAN1; i <= SWAPI_PORT_LAN4; i++) {
+		const char *p = dsa_port_netdev(i);
+		if (!p)
+			continue;
+		ifconfig(p, IFUP, NULL, NULL);
+		br_add_del_if(IFNAME_BR, p, 1);
+	}
+}
+
 in_addr_t get_lan_ip4(void)
 {
 	return get_interface_addr4(IFNAME_BR);
@@ -114,15 +132,16 @@ init_bridge(int is_ap_mode)
 #if BOARD_RAM_SIZE < 64
 	doSystem("ifconfig %s txqueuelen %d", IFNAME_MAC, SHRINK_TX_QUEUE_LEN);
 #endif
-	set_interface_hwaddr(IFNAME_MAC, lan_hwaddr);
-	ifconfig(IFNAME_MAC, IFUP, NULL, NULL);
+	/* DSA: "eth2" (gmac0) no longer exists as a user netdev, and lan MAC is
+	 * set from factory nvmem by the kernel (label-mac-device=<&gmac0>), so
+	 * there is no set_interface_hwaddr/ifconfig on a LAN CPU netdev here.
+	 * The LAN DSA ports lan1..lan4 are brought up + added to br0 below. */
 
 	switch_config_base();
 	switch_config_storm();
 	switch_config_link();
 
-	/* power up all switch PHY */
-	phy_ports_power(1);
+	/* DSA probe powers the switch up itself; no phy_ports_power(1) here. */
 
 #if defined (USE_SINGLE_MAC)
 	if (!is_ap_mode)
@@ -187,21 +206,21 @@ init_bridge(int is_ap_mode)
 	set_interface_hwaddr(IFNAME_BR, lan_hwaddr);
 
 	if (!is_ap_mode) {
-		/* add eth2 (or eth2.1) to bridge */
+		/* DSA: add all LAN user ports lan1..lan4 to br0 (was single eth2) */
 #if defined (USE_GMAC2_TO_GPHY) || defined (USE_GMAC2_TO_GSW)
 		if (get_wan_bridge_mode() != SWAPI_WAN_BRIDGE_DISABLE) {
 			create_vlan_iface(IFNAME_MAC, 1, -1, -1, lan_hwaddr, 1);
 			br_add_del_if(IFNAME_BR, "eth2.1", 1);
 		} else
 #endif
-		br_add_del_if(IFNAME_BR, IFNAME_LAN, 1);
+		bridge_add_dsa_lan_ports();
 	} else {
 #if defined (AP_MODE_LAN_TAGGED)
-		/* add eth2 (or eth2.1) to bridge */
-		br_add_del_if(IFNAME_BR, IFNAME_LAN, 1);
+		/* DSA: add all LAN user ports lan1..lan4 to br0 */
+		bridge_add_dsa_lan_ports();
 #else
-		/* add only eth2 to bridge */
-		br_add_del_if(IFNAME_BR, IFNAME_MAC, 1);
+		/* DSA: add all LAN user ports lan1..lan4 to br0 (was single eth2) */
+		bridge_add_dsa_lan_ports();
 #endif
 #if defined (USE_GMAC2_TO_GPHY) || defined (USE_GMAC2_TO_GSW)
 		/* add eth3 to bridge */

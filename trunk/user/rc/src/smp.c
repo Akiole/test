@@ -72,7 +72,7 @@ struct smp_trx_layout_t {
 #define SMP_MASK_CPU2	(1U << 2)
 #define SMP_MASK_CPU3	(1U << 3)
 
-#if defined (CONFIG_RALINK_MT7621)
+#if defined (CONFIG_RALINK_MT7621) || defined (CONFIG_SOC_MT7621)
 #define GIC_OFFSET		7
 
 #define GIC_IRQ_FE		(GIC_OFFSET+3)
@@ -95,20 +95,25 @@ static const struct smp_irq_layout_t mt7621a_irq[] = {
 	{ GIC_IRQ_XHCI,  SMP_MASK_CPU3 },	/* xHCI  -> CPU:1, VPE:1 */
 };
 
-static const struct smp_trx_layout_t mt7621a_rps[] = {
+/* stage2c: these tables are no longer const. IFNAME_2G/5G_{MAIN,GUEST,APCLI}
+ * are function-style macros (wifi_*_ifname()) resolved at runtime after
+ * phy<->band detection; C static initializers cannot call functions, so those
+ * rows get a NULL placeholder and are filled by init_smp_trx_layout() on first
+ * use. MAC/MAC2/WDS rows are string-literal macros and stay compile-time. */
+static struct smp_trx_layout_t mt7621a_rps[] = {
 	{ IFNAME_MAC,		SMP_MASK_CPU0 | SMP_MASK_CPU2 },	/* eth2 */
 	{ IFNAME_MAC2,		SMP_MASK_CPU0 | SMP_MASK_CPU2 },	/* eth3 */
-	{ IFNAME_2G_MAIN,	SMP_MASK_CPU0 | SMP_MASK_CPU1 },
-	{ IFNAME_2G_GUEST,	SMP_MASK_CPU0 | SMP_MASK_CPU1 },
-	{ IFNAME_2G_APCLI,	SMP_MASK_CPU0 | SMP_MASK_CPU1 },
+	{ NULL,			SMP_MASK_CPU0 | SMP_MASK_CPU1 },	/* 2G_MAIN  */
+	{ NULL,			SMP_MASK_CPU0 | SMP_MASK_CPU1 },	/* 2G_GUEST */
+	{ NULL,			SMP_MASK_CPU0 | SMP_MASK_CPU1 },	/* 2G_APCLI */
 	{ IFNAME_2G_WDS0,	SMP_MASK_CPU0 | SMP_MASK_CPU1 },
 	{ IFNAME_2G_WDS1,	SMP_MASK_CPU0 | SMP_MASK_CPU1 },
 	{ IFNAME_2G_WDS2,	SMP_MASK_CPU0 | SMP_MASK_CPU1 },
 	{ IFNAME_2G_WDS3,	SMP_MASK_CPU0 | SMP_MASK_CPU1 },
 #if BOARD_HAS_5G_RADIO
-	{ IFNAME_5G_MAIN,	SMP_MASK_CPU0 | SMP_MASK_CPU1 },
-	{ IFNAME_5G_GUEST,	SMP_MASK_CPU0 | SMP_MASK_CPU1 },
-	{ IFNAME_5G_APCLI,	SMP_MASK_CPU0 | SMP_MASK_CPU1 },
+	{ NULL,			SMP_MASK_CPU0 | SMP_MASK_CPU1 },	/* 5G_MAIN  */
+	{ NULL,			SMP_MASK_CPU0 | SMP_MASK_CPU1 },	/* 5G_GUEST */
+	{ NULL,			SMP_MASK_CPU0 | SMP_MASK_CPU1 },	/* 5G_APCLI */
 	{ IFNAME_5G_WDS0,	SMP_MASK_CPU0 | SMP_MASK_CPU1 },
 	{ IFNAME_5G_WDS1,	SMP_MASK_CPU0 | SMP_MASK_CPU1 },
 	{ IFNAME_5G_WDS2,	SMP_MASK_CPU0 | SMP_MASK_CPU1 },
@@ -116,26 +121,54 @@ static const struct smp_trx_layout_t mt7621a_rps[] = {
 #endif
 };
 
-static const struct smp_trx_layout_t mt7621a_xps[] = {
+static struct smp_trx_layout_t mt7621a_xps[] = {
 	{ IFNAME_MAC,		SMP_MASK_CPU1 },	/* eth2 */
 	{ IFNAME_MAC2,		SMP_MASK_CPU1 },	/* eth3 */
-	{ IFNAME_2G_MAIN,	0 },
-	{ IFNAME_2G_GUEST,	0 },
-	{ IFNAME_2G_APCLI,	0 },
+	{ NULL,			0 },	/* 2G_MAIN  */
+	{ NULL,			0 },	/* 2G_GUEST */
+	{ NULL,			0 },	/* 2G_APCLI */
 	{ IFNAME_2G_WDS0,	0 },
 	{ IFNAME_2G_WDS1,	0 },
 	{ IFNAME_2G_WDS2,	0 },
 	{ IFNAME_2G_WDS3,	0 },
 #if BOARD_HAS_5G_RADIO
-	{ IFNAME_5G_MAIN,	0 },
-	{ IFNAME_5G_GUEST,  0 },
-	{ IFNAME_5G_APCLI,	0 },
+	{ NULL,			0 },	/* 5G_MAIN  */
+	{ NULL,			0 },	/* 5G_GUEST */
+	{ NULL,			0 },	/* 5G_APCLI */
 	{ IFNAME_5G_WDS0,	0 },
 	{ IFNAME_5G_WDS1,	0 },
 	{ IFNAME_5G_WDS2,	0 },
 	{ IFNAME_5G_WDS3,	0 },
 #endif
 };
+
+/* Fill the NULL wifi rows by band/role. Row indices mirror the table layouts
+ * above: [2,3,4]=2G MAIN/GUEST/APCLI; [9,10,11]=5G MAIN/GUEST/APCLI (only
+ * when BOARD_HAS_5G_RADIO). Guarded by the same #if so indices stay in sync.
+ */
+static int smp_trx_inited = 0;
+
+static void
+init_smp_trx_layout(void)
+{
+	if (smp_trx_inited)
+		return;
+	mt7621a_rps[2].ifname = wifi_main_ifname(0);
+	mt7621a_rps[3].ifname = wifi_guest_ifname(0);
+	mt7621a_rps[4].ifname = wifi_apcli_ifname(0);
+	mt7621a_xps[2].ifname = wifi_main_ifname(0);
+	mt7621a_xps[3].ifname = wifi_guest_ifname(0);
+	mt7621a_xps[4].ifname = wifi_apcli_ifname(0);
+#if BOARD_HAS_5G_RADIO
+	mt7621a_rps[9].ifname = wifi_main_ifname(1);
+	mt7621a_rps[10].ifname = wifi_guest_ifname(1);
+	mt7621a_rps[11].ifname = wifi_apcli_ifname(1);
+	mt7621a_xps[9].ifname = wifi_main_ifname(1);
+	mt7621a_xps[10].ifname = wifi_guest_ifname(1);
+	mt7621a_xps[11].ifname = wifi_apcli_ifname(1);
+#endif
+	smp_trx_inited = 1;
+}
 
 #else
 #error "undefined SoC with SMP!"
@@ -145,6 +178,9 @@ void
 set_cpu_affinity(void)
 {
 	int i;
+
+	/* resolve runtime wifi interface names (wifi_main_ifname etc.) */
+	init_smp_trx_layout();
 
 	/* set CPU affinity */
 	for (i = 0; i < ARRAY_SIZE(mt7621a_irq); i++)

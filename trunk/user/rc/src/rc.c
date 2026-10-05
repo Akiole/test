@@ -104,36 +104,16 @@ nvram_restore_defaults(void)
 static void
 load_wireless_modules(void)
 {
-#if defined (USE_RT2860V2_AP)
-	module_smart_load("rt2860v2_ap", NULL);
-#endif
-
-#if defined (USE_MT7628_AP)
-	module_smart_load("mt7628_ap", NULL);
-#endif
-
-#if defined (USE_MT76X2_AP)
-	module_smart_load("mt76x2_ap", NULL);
-#endif
-
-#if defined (USE_MT7615_AP)
-	module_smart_load("mt_7615e", NULL);
-#endif
-
-#if defined (USE_RT3090_AP)
-	module_smart_load("rt3090_ap", NULL);
-#elif defined (USE_RT5392_AP)
-	module_smart_load("rt5392_ap", NULL);
-#elif defined (USE_MT76X3_AP)
-	module_smart_load("mt76x3_ap", NULL);
-#endif
-
-#if defined (USE_RT5592_AP)
-	module_smart_load("rt5592_ap", NULL);
-#elif defined (USE_RT3593_AP)
-	module_smart_load("rt3593_ap", NULL);
-#elif defined (USE_MT7610_AP)
-	module_smart_load("mt7610_ap", NULL);
+	/*
+	 * stage2c: mt76 (upstream) driver chain for MT7915 DBDC.
+	 * The closed-source mt_7615e / mt76x2_ap / rt2860v2_ap modules are
+	 * removed; mt76.ko pulls its own dependencies (mt76-connac-lib,
+	 * mac80211, cfg80211) when modprobe is invoked.
+	 */
+#if defined (BOARD_MT7915_DBDC) || defined (USE_WID_2G) || defined (USE_WID_5G)
+	module_smart_load("mt7915e", NULL);
+#else
+	/* placeholder for future chips; on non-mt76 boards this is a no-op */
 #endif
 }
 
@@ -702,9 +682,8 @@ init_router(void)
 #if defined (USE_RTL8367)
 	rtl8367_node();
 #endif
-#if defined (USE_MTK_ESW) || defined (USE_MTK_GSW)
-	mtk_esw_node();
-#endif
+	/* stage2c: mtk_esw_node() removed — DSA/mt7530 switch is
+	 * configured by Linux DSA layer, not by the old ESW driver. */
 
 	nvram_convert_old_params();
 
@@ -848,9 +827,8 @@ shutdown_router(int level)
 
 	umount_rwfs_partition();
 
-	if (use_halt) {
-		module_smart_unload("hw_nat", 0);
-	}
+	/* stage2c: module_smart_unload("hw_nat",0) removed — closed-source
+	 * hw_nat is a dead-end under mt76 (software NAT flow is used). */
 
 	LED_CONTROL(LED_LAN, LED_OFF);
 	LED_CONTROL(LED_PWR, LED_OFF);
