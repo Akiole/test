@@ -781,8 +781,8 @@ doSystem("/usr/sbin/skipd -d /etc/storage/db");
 	start_mentohust();
 #endif
 	system("/usr/bin/iappd.sh restart");
-	system("modprobe xt_TPROXY");
-	system("modprobe br_netfilter");
+	system("modprobe -q xt_TPROXY");
+	system("modprobe -q br_netfilter");
 	system("/usr/bin/iappd.sh test");
 	return 0;
 }

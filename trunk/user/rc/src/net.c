@@ -705,9 +705,9 @@ reload_nat_modules(void)
 		{doSystem("iwpriv %s set hw_nat_register=%d", IFNAME_2G_MAIN, 0);
 		doSystem("iwpriv %s set hw_nat_register=%d", IFNAME_5G_MAIN, 0);}
 		if(ipv6_nat==1)
-		{doSystem("echo 7 1 > /sys/kernel/debug/hnat/hnat_setting");}
+		{doSystem("echo 7 1 > /sys/kernel/debug/hnat/hnat_setting 2>/dev/null");}
 		else
-		{doSystem("echo 7 0 > /sys/kernel/debug/hnat/hnat_setting");}
+		{doSystem("echo 7 0 > /sys/kernel/debug/hnat/hnat_setting 2>/dev/null");}
 #endif
 	}
 
