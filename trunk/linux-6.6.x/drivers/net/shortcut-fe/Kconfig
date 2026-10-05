@@ -1,0 +1,28 @@
+# SPDX-License-Identifier: GPL-2.0-only
+#
+# Shortcut forwarding engine configuration
+#
+
+config SHORTCUT_FE
+	bool "Shortcut Forwarding Engine (SFE)"
+	depends on NET && INET && NF_CONNTRACK && NETFILTER
+	default y
+	help
+	  Shortcut-Forwarding Engine's IPv4/IPv6 base engine. When enabled,
+	  packets of established, offloaded connections are forwarded in the
+	  kernel fast path, bypassing the slow network-stack path.
+
+	  This is the core engine (built-in to vmlinux). The optional
+	  fast-classifier user-space control module is selected separately.
+
+if SHORTCUT_FE
+
+config SHORTCUT_FE_FAST_CLASSIFIER
+	tristate "SFE fast classifier (netlink control)"
+	default m
+	help
+	  Netlink-based control plane that userspace (e.g. shortcut-fe's
+	  speedometer / offload daemon) uses to install and inspect SFE
+	  rules. Builds as a module named fast_classifier.ko.
+
+endif # SHORTCUT_FE

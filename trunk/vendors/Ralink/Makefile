@@ -21,8 +21,10 @@ COMP            = $(if $(filter y,$(CONFIG_KERNEL_NO_COMPRESS)),none,lzma)
 PART_ALIGN      = $(if $(filter y,$(CONFIG_MTD_NAND_MTK) $(CONFIG_MTD_NAND_RALINK)),131072,16)
 
 # === Kernel Load Address ===
-# MT7621: 0x81001000; others: 0x80000000
-LOAD_ADDR       = $(if $(filter $(CONFIG_PRODUCT),MT7621),81001000,80000000)
+# MT7621 kernel is linked at 0x80001000; load must match the link base so
+# Breed decompresses the kernel to the address it is linked for.
+# (0x81001000 caused an immediate crash before console.)
+LOAD_ADDR       = $(if $(filter $(CONFIG_PRODUCT),MT7621),80001000,80000000)
 
 # === Entry Point ===
 # CONFIG_WITHOUT_KERNEL=y → from U-Boot header; else → from vmlinux ELF

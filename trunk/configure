@@ -5,7 +5,7 @@ export ROOTDIR="$(pwd)"
 
 source "$ROOTDIR/host-tools.sh"
 
-kernel_id="4.4.x"
+kernel_id=""
 kernel_cf=""
 kernel_tf=""
 busybox_id="1.37.0"
@@ -67,6 +67,9 @@ if [ ! -d "$ROOTDIR/$CONFIG_LINUXDIR" ]; then
     echo "Project Linux Kernel dir ($CONFIG_LINUXDIR) not found! Terminate."
     exit 1
 fi
+
+# Derive kernel config id from the kernel tree dir: linux-4.4.x -> 4.4.x, linux-6.6.x -> 6.6.x
+kernel_id="${CONFIG_LINUXDIR#linux-}"
 
 board_h="$ROOTDIR/configs/boards/$CONFIG_FIRMWARE_PRODUCT_ID/board.h"
 board_mk="$ROOTDIR/configs/boards/$CONFIG_FIRMWARE_PRODUCT_ID/board.mk"
@@ -155,7 +158,8 @@ if [ "$CONFIG_FIRMWARE_INCLUDE_SQM" = "y" ]; then
 fi
 
 ########################### CPU EREQ ###################################
-if [ "$CONFIG_FIRMWARE_INCLUDE_OC" = "y" ]; then
+# CONFIG_MT7621_OC / CPU_FREQ are 4.4 vendor symbols; skip on 6.6 (mainline mt7621)
+if [ "$CONFIG_FIRMWARE_INCLUDE_OC" = "y" ] && [ "${kernel_id}" = "4.4.x" ]; then
     func_enable_kernel_param "CONFIG_MT7621_OC"
     func_enable_kernel_param "CONFIG_MT7621_CPU_FREQ" "\"$CONFIG_FIRMWARE_MT7621_OC\""
 fi

@@ -1,0 +1,257 @@
+// SPDX-License-Identifier: GPL-2.0-or-later OR MIT
+//
+// FCJ G-AX1800W (烽火 FCJ) — MT7621 + single MT7915E (PCIe, AX1800 DBDC)
+// Port from Padavan 4.4 DTS for OpenWrt v24.10.8 / kernel 6.6.144.
+// Board reference: stage1-kernel6/board-analysis.md §4.
+
+#include "mt7621.dtsi"
+
+#include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/input/input.h>
+#include <dt-bindings/leds/common.h>
+
+/ {
+	compatible = "fcj,fcj-g-ax1800w", "mediatek,mt7621-soc";
+	model = "FCJ G-AX1800W";
+
+	aliases {
+		led-boot = &led_power;
+		led-failsafe = &led_power_red;
+		led-running = &led_power;
+		led-upgrade = &led_power;
+		label-mac-device = <&gmac0>;
+	};
+
+	chosen {
+		/* 4.4 bootargs = "console=ttyS0,115200" (NO root=) and relied on
+		 * CONFIG_MTD_ROOTFS_ROOT_DEV + mtdsplit_uimage to auto-split the
+		 * `firmware` partition into "kernel"+"rootfs" and set rootfs as root.
+		 * R2: wired mtdsplit Kconfig/Makefile into the 6.6 tree and enabled
+		 * MTD_ROOTFS_ROOT_DEV/MTD_SPLIT_UIMAGE_FW/MTD_SPLIT_SQUASHFS_ROOT, so
+		 * we mirror 4.4: NO root= (an explicit root=/dev/mtdblockN would set
+		 * ROOT_DEV!=0 and disable the mtdcore.c auto-rootfs selection). */
+		bootargs = "console=ttyS0,115200 rootfstype=squashfs";
+	};
+
+	leds {
+		compatible = "gpio-leds";
+
+		/* power_red = gpio7, active low (4.4 dts:19-22) */
+		led_power_red: power_red {
+			color = <LED_COLOR_ID_RED>;
+			function = LED_FUNCTION_POWER;
+			gpios = <&gpio 7 GPIO_ACTIVE_LOW>;
+		};
+
+		/* power(green) = gpio8, active low (4.4 dts:24-27) */
+		led_power: power {
+			color = <LED_COLOR_ID_GREEN>;
+			function = LED_FUNCTION_POWER;
+			gpios = <&gpio 8 GPIO_ACTIVE_LOW>;
+		};
+	};
+
+	keys {
+		compatible = "gpio-keys";
+
+		/* reset = gpio18, KEY_RESTART (4.4 dts:36-40) */
+		reset {
+			label = "reset";
+			gpios = <&gpio 18 GPIO_ACTIVE_LOW>;
+			linux,code = <KEY_RESTART>;
+		};
+
+		/* wps = gpio6, KEY_WPS_BUTTON (4.4 dts:42-46) */
+		wps {
+			label = "wps";
+			gpios = <&gpio 6 GPIO_ACTIVE_LOW>;
+			linux,code = <KEY_WPS_BUTTON>;
+		};
+	};
+};
+
+/*
+ * Raw NAND (MT7621 NFC + HW ECC). 6.6 nand node does NOT reference
+ * nand_pins, so the 4.4 sdhci-nand-only pinctrl override is NOT needed
+ * (board-analysis §4.4 / §5). Do not add any nand pinctrl override.
+ */
+&nand {
+	status = "okay";
+
+	mediatek,nmbm;
+
+	partitions {
+		compatible = "fixed-partitions";
+		#address-cells = <1>;
+		#size-cells = <1>;
+
+		partition@0 {
+			label = "Bootloader";
+			reg = <0x000000 0x80000>;
+			read-only;
+		};
+
+		partition@80000 {
+			label = "CFG_Bdata";
+			reg = <0x080000 0x80000>;
+		};
+
+		/* Factory: holds MT7915 eeprom/precal + MAC.
+		 * nvmem offsets are MediaTek-generic LAYOUT ONLY —
+		 * TODO(on-board): verify against a real Factory dump
+		 * (l1profile says eeprom range 0x0..0x20000). */
+		partition@100000 {
+			label = "Factory";
+			reg = <0x100000 0x80000>;
+			read-only;
+
+			nvmem-layout {
+				compatible = "fixed-layout";
+				#address-cells = <1>;
+				#size-cells = <1>;
+
+				/* TODO(offset on-board): eeprom@0 */
+				eeprom: eeprom@0 {
+					reg = <0x0 0xe00>;
+				};
+
+				/* TODO(offset on-board): macaddr@4 */
+				macaddr_factory: macaddr@4 {
+					reg = <0x4 0x6>;
+				};
+
+				/* TODO(offset on-board): precal@e10 */
+				precal: precal@e10 {
+					reg = <0xe10 0x19c10>;
+				};
+			};
+		};
+
+		partition@180000 {
+			label = "Crash";
+			reg = <0x180000 0x80000>;
+		};
+
+		partition@200000 {
+			label = "kernel_stock";
+			reg = <0x200000 0x400000>;
+		};
+
+		/* OpenWrt firmware area: split nested kernel + ubi.
+		 * firmware 0x600000 size 0x1400000 (20M). */
+		partition@600000 {
+			label = "firmware";
+			reg = <0x600000 0x1400000>;
+
+			compatible = "fixed-partitions";
+			#address-cells = <1>;
+			#size-cells = <1>;
+
+			partition@0 {
+				label = "kernel";
+				reg = <0x0 0x400000>;
+			};
+
+			partition@400000 {
+				label = "ubi";
+				reg = <0x400000 0x1000000>;
+			};
+		};
+
+		partition@1a00000 {
+			label = "Config";
+			reg = <0x1a00000 0x80000>;
+		};
+
+		partition@1a80000 {
+			label = "Storage";
+			reg = <0x1a80000 0x400000>;
+		};
+
+		partition@1e80000 {
+			label = "RWFS";
+			reg = <0x1e80000 0x6100000>;
+		};
+
+		/* Whole-chip partition (Padavan 4.4 legacy layout).
+		 * Intentionally overlaps all above; kept for flash tools.
+		 * Node renamed from partition@0 to avoid dtc duplicate-node
+		 * (Bootloader also starts at 0x0). */
+		all {
+			label = "ALL";
+			reg = <0x0 0x7f80000>;
+		};
+	};
+};
+
+/* PCIe host bridge: MT7915 Wi-Fi sits behind it. */
+&pcie {
+	status = "okay";
+};
+
+/* TODO(on-board): verify MT7915 is on pcie1 (both reference boards use pcie1);
+ * if Wi-Fi does not enumerate, retarget to &pcie0. */
+&pcie1 {
+	wifi@0,0 {
+		compatible = "mediatek,mt76";
+		reg = <0x0000 0 0 0 0>;
+		nvmem-cells = <&eeprom>, <&precal>;
+		nvmem-cell-names = "eeprom", "precal";
+	};
+};
+
+/*
+ * Ethernet / DSA topology: all user ports are on the internal mt7530 switch.
+ * gmac0 --fixed-link--> switch0 port@6 (CPU port, built into dtsi).
+ * gmac1 stays disabled (no external RGMII PHY on this board).
+ */
+&gmac0 {
+	nvmem-cells = <&macaddr_factory>;
+	nvmem-cell-names = "mac-address";
+};
+
+&gmac1 {
+	status = "disabled";
+};
+
+&switch0 {
+	ports {
+		port@0 {
+			status = "okay";
+			label = "wan";
+		};
+
+		port@1 {
+			status = "okay";
+			label = "lan1";
+		};
+
+		port@2 {
+			status = "okay";
+			label = "lan2";
+		};
+
+		port@3 {
+			status = "okay";
+			label = "lan3";
+		};
+
+		port@4 {
+			status = "okay";
+			label = "lan4";
+		};
+	};
+};
+
+/* No USB ports on this board. */
+&xhci {
+	status = "disabled";
+};
+
+/* mux i2c/uart2/uart3/jtag/wdt to GPIO (4.4 mt7621-pinctrl-default-gpio). */
+&state_default {
+	gpio {
+		groups = "i2c", "uart2", "uart3", "jtag", "wdt";
+		function = "gpio";
+	};
+};

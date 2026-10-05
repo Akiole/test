@@ -1,0 +1,119 @@
+// SPDX-License-Identifier: GPL-2.0-or-later OR MIT
+
+#include "mt7621_xiaomi_nand_128m.dtsi"
+
+/ {
+	chosen {
+		/* Mirror FCJ: no root= (mtdsplit auto-splits firmware into
+		 * kernel+rootfs); console on ttyS0 115200 like 4.4 r2100.dts. */
+		bootargs = "console=ttyS0,115200 rootfstype=squashfs";
+	};
+};
+
+/*
+ * Padavan firmware layout for the Redmi AC2100, mirroring the 4.4
+ * r2100.dts partition table: the "firmware" partition holds the uImage +
+ * squashfs rootfs image (split into kernel+rootfs by mtdsplit_uimage via
+ * the openwrt,uimage compatible). Overrides the OpenWrt "kernel"+"ubi"
+ * layout, which has no firmware partition to split and thus cannot boot.
+ */
+&nand {
+	partitions {
+		/delete-node/ partition@600000; /* old "kernel" */
+		/delete-node/ partition@a00000; /* old "ubi" */
+
+		partition@600000 {
+			label = "firmware";
+			reg = <0x600000 0x1400000>; /* 20MB, holds kernel+rootfs */
+			compatible = "openwrt,uimage";
+		};
+
+		partition@1a00000 {
+			label = "Config";
+			reg = <0x1a00000 0x80000>; /* 512K */
+		};
+
+		partition@1a80000 {
+			label = "Storage";
+			reg = <0x1a80000 0x400000>; /* 4096K */
+		};
+
+		partition@1e80000 {
+			label = "RWFS";
+			reg = <0x1e80000 0x6100000>;
+		};
+	};
+};
+
+/* override EEPROM size to 0x4da8 for MT7615 */
+&eeprom_factory_8000 {
+	reg = <0x8000 0x4da8>;
+};
+
+&pcie {
+	status = "okay";
+};
+
+&pcie0 {
+	wifi@0,0 {
+		compatible = "mediatek,mt76";
+		reg = <0x0000 0 0 0 0>;
+		nvmem-cells = <&eeprom_factory_8000>;
+		nvmem-cell-names = "eeprom";
+		ieee80211-freq-limit = <5000000 6000000>;
+	};
+};
+
+&pcie1 {
+	wifi@0,0 {
+		compatible = "mediatek,mt76";
+		reg = <0x0000 0 0 0 0>;
+		nvmem-cells = <&eeprom_factory_0>;
+		nvmem-cell-names = "eeprom";
+		ieee80211-freq-limit = <2400000 2500000>;
+	};
+};
+
+&gmac0 {
+	nvmem-cells = <&macaddr_factory_e000>;
+	nvmem-cell-names = "mac-address";
+};
+
+&gmac1 {
+	status = "okay";
+	label = "wan";
+	phy-handle = <&ethphy0>;
+
+	nvmem-cells = <&macaddr_factory_e006>;
+	nvmem-cell-names = "mac-address";
+};
+
+&ethphy0 {
+	/delete-property/ interrupts;
+};
+
+&switch0 {
+	ports {
+		port@2 {
+			status = "okay";
+			label = "lan1";
+		};
+
+		port@3 {
+			status = "okay";
+			label = "lan2";
+		};
+
+		port@4 {
+			status = "okay";
+			label = "lan3";
+		};
+	};
+};
+
+&state_default {
+	gpio {
+		groups = "uart2", "uart3", "wdt";
+		function = "gpio";
+	};
+};
