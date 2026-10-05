@@ -1,0 +1,27 @@
+/***************************************************************************
+ * LPRng - An Extended Print Spooler System
+ *
+ * Copyright 1988-2003, Patrick Powell, San Diego, CA
+ *     papowell@lprng.com
+ * See LICENSE for conditions of use.
+ ***************************************************************************/
+
+
+
+#ifndef _CHILD_H_
+#define _CHILD_H_ 1
+
+/* PROTOTYPES */
+pid_t plp_waitpid (pid_t pid, plp_status_t *statusPtr, int options);
+int Countpid(void);
+void Killchildren( int sig );
+pid_t dofork( int new_process_group );
+plp_signal_t cleanup_USR1 (int passed_signal) NORETURN;
+plp_signal_t cleanup_HUP (int passed_signal) NORETURN;
+plp_signal_t cleanup_INT (int passed_signal) NORETURN;
+plp_signal_t cleanup_QUIT (int passed_signal) NORETURN;
+plp_signal_t cleanup_TERM (int passed_signal) NORETURN;
+void Max_open( int fd );
+plp_signal_t cleanup (int passed_signal) NORETURN;
+
+#endif

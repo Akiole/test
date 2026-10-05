@@ -1,0 +1,1642 @@
+--- a/auth.c	2018-08-27 07:50:45.000000000 +0800
++++ b/auth.c	2026-10-11 02:45:41.687176253 +0800
+@@ -14,7 +14,7 @@
+ ***********************************************************************/
+ 
+ static char const RCSID[] =
+-"$Id$";
++"$Id: auth.c 3323 2011-09-21 18:45:48Z lly.dev $";
+ 
+ #include "l2tp.h"
+ #include "md5.h"
+--- a/configure.in	1970-01-01 08:00:00.000000000 +0800
++++ b/configure.in	2026-10-11 02:45:41.689843352 +0800
+@@ -0,0 +1,60 @@
++dnl Process this file with autoconf to produce a configure script.
++dnl LIC: GPL
++AC_INIT(l2tp.h)
++
++dnl Checks for programs.
++AC_PROG_CC
++AC_PROG_INSTALL
++AC_PROG_RANLIB
++AC_CHECK_TOOL([AR],[ar])
++
++dnl Checks for libraries.
++dnl Replace `main' with a function in -ldl:
++AC_CHECK_LIB(dl, dlopen)
++
++dnl Checks for header files.
++AC_HEADER_STDC
++AC_CHECK_HEADERS(fcntl.h sys/ioctl.h sys/time.h syslog.h unistd.h)
++
++dnl Check for libevent
++AC_MSG_CHECKING([for libevent directory])
++if test -d ../libevent ; then
++   LIBEVENT=../libevent
++elif test -d libevent ; then
++   LIBEVENT=libevent
++else
++   AC_MSG_RESULT([not found])
++   echo "Cannot find libevent library; exiting"
++   exit 1
++fi
++
++AC_MSG_RESULT($LIBEVENT)
++
++AC_SUBST(LIBEVENT)
++
++dnl Checks for typedefs, structures, and compiler characteristics.
++AC_C_CONST
++AC_TYPE_PID_T
++AC_TYPE_SIZE_T
++AC_HEADER_TIME
++
++dnl Checks for library functions.
++AC_PROG_GCC_TRADITIONAL
++AC_FUNC_MEMCMP
++AC_TYPE_SIGNAL
++AC_FUNC_VPRINTF
++AC_CHECK_FUNCS(gethostname gettimeofday socket strdup strerror strtol)
++
++dnl If we own this copy of libevent, do its makefile; otherwise, not
++
++if test -d libevent ; then
++   if test -L libevent ; then
++      OUTPUT="Makefile handlers/Makefile"
++   else
++      OUTPUT="Makefile libevent/Makefile handlers/Makefile"
++   fi
++else
++   OUTPUT="Makefile handlers/Makefile"
++fi
++
++AC_OUTPUT($OUTPUT)
+--- a/debug.c	2018-08-27 07:50:45.000000000 +0800
++++ b/debug.c	2026-10-11 02:45:41.690411730 +0800
+@@ -14,14 +14,13 @@
+ ***********************************************************************/
+ 
+ static char const RCSID[] =
+-"$Id$";
++"$Id: debug.c 3323 2011-09-21 18:45:48Z lly.dev $";
+ 
+ #include "l2tp.h"
+ #include <stdio.h>
+ #include <stdarg.h>
+ #include <sys/time.h>
+ #include <unistd.h>
+-#include <syslog.h>
+ 
+ #define AVPCASE(x) case AVP_ ## x: return #x
+ #define MSGCASE(x) case MESSAGE_ ## x: return #x
+@@ -194,7 +193,6 @@
+     va_start(ap, fmt);
+     fprintf(stderr, "%4ld.%03ld ", sec_diff, usec_diff);
+     vfprintf(stderr, fmt, ap);
+-    vsyslog(LOG_DEBUG, fmt, ap);
+     va_end(ap);
+ }
+ 
+--- a/dgram.c	2018-08-27 07:50:45.000000000 +0800
++++ b/dgram.c	2026-10-11 02:45:41.705423821 +0800
+@@ -14,7 +14,7 @@
+ ***********************************************************************/
+ 
+ static char const RCSID[] =
+-"$Id$";
++"$Id: dgram.c 4422 2012-06-26 18:01:14Z lly.dev $";
+ 
+ #include "l2tp.h"
+ #include "md5.h"
+@@ -340,10 +340,8 @@
+     while(1) {
+ 	if (--iters <= 0) return NULL;
+ 	framelen = -1;
+-	do {
+-	    r = recvfrom(fd, buf, MAX_PACKET_LEN, 0,
++	r = recvfrom(fd, buf, MAX_PACKET_LEN, 0,
+ 		     (struct sockaddr *) from, &len);
+-	} while (r < 0 && errno == EINTR);
+ 	if (r <= 0) {
+ 	    return NULL;
+ 	}
+@@ -514,16 +512,14 @@
+ 	    (unsigned int) msg[1];
+     }
+     DBG(l2tp_db(DBG_XMIT_RCV,
+-	   "dgram_take_from_wire(%d %s:%d) -> %s\n",
+-	   fd, inet_ntoa(from->sin_addr), ntohs(from->sin_port),
+-	   l2tp_debug_describe_dgram(dgram)));
++	   "dgram_take_from_wire(%d) -> %s\n",
++	   fd, l2tp_debug_describe_dgram(dgram)));
+     return dgram;
+ }
+ 
+ /**********************************************************************
+ * %FUNCTION: dgram_send_to_wire
+ * %ARGUMENTS:
+-*  fd   -- socket to write to, if -1 use server
+ *  dgram -- datagram to send
+ *  to -- address to send datagram to
+ * %RETURNS:
+@@ -532,20 +528,18 @@
+ *  Adjusts header fields from host byte order, then sends datagram
+ ***********************************************************************/
+ int
+-l2tp_dgram_send_to_wire(int fd, 
+-			l2tp_dgram const *dgram,
++l2tp_dgram_send_to_wire(l2tp_dgram const *dgram,
+ 			struct sockaddr_in const *to)
+ {
+     unsigned char buf[MAX_PACKET_LEN+128];
+     socklen_t len = sizeof(struct sockaddr_in);
+-    int r, cursor = 2;
++    int cursor = 2;
+     size_t total_len;
+     unsigned char *len_ptr = NULL;
+ 
+-    if (fd < 0) fd = Sock;
+     DBG(l2tp_db(DBG_XMIT_RCV,
+-	   "dgram_send_to_wire(%d %s:%d) -> %s\n", 
+-	   fd, inet_ntoa(to->sin_addr), ntohs(to->sin_port),
++	   "dgram_send_to_wire(%s:%d) -> %s\n", 
++	   inet_ntoa(to->sin_addr), ntohs(to->sin_port),
+ 	   l2tp_debug_describe_dgram(dgram)));
+     buf[0] = dgram->bits;
+     buf[1] = dgram->version;
+@@ -569,11 +563,8 @@
+ 	*len_ptr = total_len & 255;
+     }
+     memcpy(buf+cursor, dgram->data, dgram->payload_len);
+-    do {
+-	r = sendto(Sock, buf, total_len, 0,
++    return sendto(Sock, buf, total_len, 0,
+ 		  (struct sockaddr const *) to, len);
+-    } while (r < 0 && errno == EINTR);
+-    return r;
+ }
+ 
+ /**********************************************************************
+@@ -1052,11 +1043,9 @@
+     real_buf[5] = ses->assigned_id & 0xFF;
+     real_buf[6] = 0xFF;		/* HDLC address */
+     real_buf[7] = 0x03;		/* HDLC control */
+-    do {
+-	r = sendto(Sock, real_buf, len+8, 0,
++    r = sendto(Sock, real_buf, len+8, 0,
+ 	       (struct sockaddr const *) &tunnel->peer_addr,
+ 	       sizeof(struct sockaddr_in));
+-    } while (r < 0 && errno == EINTR);
+     /* Snoop, if necessary */
+     if (ses->snooping) {
+ 	l2tp_session_lcp_snoop(ses, buf, len, 0);
+--- a/handlers/cmd-control.c	2026-10-11 02:53:04.189272243 +0800
++++ b/handlers/cmd-control.c	2026-10-11 02:45:41.706096575 +0800
+@@ -14,14 +14,13 @@
+ ***********************************************************************/
+ 
+ static char const RCSID[] =
+-"$Id$";
++"$Id: cmd-control.c 3323 2011-09-21 18:45:48Z lly.dev $";
+ #include <stdio.h>
+ #include <sys/socket.h>
+ #include <sys/un.h>
+ #include <sys/types.h>
+ #include <sys/stat.h>
+ #include <stdlib.h>
+-#include <string.h>
+ #include <syslog.h>
+ #include <fcntl.h>
+ #include <unistd.h>
+@@ -33,14 +32,13 @@
+ * %FUNCTION: send_cmd
+ * %ARGUMENTS:
+ *  cmd -- command to send to server
+-*  sockname -- server's socket name
+ * %RETURNS:
+ *  file descriptor for channel to server
+ * %DESCRIPTION:
+ *  Sends a command to the server
+ ***********************************************************************/
+ static int
+-send_cmd(char const *cmd, char const *sockname)
++send_cmd(char const *cmd)
+ {
+     struct sockaddr_un addr;
+     int fd;
+@@ -54,14 +52,14 @@
+ 
+     memset(&addr, 0, sizeof(addr));
+     addr.sun_family = AF_LOCAL;
+-    strncpy(addr.sun_path, sockname, sizeof(addr.sun_path) - 1);
++    strncpy(addr.sun_path, "/var/run/l2tpctrl", sizeof(addr.sun_path) - 1);
+ 
+     fd = socket(AF_LOCAL, SOCK_STREAM, 0);
+     if (fd < 0) {
+ 	perror("socket");
+ 	return -1;
+     }
+-    if (connect(fd, (struct sockaddr *) &addr, SUN_LEN(&addr)) < 0) {
++    if (connect(fd, (struct sockaddr *) &addr, sizeof(addr)) < 0) {
+ 	perror("connect");
+ 	close(fd);
+ 	return -1;
+@@ -74,37 +72,19 @@
+     return fd;
+ }
+ 
+-static void
+-usage(int argc, char *argv[], int exitcode)
+-{
+-    fprintf(stderr, "Usage: %s [-s socket] command\n", argv[0]);
+-    exit(exitcode);
+-}
+-
+ int
+ main(int argc, char *argv[])
+ {
+     int fd;
+     int n;
+-    int opt;
+     char buf[4096];
+-    char *sockname = "/var/run/l2tpctrl";
+ 
+-    while((opt = getopt(argc, argv, "s:h")) != -1) {
+-	switch(opt) {
+-	case 's':
+-	    sockname = optarg;
+-	    break;
+-	default:
+-	    usage(argc, argv, (opt == 'h') ? EXIT_SUCCESS : EXIT_FAILURE);
+-	}
+-    }
+-
+-    if (optind >= argc) {
+-	usage(argc, argv, EXIT_FAILURE);
++    if (argc != 2) {
++	fprintf(stderr, "Usage: %s command\n", argv[0]);
++	return 1;
+     }
+ 
+-    fd = send_cmd(argv[optind], sockname);
++    fd = send_cmd(argv[1]);
+     if (fd < 0) {
+ 	return 1;
+     }
+--- a/handlers/cmd-control.c.orig	2018-08-27 07:50:45.000000000 +0800
++++ b/handlers/cmd-control.c.orig	1970-01-01 08:00:00.000000000 +0800
+@@ -1,127 +0,0 @@
+-/***********************************************************************
+-*
+-* cmd-control.c
+-*
+-* Simple command-line program for sending commands to L2TP daemon
+-*
+-* Copyright (C) 2002 by Roaring Penguin Software Inc.
+-*
+-* This software may be distributed under the terms of the GNU General
+-* Public License, Version 2, or (at your option) any later version.
+-*
+-* LIC: GPL
+-*
+-***********************************************************************/
+-
+-static char const RCSID[] =
+-"$Id$";
+-#include <stdio.h>
+-#include <sys/socket.h>
+-#include <sys/un.h>
+-#include <sys/types.h>
+-#include <sys/stat.h>
+-#include <stdlib.h>
+-#include <syslog.h>
+-#include <fcntl.h>
+-#include <unistd.h>
+-#include <errno.h>
+-#include <sys/uio.h>
+-
+-
+-/**********************************************************************
+-* %FUNCTION: send_cmd
+-* %ARGUMENTS:
+-*  cmd -- command to send to server
+-*  sockname -- server's socket name
+-* %RETURNS:
+-*  file descriptor for channel to server
+-* %DESCRIPTION:
+-*  Sends a command to the server
+-***********************************************************************/
+-static int
+-send_cmd(char const *cmd, char const *sockname)
+-{
+-    struct sockaddr_un addr;
+-    int fd;
+-    struct iovec v[2];
+-
+-    /* Do not send zero-length command */
+-    if (!*cmd) {
+-	errno = ESPIPE;
+-	return -1;
+-    }
+-
+-    memset(&addr, 0, sizeof(addr));
+-    addr.sun_family = AF_LOCAL;
+-    strncpy(addr.sun_path, sockname, sizeof(addr.sun_path) - 1);
+-
+-    fd = socket(AF_LOCAL, SOCK_STREAM, 0);
+-    if (fd < 0) {
+-	perror("socket");
+-	return -1;
+-    }
+-    if (connect(fd, (struct sockaddr *) &addr, SUN_LEN(&addr)) < 0) {
+-	perror("connect");
+-	close(fd);
+-	return -1;
+-    }
+-    v[0].iov_base = (char *) cmd;
+-    v[0].iov_len = strlen(cmd);
+-    v[1].iov_base = "\n";
+-    v[1].iov_len = 1;
+-    writev(fd, v, 2);
+-    return fd;
+-}
+-
+-static void
+-usage(int argc, char *argv[], int exitcode)
+-{
+-    fprintf(stderr, "Usage: %s [-s socket] command\n", argv[0]);
+-    exit(exitcode);
+-}
+-
+-int
+-main(int argc, char *argv[])
+-{
+-    int fd;
+-    int n;
+-    int opt;
+-    char buf[4096];
+-    char *sockname = "/var/run/l2tpctrl";
+-
+-    while((opt = getopt(argc, argv, "s:h")) != -1) {
+-	switch(opt) {
+-	case 's':
+-	    sockname = optarg;
+-	    break;
+-	default:
+-	    usage(argc, argv, (opt == 'h') ? EXIT_SUCCESS : EXIT_FAILURE);
+-	}
+-    }
+-
+-    if (optind >= argc) {
+-	usage(argc, argv, EXIT_FAILURE);
+-    }
+-
+-    fd = send_cmd(argv[optind], sockname);
+-    if (fd < 0) {
+-	return 1;
+-    }
+-
+-    for(;;) {
+-	n = read(fd, buf, sizeof(buf));
+-	if (n < 0) {
+-	    perror("read");
+-	    printf("\n");
+-	    close(fd);
+-	    return 1;
+-	}
+-	if (n == 0) {
+-	    printf("\n");
+-	    close(fd);
+-	    return 0;
+-	}
+-	write(1, buf, n);
+-    }
+-}
+-
+--- a/handlers/cmd.c	2018-08-27 07:50:45.000000000 +0800
++++ b/handlers/cmd.c	2026-10-11 02:45:41.707570334 +0800
+@@ -14,7 +14,7 @@
+ ***********************************************************************/
+ 
+ static char const RCSID[] =
+-"$Id$";
++"$Id: cmd.c 3323 2011-09-21 18:45:48Z lly.dev $";
+ 
+ #include "l2tp.h"
+ #include "dstring.h"
+@@ -152,6 +152,7 @@
+ 	       char const *value)
+ {
+     struct sockaddr_un addr;
++    socklen_t len;
+     int fd;
+ 
+     if (!strcmp(name, "*begin*")) return 0;
+@@ -175,6 +176,7 @@
+     addr.sun_family = AF_LOCAL;
+     strncpy(addr.sun_path, sockname, sizeof(addr.sun_path) - 1);
+ 
++    len = sizeof(addr);
+     if (bind(fd, (struct sockaddr *) &addr, SUN_LEN(&addr)) < 0) {
+ 	l2tp_set_errmsg("cmd: process_option: bind: %s", strerror(errno));
+ 	close(fd);
+--- a/handlers/dstring.c	2018-08-27 07:50:45.000000000 +0800
++++ b/handlers/dstring.c	2026-10-11 02:45:41.707055581 +0800
+@@ -15,7 +15,7 @@
+ ***********************************************************************/
+ 
+ static char const RCSID[] =
+-"$Id$";
++"$Id: dstring.c 3323 2011-09-21 18:45:48Z lly.dev $";
+ 
+ #define INITIAL_SIZE 128
+ #define GROW_FACTOR 2
+--- a/handlers/linux/if_pppol2tp.h	2018-08-27 07:50:45.000000000 +0800
++++ b/handlers/linux/if_pppol2tp.h	1970-01-01 08:00:00.000000000 +0800
+@@ -1,67 +0,0 @@
+-/***************************************************************************
+- * Linux PPP over L2TP (PPPoL2TP) Socket Implementation (RFC 2661)
+- *
+- * This file supplies definitions required by the PPP over L2TP driver
+- * (pppol2tp.c).  All version information wrt this file is located in pppol2tp.c
+- *
+- * License:
+- *		This program is free software; you can redistribute it and/or
+- *		modify it under the terms of the GNU General Public License
+- *		as published by the Free Software Foundation; either version
+- *		2 of the License, or (at your option) any later version.
+- *
+- */
+-
+-#ifndef __LINUX_IF_PPPOL2TP_H
+-#define __LINUX_IF_PPPOL2TP_H
+-
+-#include <asm/types.h>
+-
+-#ifdef __KERNEL__
+-#include <linux/in.h>
+-#endif
+-
+-/* Structure used to bind() the socket to a particular socket & tunnel */
+-struct pppol2tp_addr
+-{
+-	pid_t	pid;			/* pid that owns the fd.
+-					 * 0 => current */
+-	int	fd;			/* FD of UDP socket to use */
+-
+-	struct sockaddr_in addr;	/* IP address and port to send to */
+-
+-	__u16 s_tunnel, s_session;	/* For matching incoming packets */
+-	__u16 d_tunnel, d_session;	/* For sending outgoing packets */
+-};
+-
+-/* Socket options:
+- * DEBUG	- bitmask of debug message categories
+- * SENDSEQ	- 0 => don't send packets with sequence numbers
+- *		  1 => send packets with sequence numbers
+- * RECVSEQ	- 0 => receive packet sequence numbers are optional
+- *		  1 => drop receive packets without sequence numbers
+- * LNSMODE	- 0 => act as LAC.
+- *		  1 => act as LNS.
+- * REORDERTO	- reorder timeout (in millisecs). If 0, don't try to reorder.
+- */
+-enum {
+-	PPPOL2TP_SO_DEBUG	= 1,
+-	PPPOL2TP_SO_RECVSEQ	= 2,
+-	PPPOL2TP_SO_SENDSEQ	= 3,
+-	PPPOL2TP_SO_LNSMODE	= 4,
+-	PPPOL2TP_SO_REORDERTO	= 5,
+-};
+-
+-/* Debug message categories for the DEBUG socket option */
+-enum {
+-	PPPOL2TP_MSG_DEBUG	= (1 << 0),	/* verbose debug (if
+-						 * compiled in) */
+-	PPPOL2TP_MSG_CONTROL	= (1 << 1),	/* userspace - kernel
+-						 * interface */
+-	PPPOL2TP_MSG_SEQ	= (1 << 2),	/* sequence numbers */
+-	PPPOL2TP_MSG_DATA	= (1 << 3),	/* data packets */
+-};
+-
+-
+-
+-#endif
+--- a/handlers/linux/if_pppox.h	2018-08-27 07:50:45.000000000 +0800
++++ b/handlers/linux/if_pppox.h	1970-01-01 08:00:00.000000000 +0800
+@@ -1,165 +0,0 @@
+-/***************************************************************************
+- * Linux PPP over X - Generic PPP transport layer sockets
+- * Linux PPP over Ethernet (PPPoE) Socket Implementation (RFC 2516)
+- *
+- * This file supplies definitions required by the PPP over Ethernet driver
+- * (pppox.c).  All version information wrt this file is located in pppox.c
+- *
+- * License:
+- *		This program is free software; you can redistribute it and/or
+- *		modify it under the terms of the GNU General Public License
+- *		as published by the Free Software Foundation; either version
+- *		2 of the License, or (at your option) any later version.
+- *
+- */
+-
+-#ifndef __LINUX_IF_PPPOX_H
+-#define __LINUX_IF_PPPOX_H
+-
+-
+-#include <asm/types.h>
+-#include <asm/byteorder.h>
+-
+-#ifdef  __KERNEL__
+-#include <linux/if_ether.h>
+-#include <linux/if.h>
+-#include <linux/netdevice.h>
+-#include <linux/sched.h>
+-#include <asm/semaphore.h>
+-#include <linux/ppp_channel.h>
+-#endif /* __KERNEL__ */
+-#include <linux/if_pppol2tp.h>
+-
+-/* For user-space programs to pick up these definitions
+- * which they wouldn't get otherwise without defining __KERNEL__
+- */
+-#ifndef AF_PPPOX
+-#define AF_PPPOX	24
+-#define PF_PPPOX	AF_PPPOX
+-#endif /* !(AF_PPPOX) */
+-
+-/************************************************************************
+- * PPPoE addressing definition
+- */
+-typedef __u16 sid_t;
+-struct pppoe_addr{
+-       sid_t           sid;                    /* Session identifier */
+-       unsigned char   remote[ETH_ALEN];       /* Remote address */
+-       char            dev[IFNAMSIZ];          /* Local device to use */
+-};
+-
+-/************************************************************************
+- * Protocols supported by AF_PPPOX
+- */
+-#define PX_PROTO_OE    0 /* Currently just PPPoE */
+-#define PX_PROTO_OL2TP 1 /* Now L2TP also */
+-#define PX_PROTO_PPTP  2
+-#define PX_MAX_PROTO   3
+-
+-/* The use of a union isn't viable because the size of this struct
+- * must stay fixed over time -- applications use sizeof(struct
+- * sockaddr_pppox) to fill it. Use protocol specific sockaddr types
+- * instead.
+- */
+-struct sockaddr_pppox {
+-       sa_family_t     sa_family;            /* address family, AF_PPPOX */
+-       unsigned int    sa_protocol;          /* protocol identifier */
+-       union{
+-               struct pppoe_addr       pppoe;
+-       }sa_addr;
+-}__attribute__ ((packed)); /* deprecated */
+-
+-/* Must be binary-compatible with sockaddr_pppox for backwards compatabilty */
+-struct sockaddr_pppoe {
+-	sa_family_t     sa_family;	/* address family, AF_PPPOX */
+-	unsigned int    sa_protocol;    /* protocol identifier */
+-	struct pppoe_addr pppoe;
+-}__attribute__ ((packed));
+-
+-struct sockaddr_pppol2tp {
+-	sa_family_t     sa_family;      /* address family, AF_PPPOX */
+-	unsigned int    sa_protocol;    /* protocol identifier */
+-	struct pppol2tp_addr pppol2tp;
+-}__attribute__ ((packed));
+-
+-/*********************************************************************
+- *
+- * ioctl interface for defining forwarding of connections
+- *
+- ********************************************************************/
+-
+-#define PPPOEIOCSFWD	_IOW(0xB1 ,0, sizeof(struct sockaddr_pppox))
+-#define PPPOEIOCDFWD	_IO(0xB1 ,1)
+-/*#define PPPOEIOCGFWD	_IOWR(0xB1,2, sizeof(struct sockaddr_pppox))*/
+-
+-/* Codes to identify message types */
+-#define PADI_CODE	0x09
+-#define PADO_CODE	0x07
+-#define PADR_CODE	0x19
+-#define PADS_CODE	0x65
+-#define PADT_CODE	0xa7
+-struct pppoe_tag {
+-	__u16 tag_type;
+-	__u16 tag_len;
+-	char tag_data[0];
+-} __attribute ((packed));
+-
+-/* Tag identifiers */
+-#define PTT_EOL		__constant_htons(0x0000)
+-#define PTT_SRV_NAME	__constant_htons(0x0101)
+-#define PTT_AC_NAME	__constant_htons(0x0102)
+-#define PTT_HOST_UNIQ	__constant_htons(0x0103)
+-#define PTT_AC_COOKIE	__constant_htons(0x0104)
+-#define PTT_VENDOR 	__constant_htons(0x0105)
+-#define PTT_RELAY_SID	__constant_htons(0x0110)
+-#define PTT_SRV_ERR     __constant_htons(0x0201)
+-#define PTT_SYS_ERR  	__constant_htons(0x0202)
+-#define PTT_GEN_ERR  	__constant_htons(0x0203)
+-
+-struct pppoe_hdr {
+-#if defined(__LITTLE_ENDIAN_BITFIELD)
+-	__u8 ver : 4;
+-	__u8 type : 4;
+-#elif defined(__BIG_ENDIAN_BITFIELD)
+-	__u8 type : 4;
+-	__u8 ver : 4;
+-#else
+-#error	"Please fix <asm/byteorder.h>"
+-#endif
+-	__u8 code;
+-	__u16 sid;
+-	__u16 length;
+-	struct pppoe_tag tag[0];
+-} __attribute__ ((packed));
+-
+-#ifdef __KERNEL__
+-
+-struct pppox_proto {
+-	int (*create)(struct socket *sock);
+-	int (*ioctl)(struct socket *sock, unsigned int cmd,
+-		     unsigned long arg);
+-};
+-
+-extern int register_pppox_proto(int proto_num, struct pppox_proto *pp);
+-extern void unregister_pppox_proto(int proto_num);
+-extern void pppox_unbind_sock(struct sock *sk);/* delete ppp-channel binding */
+-extern int pppox_channel_ioctl(struct ppp_channel *pc, unsigned int cmd,
+-			       unsigned long arg);
+-
+-/* PPPoX socket states */
+-enum {
+-    PPPOX_NONE		= 0,  /* initial state */
+-    PPPOX_CONNECTED	= 1,  /* connection established ==TCP_ESTABLISHED */
+-    PPPOX_BOUND		= 2,  /* bound to ppp device */
+-    PPPOX_RELAY		= 4,  /* forwarding is enabled */
+-    PPPOX_ZOMBIE	= 8,  /* dead, but still bound to ppp device */
+-    PPPOX_DEAD		= 16  /* dead, useless, please clean me up!*/
+-};
+-
+-extern struct ppp_channel_ops pppoe_chan_ops;
+-
+-extern int pppox_proto_init(struct net_proto *np);
+-
+-#endif /* __KERNEL__ */
+-
+-#endif /* !(__LINUX_IF_PPPOX_H) */
+--- a/handlers/pty.c	2018-08-27 07:50:45.000000000 +0800
++++ b/handlers/pty.c	2026-10-11 02:45:41.708029962 +0800
+@@ -14,7 +14,7 @@
+ ***********************************************************************/
+ 
+ static char const RCSID[] =
+-"$Id$";
++"$Id: pty.c 3323 2011-09-21 18:45:48Z lly.dev $";
+ 
+ #include "../l2tp.h"
+ #include <sys/ioctl.h>
+--- a/handlers/sync-pppd.c	2018-08-27 07:50:45.000000000 +0800
++++ b/handlers/sync-pppd.c	2026-10-11 02:45:41.708883717 +0800
+@@ -15,14 +15,13 @@
+ ***********************************************************************/
+ 
+ static char const RCSID[] =
+-"$Id$";
++"$Id: sync-pppd.c 3323 2011-09-21 18:45:48Z lly.dev $";
+ 
+ #include "l2tp.h"
+ #include <signal.h>
+ #include <stdio.h>
+ #include <string.h>
+ #include <fcntl.h>
+-#include <errno.h>
+ #include <linux/if.h>
+ #include <linux/if_ether.h>
+ #include <linux/if_pppol2tp.h>
+@@ -34,10 +33,12 @@
+ 
+ #define MAX_FDS 256
+ 
++/* Use management tunnel socket under 2.6.23+ */
++#define PPPOL2TP_V1
++
+ extern int pty_get(int *mfp, int *sfp);
+ static int establish_tunnel(l2tp_tunnel *tun);
+ static void close_tunnel(l2tp_tunnel *tun);
+-static int tunnel_socket(l2tp_tunnel *tun);
+ static int establish_session(l2tp_session *ses);
+ static void close_session(l2tp_session *ses, char const *reason, int may_reestablish);
+ static void handle_frame(l2tp_session *ses, unsigned char *buf, size_t len);
+@@ -61,15 +62,16 @@
+     close_session,
+     handle_frame,
+     establish_tunnel,
+-    close_tunnel,
+-    tunnel_socket
++    close_tunnel
+ };
+ 
+ /* Tunnel private info */
+ struct master {
+     EventSelector *es;		/* Event selector */
+-    l2tp_tunnel *tun;		/* L2TP tunnel we're hooked to */
+     int fd;			/* Tunnel UDP socket for event-handler loop */
++#ifdef PPPOL2TP_V1
++    int m_fd;			/* Tunnel PPPO2TP socket */
++#endif
+     EventHandler *event;	/* Event handler */
+ };
+ 
+@@ -179,9 +181,7 @@
+     /* TODO: Add error checking */
+     if (sl->fd < 0) {
+         l2tp_set_errmsg("Attempt to write %d bytes to non existent fd.", len);
+-    } else do {
+-        n = write(sl->fd, buf, len);
+-    } while (n < 0 && errno == EINTR);
++    } else n = write(sl->fd, buf, len);
+ }
+ 
+ /**********************************************************************
+@@ -291,9 +291,7 @@
+        we could have a DoS potential */
+     while(iters--) {
+ 	/* EXTRA_HEADER_ROOM bytes extra space for l2tp header */
+-	do {
+-	    n = read(fd, buf+EXTRA_HEADER_ROOM, sizeof(buf)-EXTRA_HEADER_ROOM);
+-	} while (n < 0 && errno == EINTR);
++	n = read(fd, buf+EXTRA_HEADER_ROOM, sizeof(buf)-EXTRA_HEADER_ROOM);
+ 
+ 	/* TODO: Check this.... */
+ 	if (n <= 2) return;
+@@ -317,15 +315,15 @@
+ static int
+ establish_session(l2tp_session *ses)
+ {
++    int m_pty = -1, s_pty;
++    struct sockaddr_pppol2tp sax;
++    pid_t pid;
+     EventSelector *es = ses->tunnel->es;
+     struct master *tun = ses->tunnel->private;
+     struct slave *sl = malloc(sizeof(struct slave));
+-    struct sockaddr_pppol2tp sax;
+-    int m_pty = -1, s_pty = -1;
+     int i, flags;
+     char unit[32], fdstr[10];
+     char tidstr[10], sidstr[10];
+-    pid_t pid;
+ 
+     ses->private = NULL;
+     if (!sl) return -1;
+@@ -334,60 +332,68 @@
+ 
+     /* Get pty */
+     if (kernel_mode) {
+-	if (!tun) goto err;
+-
+-	s_pty = socket(AF_PPPOX, SOCK_DGRAM, PX_PROTO_OL2TP);
+-	if (s_pty < 0) {
+-	    l2tp_set_errmsg("Unable to allocate PPPoL2TP socket.");
+-	    goto err;
+-	}
+-
+-	flags = fcntl(s_pty, F_GETFL);
+-	if (flags < 0 || fcntl(s_pty, F_SETFL, flags | O_NONBLOCK) < 0) {
+-	    l2tp_set_errmsg("Unable to set PPPoL2TP socket nonblock.");
+-	    goto err;
+-	}
+-
+-	memset(&sax, 0, sizeof(sax));
+-	sax.sa_family = AF_PPPOX;
+-	sax.sa_protocol = PX_PROTO_OL2TP;
+-	sax.pppol2tp.pid = 0;
+-	sax.pppol2tp.fd = tun->fd;
+-	sax.pppol2tp.addr.sin_family = AF_INET;
+-	sax.pppol2tp.addr.sin_addr.s_addr = ses->tunnel->peer_addr.sin_addr.s_addr;
+-	sax.pppol2tp.addr.sin_port = ses->tunnel->peer_addr.sin_port;
+-	sax.pppol2tp.s_tunnel  = ses->tunnel->my_id;
+-	sax.pppol2tp.s_session = ses->my_id;
+-	sax.pppol2tp.d_tunnel  = ses->tunnel->assigned_id;
+-	sax.pppol2tp.d_session = ses->assigned_id;
+-	if (connect(s_pty, (struct sockaddr *)&sax, sizeof(sax)) < 0) {
+-	    l2tp_set_errmsg("Unable to connect PPPoL2TP socket.");
+-	    goto err;
+-	}
+-
++	if (!tun) {
++	    free(sl);
++	    return -1;
++	}
++        s_pty = socket(AF_PPPOX, SOCK_DGRAM, PX_PROTO_OL2TP);
++        if (s_pty < 0) {
++            l2tp_set_errmsg("Unable to allocate PPPoL2TP socket.");
++	    free(sl);
++            return -1;
++        }
++        flags = fcntl(s_pty, F_GETFL);
++        if (flags == -1 || fcntl(s_pty, F_SETFL, flags | O_NONBLOCK) == -1) {
++            l2tp_set_errmsg("Unable to set PPPoL2TP socket nonblock.");
++	    close(s_pty);
++	    free(sl);
++            return -1;
++        }
++        sax.sa_family = AF_PPPOX;
++        sax.sa_protocol = PX_PROTO_OL2TP;
++        sax.pppol2tp.pid = 0;
++        sax.pppol2tp.fd = tun->fd;
++        sax.pppol2tp.addr.sin_addr.s_addr = ses->tunnel->peer_addr.sin_addr.s_addr;
++        sax.pppol2tp.addr.sin_port = ses->tunnel->peer_addr.sin_port;
++        sax.pppol2tp.addr.sin_family = AF_INET;
++        sax.pppol2tp.s_tunnel  = ses->tunnel->my_id;
++        sax.pppol2tp.s_session = ses->my_id;
++        sax.pppol2tp.d_tunnel  = ses->tunnel->assigned_id;
++        sax.pppol2tp.d_session = ses->assigned_id;
++        if (connect(s_pty, (struct sockaddr *)&sax, sizeof(sax)) < 0) {
++            l2tp_set_errmsg("Unable to connect PPPoL2TP socket.");
++	    close(s_pty);
++	    free(sl);
++            return -1;
++        }
+ 	snprintf (fdstr, sizeof(fdstr), "%d", s_pty);
+ 	snprintf (tidstr, sizeof(tidstr), "%d", ses->tunnel->my_id);
+ 	snprintf (sidstr, sizeof(sidstr), "%d", ses->my_id);
+     } else {
+ 	if (pty_get(&m_pty, &s_pty) < 0) {
+-	    goto err;
++	    free(sl);
++	    return -1;
+ 	}
+-	flags = fcntl(m_pty, F_GETFD);
+-	if (flags < 0 || fcntl(m_pty, F_SETFD, flags | FD_CLOEXEC) < 0) {
+-	    l2tp_set_errmsg("Unable to set master socket FD_CLOEXEC.");
+-	    goto err;
++	if (fcntl(m_pty, F_SETFD, FD_CLOEXEC) == -1) {
++	    l2tp_set_errmsg("Unable to set FD_CLOEXEC");
++	    close(m_pty);
++	    close(s_pty);
++	    free(sl);
++	    return -1;
+ 	}
+     }
+ 
+     /* Fork */
+     pid = fork();
+     if (pid == (pid_t) -1) {
+-	goto err;
++	if (m_pty >= 0) close(m_pty);
++	close(s_pty);
++	free(sl);
++	return -1;
+     }
+ 
+-    /* In the parent */
+     if (pid) {
+-	sl->fd = m_pty;
++	/* In the parent */
+ 	sl->pid = pid;
+ 
+ 	/* Set up handler for when pppd exits */
+@@ -396,13 +402,13 @@
+ 	/* Close the slave tty */
+ 	close(s_pty);
+ 
++	sl->fd = m_pty;
++
+ 	if (!kernel_mode) {
+-	    /* Set slave FD non-blocking */
+-	    flags = fcntl(m_pty, F_GETFL);
+-	    if (flags < 0 || fcntl(m_pty, F_SETFL, flags | O_NONBLOCK) < 0) {
+-		l2tp_set_errmsg("Unable to set master socket nonblock.");
+-		goto err;
+-	    }
++            /* Set slave FD non-blocking */
++	    flags = fcntl(sl->fd, F_GETFL);
++	    if (flags >= 0) fcntl(sl->fd, F_SETFL, (long) flags | O_NONBLOCK);
++
+ 	    /* Handle readability on slave end */
+ 	    sl->event = Event_AddHandler(es, m_pty, EVENT_FLAG_READABLE,
+ 			 readable, ses);
+@@ -411,12 +417,6 @@
+ 
+ 	ses->private = sl;
+ 	return 0;
+-
+-err:
+-	if (m_pty >= 0) close(m_pty);
+-	if (s_pty >= 0) close(s_pty);
+-	free(sl);
+-	return -1;
+     }
+ 
+     /* In the child.  Exec pppd */
+@@ -474,7 +474,7 @@
+ 	    PUSH_LNS_OPT(unit);
+ 	}
+ 	/* Push plugin options */
+-	if (kernel_mode && num_pppd_lac_options <= MAX_OPTS-9) {
++	if (kernel_mode && num_pppd_lac_options <= MAX_OPTS-5) {
+ 	    PUSH_LNS_OPT("plugin");
+ 	    PUSH_LNS_OPT("pppol2tp.so");
+ 	    PUSH_LNS_OPT("pppol2tp");
+@@ -506,34 +506,49 @@
+     _exit(1);
+ }
+ 
+-/**********************************************************************
+-* %FUNCTION: establish_tunnel
+-* %ARGUMENTS:
+-*  tunnel -- the L2TP tunnel
+-* %RETURNS:
+-*  0 if tunnel could be established, -1 otherwise.
+-* %DESCRIPTION:
+-*  Opens tunnel-specific fds
+-***********************************************************************/
+ static int establish_tunnel(l2tp_tunnel *tunnel)
+ {
+     EventSelector *es = tunnel->es;
+     struct master *tun;
+     struct sockaddr_in addr;
++    socklen_t sock_len;
++    int fd = -1;
++#ifdef PPPOL2TP_V1
+     struct sockaddr_pppol2tp sax;
+-    int fd = -1, m_fd = -1;
++    int m_fd = -1;
++#endif
+     int flags;
+ 
+-    tunnel->private = NULL;
+-    if (!kernel_mode) return 0;
++    if (!kernel_mode)
++	return 0;
+ 
++    tunnel->private = NULL;
+     tun = malloc(sizeof(struct master));
+     if (!tun) return -1;
+-    tun->tun = tunnel;
+ 
+     fd = socket(PF_INET, SOCK_DGRAM, 0);
+     if (fd < 0) {
+-	l2tp_set_errmsg("Unable to allocate tunnel UDP socket.");
++	l2tp_set_errmsg("Unable to allocate tunnel UDP socket: %s");
++	goto err;
++    }
++
++    addr = tunnel->peer_addr;
++    if (connect(fd, (struct sockaddr *) &addr, sizeof(addr)) < 0) {
++	l2tp_set_errmsg("Unable to connect tunnel UDP socket.");
++	goto err;
++    }
++
++    sock_len = sizeof(struct sockaddr_in);
++    if ((getsockname(fd, (struct sockaddr*) &addr, &sock_len) < 0) ||
++        (sock_len != sizeof(struct sockaddr_in))) {
++	l2tp_set_errmsg("Unable to get name of tunnel UDP socket");
++	goto err;
++    }
++    close(fd);
++
++    fd = socket(PF_INET, SOCK_DGRAM, 0);
++    if (fd < 0) {
++	l2tp_set_errmsg("Unable to allocate tunnel UDP socket: %s");
+ 	goto err;
+     }
+ 
+@@ -541,8 +556,9 @@
+     setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &flags, sizeof(flags));
+     setsockopt(fd, SOL_SOCKET, SO_NO_CHECK, &flags, sizeof(flags));
+ 
++    /* Already set by getsockname
+     addr.sin_family = AF_INET;
+-    addr.sin_addr = Settings.listen_addr;
++    addr.sin_addr = Settings.listen_addr; */
+     addr.sin_port = htons((uint16_t) Settings.listen_port);
+     if (bind(fd, (struct sockaddr *) &addr, sizeof(addr)) < 0) {
+ 	l2tp_set_errmsg("Unable to bind tunnel UDP socket.");
+@@ -561,10 +577,11 @@
+ 	goto err;
+     }
+ 
++#ifdef PPPOL2TP_V1
+     m_fd = socket(AF_PPPOX, SOCK_DGRAM, PX_PROTO_OL2TP);
+     if (m_fd < 0) {
+-	l2tp_set_errmsg("Unable to allocate tunnel PPPoL2TP socket.");
+-	goto err;
++        l2tp_set_errmsg("Unable to allocate tunnel PPPoL2TP socket.");
++        goto err;
+     }
+ 
+     flags = fcntl(m_fd, F_GETFL);
+@@ -573,14 +590,13 @@
+ 	goto err;
+     }
+ 
+-    memset(&sax, 0, sizeof(sax));
+     sax.sa_family = AF_PPPOX;
+     sax.sa_protocol = PX_PROTO_OL2TP;
+     sax.pppol2tp.pid = 0;
+     sax.pppol2tp.fd = fd;
+-    sax.pppol2tp.addr.sin_family = AF_INET;
+     sax.pppol2tp.addr.sin_addr.s_addr = tunnel->peer_addr.sin_addr.s_addr;
+     sax.pppol2tp.addr.sin_port = tunnel->peer_addr.sin_port;
++    sax.pppol2tp.addr.sin_family = AF_INET;
+     sax.pppol2tp.s_tunnel  = tunnel->my_id;
+     sax.pppol2tp.s_session = 0;
+     sax.pppol2tp.d_tunnel  = tunnel->assigned_id;
+@@ -589,65 +605,44 @@
+ 	l2tp_set_errmsg("Unable to connect tunnel PPPoL2TP socket.");
+ 	goto err;
+     }
++#endif
+ 
+-    /* Yeah, we don't need to keep it open */
+-    close(m_fd);
+-
++    tunnel->private = tun;
+     tun->es = es;
+     tun->fd = fd;
++#ifdef PPPOL2TP_V1
++    tun->m_fd = m_fd;
++#endif
+     tun->event = Event_AddHandler(es, fd, EVENT_FLAG_READABLE,
+ 				  network_readable, NULL);
+-    tunnel->private = tun;
+-
+     return 0;
+ 
+ err:
+     if (fd >= 0) close(fd);
+-    if (m_fd >= 0) close(m_fd);
++#ifdef PPPOL2TP_V1
++    if (m_fd >= 0) close(tun->m_fd);
++#endif
+     if (tun) free(tun);
+     return -1;
+ }
+ 
+-/**********************************************************************
+-* %FUNCTION: close_tunnel
+-* %ARGUMENTS:
+-*  tunnel -- L2TP tunnel
+-* %RETURNS:
+-*  Nothing
+-* %DESCRIPTION:
+-*  Handles tunnel closing
+-***********************************************************************/
+ static void close_tunnel(l2tp_tunnel *tunnel)
+ {
+     struct master *tun = tunnel->private;
+-    if (!kernel_mode || !tun) return;
+ 
+-    /* Detach master */
+-    tunnel->private = NULL;
++    if (!kernel_mode || !tun)
++	return;
+ 
++    tunnel->private = NULL;
++#ifdef PPPOL2TP_V1
++    if (tun->m_fd >= 0) close(tun->m_fd);
++#endif
+     if (tun->fd >= 0) close(tun->fd);
+     if (tun->event) Event_DelHandler(tun->es, tun->event);
+ 
+     free(tun);
+ }
+ 
+-/**********************************************************************
+-* %FUNCTION: tunnel_socket
+-* %ARGUMENTS:
+-*  tunnel -- L2TP tunnel
+-* %RETURNS:
+-*  fd of tunnel
+-* %DESCRIPTION:
+-*  Returns tunnel fd if available, -1 otherwise
+-***********************************************************************/
+-static int tunnel_socket(l2tp_tunnel *tunnel)
+-{
+-    struct master *tun = tunnel->private;
+-    if (!kernel_mode || !tun) return -1;
+-
+-    return tun->fd;
+-}
+-
+ static l2tp_lns_handler my_lns_handler = {
+     NULL,
+     HANDLER_NAME,
+--- a/l2tp.h	2018-08-27 07:50:45.000000000 +0800
++++ b/l2tp.h	2026-10-11 02:45:41.693493749 +0800
+@@ -19,7 +19,7 @@
+ #include <net/route.h>
+ 
+ #include "hash.h"
+-#include "event.h"
++#include "libevent/event.h"
+ 
+ #define ENABLE_DEBUG
+ 
+@@ -94,6 +94,7 @@
+ 				   deleted.  Otherwise, delete tunnel too. */
+     int validate_peer_ip;	/* If true, do not accept datagrams except
+ 				   from initial peer IP address */
++    int route_rdgw;		/* Add route to remote host via default gateway */
+     int persist;                /* If true, keep session established */
+     int holdoff;                /* If persist is true, delay after which the
+                                    session is re-established. */
+@@ -184,9 +185,6 @@
+     /* Called when tunnel must be closed.  May be called without
+        established() being called if tunnel could not be established.*/
+     void (*tunnel_close)(l2tp_tunnel *tun);
+-
+-    /* Called to obtain per-tunnel UDP socket, if available. */
+-    int (*tunnel_socket)(l2tp_tunnel *tun);
+ } l2tp_call_ops;
+ 
+ /* an LNS handler */
+@@ -413,7 +411,7 @@
+ l2tp_dgram *l2tp_dgram_new_control(uint16_t msg_type, uint16_t tid, uint16_t sid);
+ void l2tp_dgram_free(l2tp_dgram *dgram);
+ l2tp_dgram *l2tp_dgram_take_from_wire(int fd, struct sockaddr_in *from);
+-int l2tp_dgram_send_to_wire(int fd, l2tp_dgram const *dgram,
++int l2tp_dgram_send_to_wire(l2tp_dgram const *dgram,
+ 		       struct sockaddr_in const *to);
+ int l2tp_dgram_send_ppp_frame(l2tp_session *ses, unsigned char const *buf,
+ 			 int len);
+--- a/libevent/event_sig.c	2018-08-27 07:50:45.000000000 +0800
++++ b/libevent/event_sig.c	2026-10-11 02:45:41.694277629 +0800
+@@ -15,7 +15,7 @@
+ ***********************************************************************/
+ 
+ static char const RCSID[] =
+-"$Id$";
++"$Id: event_sig.c 3323 2011-09-21 18:45:48Z lly.dev $";
+ 
+ #define _POSIX_SOURCE 1 /* For sigaction defines */
+ #define _BSD_SOURCE   1 /* For SA_RESTART */
+--- a/libevent/event_tcp.c	2018-08-27 07:50:45.000000000 +0800
++++ b/libevent/event_tcp.c	2026-10-11 02:45:41.697493815 +0800
+@@ -12,7 +12,7 @@
+ ***********************************************************************/
+ 
+ static char const RCSID[] =
+-"$Id$";
++"$Id: event_tcp.c 3323 2011-09-21 18:45:48Z lly.dev $";
+ 
+ #include "event_tcp.h"
+ #include <unistd.h>
+--- a/libevent/event_tcp.h	2018-08-27 07:50:45.000000000 +0800
++++ b/libevent/event_tcp.h	2026-10-11 02:45:41.694768632 +0800
+@@ -7,7 +7,7 @@
+ *
+ * Copyright (C) 2001 Roaring Penguin Software Inc.
+ *
+-* $Id$
++* $Id: event_tcp.h 3323 2011-09-21 18:45:48Z lly.dev $
+ *
+ * This program may be distributed according to the terms of the GNU
+ * General Public License, version 2 or (at your option) any later version.
+--- a/libevent/event.c	2018-08-27 07:50:45.000000000 +0800
++++ b/libevent/event.c	2026-10-11 02:45:41.696914145 +0800
+@@ -15,7 +15,7 @@
+ ***********************************************************************/
+ 
+ static char const RCSID[] =
+-"$Id$";
++"$Id: event.c 3323 2011-09-21 18:45:48Z lly.dev $";
+ 
+ #include "event.h"
+ #include <stdlib.h>
+--- a/libevent/event.h	2018-08-27 07:50:45.000000000 +0800
++++ b/libevent/event.h	2026-10-11 02:45:41.695263385 +0800
+@@ -10,7 +10,7 @@
+ * This program may be distributed according to the terms of the GNU
+ * General Public License, version 2 or (at your option) any later version.
+ *
+-* $Id$
++* $Id: event.h 3323 2011-09-21 18:45:48Z lly.dev $
+ *
+ * LIC: GPL
+ *
+--- a/libevent/eventpriv.h	2018-08-27 07:50:45.000000000 +0800
++++ b/libevent/eventpriv.h	2026-10-11 02:45:41.697990610 +0800
+@@ -11,7 +11,7 @@
+ * This program may be distributed according to the terms of the GNU
+ * General Public License, version 2 or (at your option) any later version.
+ *
+-* $Id$
++* $Id: eventpriv.h 3323 2011-09-21 18:45:48Z lly.dev $
+ *
+ * LIC: GPL
+ *
+--- a/libevent/hash.c	2018-08-27 07:50:45.000000000 +0800
++++ b/libevent/hash.c	2026-10-11 02:45:41.696330391 +0800
+@@ -15,7 +15,7 @@
+ ***********************************************************************/
+ 
+ static char const RCSID[] =
+-"$Id$";
++"$Id: hash.c 3323 2011-09-21 18:45:48Z lly.dev $";
+ 
+ #include "hash.h"
+ 
+--- a/main.c	2018-08-27 07:50:45.000000000 +0800
++++ b/main.c	2026-10-11 02:45:41.692404076 +0800
+@@ -14,7 +14,7 @@
+ ***********************************************************************/
+ 
+ static char const RCSID[] =
+-"$Id$";
++"$Id: main.c 4262 2012-05-24 15:41:48Z themiron.ru $";
+ 
+ #include "l2tp.h"
+ #include <stdio.h>
+@@ -33,8 +33,7 @@
+     fprintf(stderr, "Usage: %s [options]\n", argv[0]);
+     fprintf(stderr, "Options:\n");
+     fprintf(stderr, "-d level               -- Set debugging to 'level'\n");
+-    fprintf(stderr, "-c config-file         -- Set config file\n");
+-    fprintf(stderr, "-p pid-file            -- Set pid file\n");
++    fprintf(stderr, "-p                     -- Set pid file\n");
+     fprintf(stderr, "-f                     -- Do not fork\n");
+     fprintf(stderr, "-h                     -- Print usage\n");
+     fprintf(stderr, "\nThis program is licensed under the terms of\nthe GNU General Public License, Version 2.\n");
+@@ -110,9 +109,8 @@
+     int do_fork = 1;
+     int debugmask = 0;
+     char *pidfile = "/var/run/l2tpd.pid";
+-    char *configfile = SYSCONFDIR"/l2tp/l2tp.conf";
+ 
+-    while((opt = getopt(argc, argv, "d:c:p:fh")) != -1) {
++    while((opt = getopt(argc, argv, "d:p:fh")) != -1) {
+ 	switch(opt) {
+ 	case 'h':
+ 	    usage(argc, argv, EXIT_SUCCESS);
+@@ -123,9 +121,6 @@
+ 	case 'p':
+ 	    pidfile = optarg;
+ 	    break;
+-	case 'c':
+-	    configfile = optarg;
+-	    break;
+ 	case 'd':
+ 	    sscanf(optarg, "%d", &debugmask);
+ 	    break;
+@@ -144,7 +139,7 @@
+ 	l2tp_die();
+     }
+ 
+-    if (l2tp_parse_config_file(es, configfile) < 0) {
++    if (l2tp_parse_config_file(es, SYSCONFDIR"/l2tp/l2tp.conf") < 0) {
+ 	l2tp_die();
+     }
+ 
+--- a/make-release.sh	2018-08-27 07:50:45.000000000 +0800
++++ b/make-release.sh	2026-10-11 02:45:41.689101973 +0800
+@@ -1,7 +1,7 @@
+ #!/bin/sh
+ #
+ # Tar up a releasable archive
+-# $Id$
++# $Id: make-release.sh 3323 2011-09-21 18:45:48Z lly.dev $
+ 
+ VERSION=`grep '^VERSION=' Makefile.in | sed -e 's/VERSION=//'`
+ 
+--- a/man/l2tp.conf.5	2018-08-27 07:50:45.000000000 +0800
++++ b/man/l2tp.conf.5	2026-10-11 02:45:41.683055228 +0800
+@@ -1,4 +1,4 @@
+-.\" $Id$ 
++.\" $Id: l2tp.conf.5 3323 2011-09-21 18:45:48Z lly.dev $ 
+ .\" LIC: GPL
+ .TH L2TP.CONF 5 "11 March 2002"
+ .\""
+--- a/man/l2tpd.8	2018-08-27 07:50:45.000000000 +0800
++++ b/man/l2tpd.8	2026-10-11 02:45:41.683709023 +0800
+@@ -1,4 +1,4 @@
+-.\" $Id$ 
++.\" $Id: l2tpd.8 3323 2011-09-21 18:45:48Z lly.dev $ 
+ .\" LIC: GPL
+ .TH L2TPD 8 "11 March 2002"
+ .UC 4
+@@ -18,14 +18,7 @@
+ Sets the debug level to \fInum\fR.  Of interest mostly to
+ \fBl2tpd\fR developers.  \fInum\fR is a bitmask; set it to
+ 65535 for maximum debugging information.
+-.TP
+-.B \-c \fIconfig-file\fR
+-Tells \fBl2tpd\fR to use an alternate config file.  Default is
+-/etc/l2tp/l2tp.conf
+-.TP
+-.B \-p \fIpid-file\fR
+-Tells \fBl2tpd\fR to use an alternate pid file.  Default is
+-/var/run/l2tpd.pid
++
+ .TP
+ .B \-f
+ Do not fork.  Normally, \fBl2tpd\fR forks and puts itself in the
+--- a/network.c	2018-08-27 07:50:45.000000000 +0800
++++ b/network.c	2026-10-11 02:45:41.684378194 +0800
+@@ -16,10 +16,10 @@
+ ***********************************************************************/
+ 
+ static char const RCSID[] =
+-"$Id$";
++"$Id: network.c 3323 2011-09-21 18:45:48Z lly.dev $";
+ 
+ #include "l2tp.h"
+-#include "event.h"
++#include "libevent/event.h"
+ #include <sys/socket.h>
+ #include <netinet/in.h>
+ #include <errno.h>
+--- a/options.c	2018-08-27 07:50:45.000000000 +0800
++++ b/options.c	2026-10-11 02:45:41.709961432 +0800
+@@ -14,7 +14,7 @@
+ ***********************************************************************/
+ 
+ static char const RCSID[] =
+-"$Id$";
++"$Id: options.c 3323 2011-09-21 18:45:48Z lly.dev $";
+ 
+ #include "l2tp.h"
+ #include <string.h>
+@@ -137,7 +137,7 @@
+ 	    free(* (char **) desc->addr);
+ 	}
+ 	* (char **) desc->addr = strdup(value);
+-	if (! * (char **) desc->addr) {
++	if (! * (char *) desc->addr) {
+ 	    l2tp_set_errmsg("Out of memory");
+ 	    return -1;
+ 	}
+--- a/peer.c	2018-08-27 07:50:45.000000000 +0800
++++ b/peer.c	2026-10-11 02:45:41.691128402 +0800
+@@ -14,7 +14,7 @@
+ ***********************************************************************/
+ 
+ static char const RCSID[] =
+-"$Id$";
++"$Id: peer.c 3323 2011-09-21 18:45:48Z lly.dev $";
+ 
+ #include "l2tp.h"
+ #include <stddef.h>
+@@ -60,6 +60,7 @@
+     { "holdoff",           OPT_TYPE_INT,      &prototype.holdoff},
+     { "maxfail",           OPT_TYPE_INT,      &prototype.maxfail},
+     { "strict-ip-check",   OPT_TYPE_BOOL,     &prototype.validate_peer_ip},
++    { "route_rdgw",        OPT_TYPE_INT,      &prototype.route_rdgw},
+     { NULL,                OPT_TYPE_BOOL,     NULL }
+ };
+ 
+@@ -285,6 +286,7 @@
+ 	peer->maxfail = prototype.maxfail;
+ 	peer->fail = 0;
+ 	peer->validate_peer_ip = prototype.validate_peer_ip;
++	peer->route_rdgw = prototype.route_rdgw;
+ 	return 0;
+     }
+ 
+--- a/session.c	2018-08-27 07:50:45.000000000 +0800
++++ b/session.c	2026-10-11 02:45:41.685511534 +0800
+@@ -14,7 +14,7 @@
+ ***********************************************************************/
+ 
+ static char const RCSID[] =
+-"$Id$";
++"$Id: session.c 3323 2011-09-21 18:45:48Z lly.dev $";
+ 
+ #include "l2tp.h"
+ #include <stddef.h>
+--- a/tunnel.c	2018-08-27 07:50:45.000000000 +0800
++++ b/tunnel.c	2026-10-11 02:45:41.704412107 +0800
+@@ -16,7 +16,7 @@
+ ***********************************************************************/
+ 
+ static char const RCSID[] =
+-"$Id$";
++"$Id: tunnel.c 4273 2012-05-25 14:30:56Z themiron.ru $";
+ 
+ #include "l2tp.h"
+ #include <stddef.h>
+@@ -28,6 +28,7 @@
+ #include <netdb.h>
+ #include <features.h>
+ #include <resolv.h>
++#include <limits.h>
+ 
+ /* Hash tables of all tunnels */
+ static hash_table tunnels_by_my_id;
+@@ -91,7 +92,7 @@
+ /* Route manipulation */
+ #define sin_addr(s) (((struct sockaddr_in *)(s))->sin_addr)
+ #define route_msg l2tp_set_errmsg
+-static int route_add(const struct in_addr inetaddr, struct rtentry *rt);
++static int route_add(const struct in_addr inetaddr, int any_dgw, struct rtentry *rt);
+ static int route_del(struct rtentry *rt);
+ 
+ /**********************************************************************
+@@ -270,7 +271,6 @@
+ {
+     l2tp_dgram *dgram;
+     struct timeval t;
+-    int fd = -1;
+ 
+     dgram = tunnel->xmit_new_dgrams;
+     if (!dgram) return;
+@@ -291,11 +291,7 @@
+ 	   tunnel establishment was complete */
+ 	dgram->tid = tunnel->assigned_id;
+ 
+-	/* Tunnel may have own socket to sent over */
+-	if (tunnel->call_ops && tunnel->call_ops->tunnel_socket) {
+-	    fd = tunnel->call_ops->tunnel_socket(tunnel);
+-	}
+-	if (l2tp_dgram_send_to_wire(fd, dgram, &tunnel->peer_addr) < 0) {
++	if (l2tp_dgram_send_to_wire(dgram, &tunnel->peer_addr) < 0) {
+ 	    break;
+ 	}
+ 
+@@ -567,7 +563,10 @@
+ 	    inet_ntoa(peer_addr.sin_addr), peer->peername));
+ 
+     memset(&tunnel->rt, 0, sizeof(tunnel->rt));
+-    route_add(tunnel->peer_addr.sin_addr, &tunnel->rt);
++    if (peer->route_rdgw == 1)
++        route_add(tunnel->peer_addr.sin_addr, 0, &tunnel->rt);
++    else if (peer->route_rdgw == 2)
++        route_add(tunnel->peer_addr.sin_addr, 1, &tunnel->rt);
+ 
+     hash_insert(&tunnels_by_peer_address, tunnel);
+     tunnel_send_SCCRQ(tunnel);
+@@ -1323,7 +1322,6 @@
+ void
+ tunnel_send_ZLB(l2tp_tunnel *tunnel)
+ {
+-    int fd = -1;
+     l2tp_dgram *dgram =
+ 	l2tp_dgram_new_control(MESSAGE_ZLB, tunnel->assigned_id, 0);
+     if (!dgram) {
+@@ -1332,13 +1330,7 @@
+     }
+     dgram->Nr = tunnel->Nr;
+     dgram->Ns = tunnel->Ns_on_wire;
+-
+-    /* Tunnel may have own socket to sent over */
+-    if (tunnel->call_ops && tunnel->call_ops->tunnel_socket) {
+-	fd = tunnel->call_ops->tunnel_socket(tunnel);
+-    }
+-    l2tp_dgram_send_to_wire(fd, dgram, &tunnel->peer_addr);
+-
++    l2tp_dgram_send_to_wire(dgram, &tunnel->peer_addr);
+     l2tp_dgram_free(dgram);
+ }
+ 
+@@ -2050,7 +2042,8 @@
+ 	/* Open a raw socket to the kernel */
+ 	if ((s = socket(AF_INET, SOCK_DGRAM, 0)) < 0 || ioctl(s, ctrl, rt) < 0)
+ 		route_msg("%s: %s", __FUNCTION__, strerror(errno));
+-	else errno = 0;
++	else
++		errno = 0;
+ 
+ 	close(s);
+ 	return errno;
+@@ -2061,51 +2054,80 @@
+ {
+ 	if (rt->rt_dev) {
+ 		route_ctrl(SIOCDELRT, rt);
+-		free(rt->rt_dev), rt->rt_dev = NULL;
++		free(rt->rt_dev);
+ 	}
+ 
++	memset(rt, 0, sizeof(*rt));
++
+ 	return 0;
+ }
+ 
+ static int
+-route_add(const struct in_addr inetaddr, struct rtentry *rt)
++route_add(const struct in_addr inetaddr, int any_dgw, struct rtentry *rt)
+ {
+ 	char buf[256], dev[64], rdev[64];
+ 	u_int32_t dest, mask, gateway, flags, bestmask = 0;
+-	int metric;
++	u_int32_t metric, metric_min = UINT_MAX;
+ 
+-	FILE *f = fopen("/proc/net/route", "r");
+-	if (f == NULL) {
+-		route_msg("%s: /proc/net/route: %s", strerror(errno), __FUNCTION__);
++	FILE *fp = fopen("/proc/net/route", "r");
++	if (!fp) {
++		/* route_msg("%s: /proc/net/route: %s", strerror(errno), __FUNCTION__); */
+ 		return -1;
+ 	}
+ 
+ 	rt->rt_gateway.sa_family = 0;
+ 
+-	while (fgets(buf, sizeof(buf), f))
++	while (fgets(buf, sizeof(buf), fp))
+ 	{
+-		if (sscanf(buf, "%63s %x %x %x %*s %*s %d %x", dev, &dest,
+-			&gateway, &flags, &metric, &mask) != 6)
++		if (sscanf(buf, "%63s %x %x %x %*s %*s %d %x",
++			dev, &dest, &gateway, &flags, &metric, &mask) != 6)
+ 			continue;
+-		if ((flags & RTF_UP) == (RTF_UP) && (inetaddr.s_addr & mask) == dest &&
+-		    (dest || strncmp(dev, "ppp", 3)) /* avoid default via pppX to avoid on-demand loops*/)
+-		{
+-			if ((mask | bestmask) == bestmask && rt->rt_gateway.sa_family)
++		
++		if ((flags & RTF_UP) != RTF_UP)
++			continue;
++		
++		if (!any_dgw) {
++			/* use only physical WAN/MAN interface */
++			if (strncmp(dev, "eth", 3) != 0 &&
++			    strncmp(dev, "apcli", 5) != 0 &&
++			    strncmp(dev, "wwan", 4) != 0 &&
++			    strncmp(dev, "weth", 4) != 0)
+ 				continue;
+-			bestmask = mask;
+-
+-			sin_addr(&rt->rt_gateway).s_addr = gateway;
+-			rt->rt_gateway.sa_family = AF_INET;
+-			rt->rt_flags = flags;
+-			rt->rt_metric = metric;
+-			strncpy(rdev, dev, sizeof(rdev));
+-
+-			if (mask == INADDR_BROADCAST)
+-				break;
++			
++			if ( (inetaddr.s_addr & mask) == dest && gateway ) {
++				if ((mask | bestmask) == bestmask && rt->rt_gateway.sa_family)
++					continue;
++				
++				bestmask = mask;
++				
++				sin_addr(&rt->rt_gateway).s_addr = gateway;
++				rt->rt_gateway.sa_family = AF_INET;
++				rt->rt_flags = flags;
++				rt->rt_metric = (dest) ? metric : 0;
++				strncpy(rdev, dev, sizeof(rdev));
++				
++				if (mask == INADDR_BROADCAST)
++					break;
++			}
++		} else {
++			/* skip lo and LAN */
++			if (strcmp(dev, "lo") == 0 ||
++			    strcmp(dev, "br0") == 0)
++				continue;
++			
++			if ( !dest && !mask && gateway && metric < metric_min ) {
++				metric_min = metric;
++				
++				sin_addr(&rt->rt_gateway).s_addr = gateway;
++				rt->rt_gateway.sa_family = AF_INET;
++				rt->rt_flags = flags;
++				rt->rt_metric = 0;
++				strncpy(rdev, dev, sizeof(rdev));
++			}
+ 		}
+ 	}
+ 
+-	fclose(f);
++	fclose(fp);
+ 
+ 	/* check for no route */
+ 	if (rt->rt_gateway.sa_family != AF_INET) 
+@@ -2143,7 +2165,8 @@
+ 	if (!route_ctrl(SIOCADDRT, rt))
+ 		return 0;
+ 
+-	free(rt->rt_dev), rt->rt_dev = NULL;
++	free(rt->rt_dev);
++	memset(rt, 0, sizeof(*rt));
+ 
+ 	return -1;
+ }
+--- a/utils.c	2018-08-27 07:50:45.000000000 +0800
++++ b/utils.c	2026-10-11 02:45:41.691773905 +0800
+@@ -14,7 +14,7 @@
+ ***********************************************************************/
+ 
+ static char const RCSID[] =
+-"$Id$";
++"$Id: utils.c 3323 2011-09-21 18:45:48Z lly.dev $";
+ 
+ #include <sys/types.h>
+ #include <sys/stat.h>
+@@ -199,7 +199,7 @@
+     if (*fname == '/') {
+ 	handle = dlopen(fname, RTLD_NOW);
+     } else {
+-	snprintf(buf, sizeof(buf), PREFIX"/lib/l2tp/plugins/%s", fname);
++	snprintf(buf, sizeof(buf), PREFIX"/lib/l2tp/%s", fname);
+ 	buf[sizeof(buf)-1] = 0;
+ 	handle = dlopen(buf, RTLD_NOW);
+     }

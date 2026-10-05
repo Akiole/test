@@ -1,0 +1,46 @@
+--- a/loginrec.c	2026-08-23 16:31:33.544495553 +0800
++++ b/loginrec.c	2026-08-23 16:31:33.564367862 +0800
+@@ -618,7 +618,7 @@
+  ** into account.
+  **/
+ 
+-#if defined(USE_BTMP) || defined(USE_UTMP) || defined (USE_WTMP) || defined (USE_LOGIN)
++#if (defined(USE_BTMP) || defined(USE_UTMP) || defined (USE_WTMP) || defined (USE_LOGIN)) && defined(HAVE_UTMP_H)
+ 
+ /* build the utmp structure */
+ void
+@@ -705,7 +705,7 @@
+ 	}
+ # endif
+ }
+-#endif /* USE_BTMP || USE_UTMP || USE_WTMP || USE_LOGIN */
++#endif /* USE_BTMP || USE_UTMP || USE_WTMP || USE_LOGIN && HAVE_UTMP_H */
+ 
+ /**
+  ** utmpx utility functions
+@@ -1697,7 +1697,7 @@
+ }
+ #endif /* USE_UTMPX && HAVE_SETUTXDB && UTXDB_LASTLOGIN && HAVE_GETUTXUSER */
+ 
+-#ifdef USE_BTMP
++#if defined(USE_BTMP) && defined(HAVE_UTMP_H)
+ /*
+  * Logs failed login attempts in _PATH_BTMP if that exists.
+  * The most common login failure is to give password instead of username.
+@@ -1755,4 +1755,4 @@
+ out:
+ 	close(fd);
+ }
+-#endif	/* USE_BTMP */
++#endif	/* USE_BTMP && HAVE_UTMP_H */
+--- a/defines.h	2026-08-23 16:31:33.547666722 +0800
++++ b/defines.h	2026-08-23 16:31:33.580082210 +0800
+@@ -922,7 +922,7 @@
+ # define _PATH_BTMP BTMP_FILE
+ #endif
+ 
+-#if defined(USE_BTMP) && defined(_PATH_BTMP)
++#if defined(USE_BTMP) && defined(_PATH_BTMP) && defined(HAVE_UTMP_H)
+ # define CUSTOM_FAILED_LOGIN
+ #endif
+ 

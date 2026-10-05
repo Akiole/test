@@ -1,0 +1,51 @@
+--- a/srclib/getprogname.c	2026-08-23 10:49:46.172699423 +0800
++++ b/srclib/getprogname.c	2026-08-23 10:49:46.192420212 +0800
+@@ -50,7 +50,7 @@
+ # include <sys/procfs.h>
+ #endif
+ 
+-#if defined __SCO_VERSION__ || defined __sysv5__
++#if defined __SCO_VERSION__ || defined __sysv5__ || defined __linux__
+ # include <fcntl.h>
+ # include <string.h>
+ #endif
+@@ -273,6 +273,39 @@
+   if (0 <= fd)
+     {
+       size_t n = read (fd, buf, 79);
++      if (n > 0)
++        {
++          buf[n] = '\0'; /* Guarantee null-termination */
++          char *progname;
++          progname = strrchr (buf, '/');
++          if (progname)
++            {
++              progname = progname + 1; /* Skip the '/' */
++            }
++          else
++            {
++              progname = buf;
++            }
++          char *ret;
++          ret = malloc (strlen (progname) + 1);
++          if (ret)
++            {
++              strcpy (ret, progname);
++              return ret;
++            }
++        }
++      close (fd);
++    }
++  return "?";
++# elif defined __linux__                                        /* Linux (uclibc, musl, etc.) */
++  /* uclibc/musl do not provide program_invocation_name or __progname.
++     Read /proc/self/cmdline to get the program name. */
++  char buf[80];
++  int fd;
++  fd = open ("/proc/self/cmdline", O_RDONLY);
++  if (0 <= fd)
++    {
++      size_t n = read (fd, buf, 79);
+       if (n > 0)
+         {
+           buf[n] = '\0'; /* Guarantee null-termination */

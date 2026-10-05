@@ -1,0 +1,30 @@
+--- a/Makefile
++++ b/Makefile
+@@ -100,11 +100,12 @@
+ endif
+ 
+ ifdef ROUTER
+-LIBS += -l:libatomic.a
+-endif
+-
++LIBS += -l:libatomic.a -luv -lsodium
++LDFLAGS += -L$(STAGEDIR)/lib
++else
+ LIBS += $(OBJTREE)/3rd/libuv/.libs/libuv.a
+ LIBS += $(OBJTREE)/3rd/libsodium/src/libsodium/.libs/libsodium.a
++endif
+ 
+ LIBS += -lresolv -pthread -ldl
+ 
+@@ -117,7 +118,11 @@
+ include $(SRCTREE)/config.mk
+ #########################################################################
+ 
++ifdef ROUTER
++all: $(xTUN)
++else
+ all: libuv libsodium $(xTUN)
++endif
+ android: libuv libsodium $(xTUN_STATIC)
+ 
+ 3rd/libuv/autogen.sh:

@@ -1,0 +1,25 @@
+--- a/src/auth.c
++++ b/src/auth.c
+@@ -350,7 +350,10 @@
+ 
+ static void pkt_data_log(char * header, uint8_t * pktdata, int len)
+ {
+-    static char log_buf[1024];
++    /* recvfrom() is capped at 1024 bytes; a hex dump needs ~3.2 bytes per
++       byte of packet, so 1024 bytes would overflow this buffer. Size it to
++       hold the largest packet the caller can hand us. */
++    static char log_buf[4096];
+ 
+     int i, index = 0;
+     strcpy(log_buf, header);
+--- a/src/config.c
++++ b/src/config.c
+@@ -115,7 +115,7 @@
+ 
+     if (strcmp(opt.key, "remote_ip") == 0)
+     {
+-        strcpy(drcom_config.remote_ip, opt.value);
++        snprintf(drcom_config.remote_ip, sizeof(drcom_config.remote_ip), "%s", opt.value);
+     }
+     else if (strcmp(opt.key, "remote_port") == 0)
+     {

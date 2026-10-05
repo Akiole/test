@@ -1,0 +1,220 @@
+name: Cross Toolchain Build
+
+on:
+  workflow_dispatch:
+
+# Prevent concurrent toolchain builds from racing on the same release.
+# in-progress builds are never cancelled (would leave the release in a partial state).
+concurrency:
+  group: toolchain-build
+  cancel-in-progress: false
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Build phase: each matrix combination compiles the toolchain and uploads
+  # the tarball + a machine-readable info file as workflow artifacts.
+  # No release is touched here — that keeps the 4 concurrent jobs race-free.
+  # ---------------------------------------------------------------------------
+  build:
+    name: ${{ matrix.target }} @ ${{ matrix.host }}
+    runs-on: ${{ matrix.host }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        host: [ubuntu-latest, macos-14]
+        target: [mipsel-linux-musl, mipsel-linux-uclibc]
+
+    steps:
+      - name: Setup case-sensitive workspace (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          REPO="${GITHUB_REPOSITORY##*/}"
+          WORK_PARENT="$(dirname "$GITHUB_WORKSPACE")"
+          cd "$WORK_PARENT"
+          rmdir "$REPO"
+          hdiutil create "${HOME}/ctng.sparseimage" -volname "$REPO" -type SPARSE -size 20g -fs HFSX
+          hdiutil mount "${HOME}/ctng.sparseimage" -mountroot "$WORK_PARENT"
+
+      - uses: actions/checkout@main
+
+      # Single source of truth for dependencies — delegates to the Makefile
+      # target `toolchain-deps` so CI and local installs stay in sync.
+      - name: Install dependencies
+        run: make toolchain-deps
+
+      # macOS ships BSD tools; prepend Homebrew GNU paths so crosstool-NG
+      # build scripts see GNU sed/tar/grep/find/etc.  The PATH list comes
+      # from trunk/host-tools.mk (DARWIN_GNU_PATH) — no duplicate maintenance.
+      - name: Setup GNU PATH (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          GNU_PATH=$(make -f trunk/host-tools.mk -p 2>/dev/null | sed -n 's/^DARWIN_GNU_PATH := //p' | head -1)
+          echo "PATH=${GNU_PATH}:$PATH" >> "$GITHUB_ENV"
+
+      # Cache only the source tarballs.  The key is scoped to the current
+      # target so changing the uClibc config does not invalidate the musl cache.
+      - name: Cache source tarballs
+        uses: actions/cache@main
+        with:
+          path: toolchain/tarballs
+          key: ctng-sources-${{ matrix.target }}-${{ hashFiles(format('trunk/libc/*/{0}/crosstool.config', matrix.target)) }}
+          restore-keys: |
+            ctng-sources-${{ matrix.target }}-
+
+      # Set TOOLCHAIN_PLATFORM BEFORE the build so failure-time artifacts
+      # (build logs) get a complete name even when the build itself fails.
+      # Derived from uname to match host-tools.mk (darwin-arm64, linux-x86_64, etc.)
+      # — never hardcode the architecture, since macos-latest is arm64.
+      - name: Set platform identifier
+        run: |
+          OS_LOWER=$(uname -s | tr '[:upper:]' '[:lower:]')
+          ARCH=$(uname -m)
+          echo "TOOLCHAIN_PLATFORM=${OS_LOWER}-${ARCH}" >> "$GITHUB_ENV"
+
+      - name: Build toolchain
+        run: make toolchain-build TOOLCHAIN="${{ matrix.target }}"
+
+      # Extract component versions from the generated crosstool-NG .config.
+      # Output is key=value, consumed by the release job to build the body.
+      - name: Generate toolchain info
+        run: |
+          make -C toolchain --no-print-directory toolchain-info CT_TARGET="${{ matrix.target }}" | grep -E '^[A-Z_]+=' | tee toolchain-info.env
+          cat toolchain-info.env >> "$GITHUB_ENV"
+
+      # Sanity-check the produced tarball before uploading.
+      - name: Verify tarball
+        run: |
+          TARBALL="toolchain/${{ env.TOOLCHAIN_TARBALL }}"
+          ls -lh "$TARBALL"
+          tar -tf "$TARBALL" | grep -q "bin/${{ matrix.target }}-gcc" \
+            || { echo "Error: tarball missing ${{ matrix.target }}-gcc"; exit 1; }
+          echo "TARBALL_PATH=$TARBALL" >> "$GITHUB_ENV"
+
+      - name: Upload toolchain artifact
+        uses: actions/upload-artifact@main
+        with:
+          name: ${{ matrix.target }}-${{ env.TOOLCHAIN_PLATFORM }}
+          path: ${{ env.TARBALL_PATH }}
+          if-no-files-found: error
+
+      - name: Upload toolchain info
+        uses: actions/upload-artifact@main
+        with:
+          name: info-${{ matrix.target }}-${{ env.TOOLCHAIN_PLATFORM }}
+          path: toolchain-info.env
+          if-no-files-found: error
+
+      # Build logs are useful even (especially) on failure, so always upload.
+      # TOOLCHAIN_PLATFORM is now set pre-build (see "Set platform identifier"),
+      # so the artifact name is complete even when the build fails.
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@main
+        with:
+          name: log-${{ matrix.target }}-${{ env.TOOLCHAIN_PLATFORM }}
+          path: |
+            toolchain/crosstool-ng-*/build.log
+            toolchain/crosstool-ng-*/.config
+          if-no-files-found: ignore
+          retention-days: 30
+
+  # ---------------------------------------------------------------------------
+  # Release phase: runs after ALL builds finish (success OR failure).
+  # Only successful builds produce artifacts; failed builds are automatically
+  # skipped. This lets us publish working toolchains even if one matrix
+  # combination is broken, instead of blocking the entire release.
+  # ---------------------------------------------------------------------------
+  release:
+    name: Publish Release
+    needs: build
+    if: always() && !cancelled()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@main
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@main
+        with:
+          path: artifacts
+
+      - name: Prepare release assets
+        id: assets
+        run: |
+          mkdir -p release-assets
+          # Only successful builds produce *.tar.xz artifacts; failed builds
+          # are skipped automatically.
+          find artifacts -name '*.tar.xz' -exec cp {} release-assets/ \;
+          echo "=== Release assets ==="
+          ls -lh release-assets/
+
+          ASSET_COUNT=$(find release-assets -name '*.tar.xz' | wc -l | tr -d ' ')
+          echo "asset_count=$ASSET_COUNT" >> "$GITHUB_OUTPUT"
+
+          if [ "$ASSET_COUNT" -eq 0 ]; then
+            echo "No successful builds — no assets to publish."
+            echo "has_assets=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_assets=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Build the release body from every toolchain-info.env.  Each successful
+      # build job produced one; failed builds have no info file and are skipped.
+      # Also includes a build status summary so users can see which combos passed.
+      - name: Generate release body
+        if: steps.assets.outputs.has_assets == 'true'
+        run: |
+          {
+            echo "## Cross Toolchain Build"
+            echo "Prebuilt cross-compilation toolchains for Padavan firmware."
+            echo ""
+            echo "### Build Status"
+            echo ""
+            echo "| Target | Platform | Status |"
+            echo "|--------|----------|--------|"
+            for info_file in $(find artifacts -name 'toolchain-info.env' | sort); do
+              # shellcheck disable=SC1090
+              source "$info_file"
+              echo "| ${CT_TARGET} | ${TOOLCHAIN_PLATFORM} | ✅ Success |"
+              unset CT_TARGET CT_VERSION HOST_OS HOST_ARCH TOOLCHAIN_PLATFORM \
+                    TOOLCHAIN_TARBALL GCC_VER BINUTILS_VER LINUX_VER LIBC LIBC_VER GDB_VER
+            done
+            echo ""
+            echo "### Toolchain Details"
+            echo ""
+            for info_file in $(find artifacts -name 'toolchain-info.env' | sort); do
+              # shellcheck disable=SC1090
+              source "$info_file"
+              echo "#### ${HOST_OS} / ${CT_TARGET}"
+              echo "- **Platform**: ${TOOLCHAIN_PLATFORM}"
+              echo "- **GCC**: ${GCC_VER}"
+              echo "- **Binutils**: ${BINUTILS_VER}"
+              echo "- **Linux Headers**: ${LINUX_VER}"
+              echo "- **C Library**: ${LIBC} ${LIBC_VER}"
+              echo "- **GDB**: ${GDB_VER}"
+              echo ""
+              unset CT_TARGET CT_VERSION HOST_OS HOST_ARCH TOOLCHAIN_PLATFORM \
+                    TOOLCHAIN_TARBALL GCC_VER BINUTILS_VER LINUX_VER LIBC LIBC_VER GDB_VER
+            done
+          } > RELEASE_BODY.md
+          echo "=== Release body ==="
+          cat RELEASE_BODY.md
+
+      # Single release update — all assets + body written at once, no race.
+      - name: Upload to Release
+        if: steps.assets.outputs.has_assets == 'true'
+        uses: ncipollo/release-action@main
+        with:
+          tag: toolchain
+          artifacts: release-assets/*.tar.xz
+          allowUpdates: true
+          replacesArtifacts: true
+          bodyFile: RELEASE_BODY.md
+
+      - name: No assets to publish
+        if: steps.assets.outputs.has_assets == 'false'
+        run: |
+          echo "::warning::No successful toolchain builds — skipping release upload."
+          echo "Check the build job logs for failures. Build logs are uploaded as artifacts."

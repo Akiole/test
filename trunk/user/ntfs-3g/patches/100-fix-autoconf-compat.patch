@@ -1,0 +1,42 @@
+diff -ruN ntfs-3g-orig/configure.ac ntfs-3g-fixed/configure.ac
+--- ntfs-3g-orig/configure.ac	2026-09-28 17:59:59.000000000 +0800
++++ ntfs-3g-fixed/configure.ac	2026-10-11 02:21:31.139917259 +0800
+@@ -24,6 +24,10 @@
+ 
+ # Autoconf
+ AC_PREREQ(2.59)
++# Workaround for autoconf >= 2.72 "undefined or overquoted macro" errors
++m4_pattern_allow([AC_MSG_ERROR])
++m4_pattern_allow([AC_MSG_WARN])
++
+ AC_INIT([ntfs-3g],[2026.9.28],[ntfs-3g-devel@lists.sf.net])
+ LIBNTFS_3G_VERSION="91"
+ AC_CONFIG_SRCDIR([src/ntfs-3g.c])
+@@ -255,7 +259,7 @@
+ case "${target_os}" in
+ solaris*)
+ 	if test "x$GCC" != "xyes" ; then
+-		AC_MSG_ERROR([ntfs-3g can be built only with gcc on Solaris. Install it by 'pkg install gcc-dev' and retry.)])
++		AC_MSG_ERROR([ntfs-3g can be built only with gcc on Solaris. Install it by 'pkg install gcc-dev' and retry.])
+ 	fi
+ 	;;
+ esac
+@@ -334,14 +338,10 @@
+ compile_crypto=false
+ if test "$enable_crypto" != "no"; then
+ 	have_libgcrypt=false
+-	AM_PATH_LIBGCRYPT(1.2.2, [ have_libgcrypt=true ],
+-	[
+-		if test "$enable_crypto" = "yes"; then
+-			AC_MSG_ERROR([ntfsprogs crypto code requires the gcrypt library.])
+-		else
+-			AC_MSG_WARN([ntfsprogs crypto code requires the gcrypt library.])
+-		fi
+-	])
++	# AM_PATH_LIBGCRYPT not available in cross-build environment; skip crypto
++	if test "$enable_crypto" = "yes"; then
++		AC_MSG_WARN([ntfsprogs crypto code requires the gcrypt library, disabling crypto.])
++	fi
+ 	have_libgnutls=false
+ 	PKG_CHECK_MODULES(GNUTLS, gnutls >= 1.4.4, [ have_libgnutls=true ],
+ 		if test "$enable_crypto" = "yes"; then

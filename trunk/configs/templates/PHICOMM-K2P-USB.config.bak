@@ -1,0 +1,401 @@
+### Target Vendor/Product
+############################################################
+
+### Target vendor
+CONFIG_VENDOR=Ralink
+
+### Target product platform
+CONFIG_PRODUCT=MT7621
+
+### Board product ID (max 28 chars)
+CONFIG_FIRMWARE_PRODUCT_ID="PHICOMM-K2P-USB"
+
+### Linux kernel source directory
+CONFIG_LINUXDIR=linux-4.4.x
+
+### Do not compress kernel (use raw binary instead of LZMA)
+CONFIG_KERNEL_NO_COMPRESS=n
+
+### Kernel Features
+############################################################
+
+### Shortcut Forwarding Engine acceleration
+CONFIG_FIRMWARE_INCLUDE_SFE=y
+
+### Dynamic DNS client (inadyn)
+CONFIG_FIRMWARE_INCLUDE_INADYN=y
+
+### IPv6 support
+CONFIG_FIRMWARE_ENABLE_IPV6=y
+
+### USB support
+CONFIG_FIRMWARE_ENABLE_USB=y
+
+### CPU overclocking support
+CONFIG_FIRMWARE_INCLUDE_OC=y
+
+### MT7621 CPU freq (0x312=1000MHz 0x362=1100MHz 0x372=1120MHz 0x3B2=1200MHz)
+CONFIG_FIRMWARE_MT7621_OC="0x312"
+
+### Filesystems
+############################################################
+
+### EXT2 filesystem support ~0.1MB
+CONFIG_FIRMWARE_ENABLE_EXT2=y
+
+### EXT3 filesystem support ~0.2MB
+CONFIG_FIRMWARE_ENABLE_EXT3=y
+
+### EXT4 filesystem support ~0.4MB
+CONFIG_FIRMWARE_ENABLE_EXT4=y
+
+### FAT/FAT32 filesystem support ~0.1MB
+CONFIG_FIRMWARE_ENABLE_FAT=y
+
+### exFAT filesystem support ~0.12MB
+CONFIG_FIRMWARE_ENABLE_EXFAT=y
+
+### XFS filesystem support ~0.6MB
+CONFIG_FIRMWARE_ENABLE_XFS=y
+
+### FUSE (filesystems in userspace) support ~0.1MB
+CONFIG_FIRMWARE_ENABLE_FUSE=y
+
+### Swap files/partitions support ~0.05MB
+CONFIG_FIRMWARE_ENABLE_SWAP=y
+
+### NTFS-3G FUSE driver (instead of Paragon ufsd) ~0.4MB
+CONFIG_FIRMWARE_INCLUDE_NTFS_3G=n
+
+### AVM NTFS driver (instead of ntfs-3g)
+CONFIG_FIRMWARE_INCLUDE_ANTFS=y
+
+### USB Modules
+############################################################
+
+### USB UVC camera modules ~0.2MB
+CONFIG_FIRMWARE_INCLUDE_UVC=y
+
+### USB-HID modules ~0.2MB
+CONFIG_FIRMWARE_INCLUDE_HID=y
+
+### USB-Serial modules (e.g. pl2303) ~0.03MB
+CONFIG_FIRMWARE_INCLUDE_SERIAL=y
+
+### USB-Audio modules ~0.46MB
+CONFIG_FIRMWARE_INCLUDE_AUDIO=y
+
+### Network Modules
+############################################################
+
+### XFRM (IPsec) modules & iptables extension ~0.2MB
+CONFIG_FIRMWARE_INCLUDE_XFRM=y
+
+### Network QoS scheduling modules ~0.2MB
+CONFIG_FIRMWARE_INCLUDE_QOS=y
+
+### IMQ module for shapers ~0.02MB
+CONFIG_FIRMWARE_INCLUDE_IMQ=y
+
+### IFB module for shapers ~0.03MB
+CONFIG_FIRMWARE_INCLUDE_IFB=y
+
+### IPSet utility and kernel modules ~0.4MB
+CONFIG_FIRMWARE_INCLUDE_IPSET=y
+
+### CIFS (SMB) client ~0.2MB
+CONFIG_FIRMWARE_INCLUDE_CIFS=y
+
+### NFSv3 server ~0.6MB
+CONFIG_FIRMWARE_INCLUDE_NFSD=y
+
+### NFSv3 client ~0.5MB
+CONFIG_FIRMWARE_INCLUDE_NFSC=y
+
+### WebUI Localization
+############################################################
+
+### Chinese language pack
+CONFIG_FIRMWARE_INCLUDE_LANG_CN=y
+
+### SSH & Security
+############################################################
+
+### Dropbear SSH server ~0.3MB
+CONFIG_FIRMWARE_INCLUDE_DROPBEAR=y
+
+### Dropbear faster ciphers/hashes ~0.06MB
+CONFIG_FIRMWARE_INCLUDE_DROPBEAR_FAST_CODE=y
+
+### OpenSSH instead of dropbear ~1.0MB
+CONFIG_FIRMWARE_INCLUDE_OPENSSH=y
+
+### sftp-server ~0.06MB
+CONFIG_FIRMWARE_INCLUDE_SFTP=y
+
+### HTTPS support (requires openssl) ~1.2MB
+CONFIG_FIRMWARE_INCLUDE_HTTPS=y
+
+### Elliptic Curves (EC) in openssl ~0.1MB
+CONFIG_FIRMWARE_INCLUDE_OPENSSL_EC=y
+
+### openssl executable for cert generation ~0.4MB
+CONFIG_FIRMWARE_INCLUDE_OPENSSL_EXE=y
+
+### wpa_supplicant (WPA/WPA2 with nl80211) ~0.2MB
+CONFIG_FIRMWARE_INCLUDE_WPA_SUPPLICANT=y
+
+### EAP-TTLS and EAP-PEAP auth support ~1.2MB
+CONFIG_FIRMWARE_INCLUDE_EAP_PEAP=y
+
+### File Sharing & Storage
+############################################################
+
+### SMB3.6 (and WINS) server ~1.5MB
+CONFIG_FIRMWARE_INCLUDE_SMBD=y
+
+### WINS server only ~0.4MB
+CONFIG_FIRMWARE_INCLUDE_WINS=y
+
+### syslog for SMB and WINS server ~0.3MB
+CONFIG_FIRMWARE_INCLUDE_SMBD_SYSLOG=y
+
+### FTP server (vsftpd) ~0.2MB
+CONFIG_FIRMWARE_INCLUDE_FTPD=y
+
+### hdparm utility (HDD spindown/APM) ~0.1MB
+CONFIG_FIRMWARE_INCLUDE_HDPARM=y
+
+### parted utility (GPT partitions) ~0.3MB
+CONFIG_FIRMWARE_INCLUDE_PARTED=y
+
+### LPR printer daemon ~0.12MB
+CONFIG_FIRMWARE_INCLUDE_LPRD=y
+
+### USB-over-Ethernet printer daemon ~0.05MB
+CONFIG_FIRMWARE_INCLUDE_U2EC=y
+
+### VPN
+############################################################
+
+### OpenVPN (IPv6 required) ~0.4MB
+CONFIG_FIRMWARE_INCLUDE_OPENVPN=y
+
+### StrongSwan IPsec ~0.7MB
+CONFIG_FIRMWARE_INCLUDE_SSWAN=y
+
+### SoftEther VPN server
+CONFIG_FIRMWARE_INCLUDE_SOFTETHERVPN_SERVER=y
+
+### SoftEther VPN client
+CONFIG_FIRMWARE_INCLUDE_SOFTETHERVPN_CLIENT=y
+
+### SoftEther VPN command-line tool
+CONFIG_FIRMWARE_INCLUDE_SOFTETHERVPN_CMD=y
+
+### WireGuard VPN ~10KB
+CONFIG_FIRMWARE_INCLUDE_WIREGUARD=y
+
+### RP-L2TP alternative L2TP control client ~0.1MB
+CONFIG_FIRMWARE_INCLUDE_RPL2TP=y
+
+### xTun VPN tunnel
+CONFIG_FIRMWARE_INCLUDE_xTUN=y
+
+
+### Proxy & Anti-censorship
+############################################################
+
+### Shadowsocks proxy
+CONFIG_FIRMWARE_INCLUDE_SHADOWSOCKS=y
+
+### Shadowsocks server
+CONFIG_FIRMWARE_INCLUDE_SSSERVER=y
+
+### Xray proxy core ~4.5MB
+CONFIG_FIRMWARE_INCLUDE_XRAY=y
+
+### V2Ray proxy core
+CONFIG_FIRMWARE_INCLUDE_V2RAY=y
+
+### Trojan proxy ~1.2MB
+CONFIG_FIRMWARE_INCLUDE_TROJAN=y
+
+### Wing proxy tool
+CONFIG_FIRMWARE_INCLUDE_WING=y
+
+### simple-obfs obfuscation plugin
+CONFIG_FIRMWARE_INCLUDE_SSOBFS=y
+
+### sing-box proxy core
+CONFIG_FIRMWARE_INCLUDE_SINGBOX=y
+### mihomo proxy core
+CONFIG_FIRMWARE_INCLUDE_MIHOMO=y
+
+### NaiveProxy proxy
+CONFIG_FIRMWARE_INCLUDE_NAIVEPROXY=y
+
+### FRP intranet penetration client
+CONFIG_FIRMWARE_INCLUDE_FRPC=y
+
+### FRP intranet penetration server
+CONFIG_FIRMWARE_INCLUDE_FRPS=y
+
+### redsocks transparent proxy
+CONFIG_FIRMWARE_INCLUDE_REDSOCKS=y
+
+### MicroSocks lightweight SOCKS5 proxy
+CONFIG_FIRMWARE_INCLUDE_MICROSOCKS=y
+
+### 3proxy proxy server
+CONFIG_FIRMWARE_INCLUDE_3PROXY=y
+
+### Adbyby ad blocker Plus+
+CONFIG_FIRMWARE_INCLUDE_ADBYBY=y
+
+### DNS & Network Tools
+############################################################
+
+### dns-forwarder DNS forwarder
+CONFIG_FIRMWARE_INCLUDE_DNSFORWARDER=y
+
+### SmartDNS DNS server
+CONFIG_FIRMWARE_INCLUDE_SMARTDNS=y
+
+### AdGuard Home ad blocker
+CONFIG_FIRMWARE_INCLUDE_ADGUARDHOME=y
+
+### Aliyun DDNS
+CONFIG_FIRMWARE_INCLUDE_ALIDDNS=y
+
+### ddnsto intranet penetration ~0.5MB
+CONFIG_FIRMWARE_INCLUDE_DDNSTO=y
+
+### Aliyun Drive WebDAV ~3MB
+CONFIG_FIRMWARE_INCLUDE_ALDRIVER=y
+
+### SQM QoS traffic management
+CONFIG_FIRMWARE_INCLUDE_SQM=y
+
+### srelay SOCKS proxy
+CONFIG_FIRMWARE_INCLUDE_SRELAY=y
+
+### ZeroTier virtual LAN ~1.3MB
+CONFIG_FIRMWARE_INCLUDE_ZEROTIER=y
+
+### natmap port mapping ~0.1MB
+CONFIG_FIRMWARE_INCLUDE_NATMAP=y
+
+### n2n virtual LAN ~0.3MB
+CONFIG_FIRMWARE_INCLUDE_N2N=y
+
+### rtp2httpd RTP to HTTP ~0.1MB
+CONFIG_FIRMWARE_INCLUDE_RTP2HTTPD=y
+
+### fakehttp fake HTTP service ~0.5MB
+CONFIG_FIRMWARE_INCLUDE_FAKEHTTP=y
+
+### fakesip fake SIP service ~0.3MB
+CONFIG_FIRMWARE_INCLUDE_FAKESIP=y
+
+### webdav web server ~0.1MB
+CONFIG_FIRMWARE_INCLUDE_WEBDAV=y
+
+### curl command-line tool
+CONFIG_FIRMWARE_INCLUDE_CURL=y
+
+### Media & Download
+############################################################
+
+### xUPNPd IPTV media server ~0.3MB
+CONFIG_FIRMWARE_INCLUDE_XUPNPD=y
+
+### MiniDLNA UPnP media server ~1.6MB
+CONFIG_FIRMWARE_INCLUDE_MINIDLNA=y
+
+### Firefly iTunes media server ~1.0MB
+CONFIG_FIRMWARE_INCLUDE_FIREFLY=y
+
+### ffmpeg 0.11.x (for MiniDLNA/Firefly) ~0.1MB
+CONFIG_FIRMWARE_INCLUDE_FFMPEG_NEW=y
+
+### Transmission BitTorrent client ~1.5MB
+CONFIG_FIRMWARE_INCLUDE_TRANSMISSION=y
+
+### Transmission Web Control advanced UI ~0.8MB
+CONFIG_FIRMWARE_INCLUDE_TRANSMISSION_WEB_CONTROL=y
+
+### Aria2 download manager ~3.5MB
+CONFIG_FIRMWARE_INCLUDE_ARIA=y
+
+### Aria2 Web control UI ~0.7MB
+CONFIG_FIRMWARE_INCLUDE_ARIA_WEB_CONTROL=y
+
+### System Utilities
+############################################################
+
+### tcpdump packet capture ~0.6MB
+CONFIG_FIRMWARE_INCLUDE_TCPDUMP=y
+
+### htop process monitor
+CONFIG_FIRMWARE_INCLUDE_HTOP=y
+
+### nano text editor
+CONFIG_FIRMWARE_INCLUDE_NANO=y
+
+### iperf3 network bandwidth test
+CONFIG_FIRMWARE_INCLUDE_IPERF3=y
+
+### mtr network diagnostic
+CONFIG_FIRMWARE_INCLUDE_MTR=y
+
+### socat network utility
+CONFIG_FIRMWARE_INCLUDE_SOCAT=y
+
+### lrzsz file transfer
+CONFIG_FIRMWARE_INCLUDE_LRZSZ=y
+
+### ttyd web terminal
+CONFIG_FIRMWARE_INCLUDE_TTYD=y
+
+### vlmcsd KMS activation server
+CONFIG_FIRMWARE_INCLUDE_VLMCSD=y
+
+### msd_lite (replaces udpxy)
+CONFIG_FIRMWARE_INCLUDE_MSD_LITE=y
+
+### dump1090 ADS-B receiver
+CONFIG_FIRMWARE_INCLUDE_DUMP1090=y
+
+### RTL-SDR software defined radio
+CONFIG_FIRMWARE_INCLUDE_RTL_SDR=y
+
+### tmux terminal multiplexer ~0.3MB
+CONFIG_FIRMWARE_INCLUDE_TMUX=y
+
+### neofetch system info ~0.4MB
+CONFIG_FIRMWARE_INCLUDE_NEOFETCH=y
+
+### jq JSON processor ~0.5MB
+CONFIG_FIRMWARE_INCLUDE_JQ=y
+
+### Campus Network Authentication
+############################################################
+
+### MentoHUST Ruijie authentication
+CONFIG_FIRMWARE_INCLUDE_MENTOHUST=y
+
+### MiniEAP campus network authentication
+CONFIG_FIRMWARE_INCLUDE_MINIEAP=y
+
+### ScutClient SCUT authentication
+CONFIG_FIRMWARE_INCLUDE_SCUTCLIENT=y
+
+### GDUT-DrCOM GDUT authentication
+CONFIG_FIRMWARE_INCLUDE_GDUT_DRCOM=y
+
+### dogcom DrCOM authentication
+CONFIG_FIRMWARE_INCLUDE_DOGCOM=y
+
+### NJIT-Client NJIT authentication
+CONFIG_FIRMWARE_INCLUDE_NJIT_CLIENT=y

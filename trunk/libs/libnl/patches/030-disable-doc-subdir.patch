@@ -1,0 +1,10 @@
+--- a/configure.ac
++++ b/configure.ac
+@@ -131,7 +131,7 @@
+     AC_DEFINE([NL_DEBUG], [0], [Define to 1 to enable debugging])
+ fi
+ 
+-AC_CONFIG_SUBDIRS([doc])
++# AC_CONFIG_SUBDIRS([doc])  # disabled for cross-compile
+ 
+ AC_CHECK_FUNCS([strerror_l])

@@ -1,0 +1,8 @@
+--- a/src/md5-buildin/md5_dgst.c
++++ b/src/md5-buildin/md5_dgst.c
+@@ -416,6 +416,6 @@ a+=b; };
+ 
+-const char MD5_version[]="MD5" OPENSSL_VERSION_PTEXT;
++const char MD5_version[]="MD5";
+ 
+ /* Implemented from RFC1321 The MD5 Message-Digest Algorithm

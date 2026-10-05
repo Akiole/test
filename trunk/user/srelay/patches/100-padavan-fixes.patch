@@ -1,0 +1,659 @@
+diff -ruN a/.gitignore b/.gitignore
+--- a/.gitignore	2020-12-13 09:29:12.000000000 +0800
++++ b/.gitignore	1970-01-01 08:00:00.000000000 +0800
+@@ -1,7 +0,0 @@
+-.nfs*
+-*.o
+-Makefile
+-config.h
+-config.log
+-config.status
+-srelay
+diff -ruN a/auth-pwd.c b/auth-pwd.c
+--- a/auth-pwd.c	2020-12-13 09:29:12.000000000 +0800
++++ b/auth-pwd.c	2026-10-11 02:54:47.407256399 +0800
+@@ -1,6 +1,6 @@
+ /*
+   auth-pwd.c
+-  $Id$
++  $Id: auth-pwd.c,v 1.16 2017/09/01 05:59:24 bulkstream Exp $
+ 
+ Copyright (C) 2001-2010 Tomo.M (author).
+ All rights reserved.
+diff -ruN a/Changes b/Changes
+--- a/Changes	2020-12-13 09:29:12.000000000 +0800
++++ b/Changes	2026-10-11 02:54:47.405487847 +0800
+@@ -1,6 +1,6 @@
+ #
+ #  Changes
+-#  $Id$
++#  $Id: Changes,v 1.19 2017/08/25 05:53:27 bulkstream Exp $
+ #
+ 
+ 0.4.8p1 (2017/12/25)
+diff -ruN a/configure.in b/configure.in
+--- a/configure.in	2020-12-13 09:29:12.000000000 +0800
++++ b/configure.in	2026-10-11 02:54:47.406931814 +0800
+@@ -1,4 +1,5 @@
+ dnl Process this file with autoconf to produce a configure script.
++dnl $Id: configure.in,v 1.12 2017/08/16 13:47:27 bulkstream Exp $
+ AC_INIT(main.c)
+ AC_CONFIG_HEADER(config.h)
+ AC_CANONICAL_TARGET
+diff -ruN a/get-bind.c b/get-bind.c
+--- a/get-bind.c	2020-12-13 09:29:12.000000000 +0800
++++ b/get-bind.c	2026-10-11 02:54:47.408080279 +0800
+@@ -1,6 +1,6 @@
+ /*
+   get-bind.c:
+-  $Id$
++  $Id: get-bind.c,v 1.11 2017/08/16 13:00:01 bulkstream Exp $
+ 
+ Copyright (C) 2001-2010 Tomo.M (author).
+ All rights reserved.
+@@ -423,7 +423,7 @@
+ 
+   close(s);
+   /*
+-  msg_out(norm,"nlmsg_pid: %d, nlmsg_seq: %d",
++  msg_out(norm,"nlmsg_pid: %d, nlmsg_seq: %d\n",
+ 	  h->nlmsg_pid, h->nlmsg_seq);
+   */
+   len = h->nlmsg_len;
+@@ -437,11 +437,11 @@
+   /*
+   if (tb[RTA_DST]) {
+     inet_ntop(AF_INET, RTA_DATA(tb[RTA_DST]), str, sizeof(str));
+-    msg_out(norm, "DST %s", str);
++    msg_out(norm, "DST %s\n", str);
+   }
+   if (tb[RTA_GATEWAY]) {
+     inet_ntop(AF_INET, RTA_DATA(tb[RTA_GATEWAY]), str, sizeof(str));
+-    msg_out(norm, "GW %s", str);
++    msg_out(norm, "GW %s\n", str);
+   }
+   */
+   if (tb[RTA_OIF]) {
+@@ -501,7 +501,7 @@
+ 
+   close(s);
+   /*
+-  msg_out(norm,"nlmsg_pid: %d, nlmsg_seq: %d",
++  msg_out(norm,"nlmsg_pid: %d, nlmsg_seq: %d\n",
+ 	  h->nlmsg_pid, h->nlmsg_seq);
+   */
+   while (NLMSG_OK(h, status)) {
+@@ -519,7 +519,7 @@
+ 	/*
+ 	  char str[128];
+ 	  inet_ntop(AF_INET, RTA_DATA(tb[IFA_ADDRESS]), str, sizeof(str));
+-	  msg_out(norm, "ADDRESS %s", str);
++	  msg_out(norm, "ADDRESS %s\n", str);
+ 	*/
+ 	ba->ai_family = AF_INET;         /* IPv4 */
+ 	ba->ai_socktype = SOCK_STREAM;
+@@ -533,7 +533,7 @@
+       /*
+ 	if (tb[IFA_LOCAL]) {
+ 	unsigned *d = RTA_DATA(tb[IFA_LOCAL]);
+-	msg_out(norm, "LOCAL %08x", *d);
++	msg_out(norm, "LOCAL %08x\n", *d);
+ 	}
+       */
+     }
+diff -ruN a/init.c b/init.c
+--- a/init.c	2020-12-13 09:29:12.000000000 +0800
++++ b/init.c	2026-10-11 02:54:47.405177137 +0800
+@@ -1,6 +1,6 @@
+ /*
+   init.c
+-  $Id$
++  $Id: init.c,v 1.10 2010/12/20 14:12:00 bulkstream Exp $
+ 
+ Copyright (C) 2001-2010 Tomo.M (author).
+ All rights reserved.
+@@ -171,7 +171,7 @@
+ 	close(s);
+ 	continue;
+       }
+-      if (listen(s, INT_MAX) < 0) {
++      if (listen(s, 64) < 0) {
+ 	close(s);
+ 	continue;
+       }
+diff -ruN a/INSTALL b/INSTALL
+--- a/INSTALL	2020-12-13 09:29:12.000000000 +0800
++++ b/INSTALL	2026-10-11 02:54:47.403403585 +0800
+@@ -1,5 +1,5 @@
+ The srelay Installation Tips.
+-    $Id$
++    $Id: INSTALL,v 1.5 2017/08/25 05:53:27 bulkstream Exp $
+ 
+ o How to build and install
+ 
+diff -ruN a/main.c b/main.c
+--- a/main.c	2020-12-13 09:29:12.000000000 +0800
++++ b/main.c	2026-10-11 02:54:47.407740486 +0800
+@@ -1,6 +1,6 @@
+ /*
+   main.c:
+-  $Id$
++  $Id: main.c,v 1.29 2017/09/06 13:35:01 bulkstream Exp $
+ 
+ Copyright (C) 2001-2010 Tomo.M (author).
+ All rights reserved.
+@@ -47,7 +47,6 @@
+ char *pwdfile = NULL;
+ char *localpwd = NULL;
+ char *bindtodevice = NULL;
+-char *bindout = NULL;
+ pid_t master_pid;
+ 
+ #if USE_THREAD
+@@ -61,7 +60,7 @@
+ #ifdef HAVE_LIBWRAP
+ int use_tcpwrap = 0;
+ # include <tcpd.h>
+-# if defined(LINUX) || defined(SOLARIS)
++# ifdef LINUX
+ int    allow_severity = LOG_AUTH|LOG_INFO;
+ int    deny_severity  = LOG_AUTH|LOG_NOTICE;
+ # endif /* LINUX */
+@@ -97,7 +96,6 @@
+ #ifdef SO_BINDTODEVICE
+ 	  "\t-J i/f\toutbound interface name\n"
+ #endif
+-	  "\t-x ipv4\tuse ipv4 literal for outbound connections (probably conflicts with -J and -g)\n"
+ 	  "\t-m num\tmax child/thread\n"
+ 	  "\t-o min\tidle timeout minutes\n"
+ 	  "\t-p file\tpid file\n"
+@@ -135,6 +133,9 @@
+ #ifdef SIGEMT
+   setsignal(SIGEMT, SIG_IGN);
+ #endif
++  setsignal(SIGFPE, SIG_IGN);
++  setsignal(SIGBUS, SIG_IGN);
++  setsignal(SIGSEGV, SIG_IGN);
+   setsignal(SIGSYS, SIG_IGN);
+   setsignal(SIGPIPE, SIG_IGN);
+   setsignal(SIGALRM, SIG_IGN);
+@@ -460,7 +461,7 @@
+ 
+   /* create service socket table (malloc) */
+   if (serv_init(NULL) < 0) {
+-    msg_out(crit, "cannot malloc: %m");
++    msg_out(crit, "cannot malloc: %m\n");
+     exit(-1);
+   }
+ 
+@@ -474,7 +475,7 @@
+ 
+   openlog(ident, LOG_PID | LOG_NDELAY, SYSLOGFAC);
+ 
+-  while((ch = getopt(ac, av, "a:c:i:x:J:m:o:p:u:U:frstbwgIqvVh?")) != -1) {
++  while((ch = getopt(ac, av, "a:c:i:J:m:o:p:u:U:frstbwgIqvVh?")) != -1) {
+     switch (ch) {
+     case 'a':
+       if (optarg != NULL) {
+@@ -527,7 +528,7 @@
+     case 'i':
+       if (optarg != NULL) {
+ 	if (serv_init(optarg) < 0) {
+-	  msg_out(warn, "cannot init server socket(-i %s): %m", optarg);
++	  msg_out(warn, "cannot init server socket(-i %s): %m\n", optarg);
+ 	  break;
+ 	}
+       }
+@@ -541,12 +542,6 @@
+       break;
+ #endif
+ 
+-    case 'x':
+-      if (optarg != NULL) {
+-	bindout = strdup(optarg);
+-      }
+-      break;
+-
+     case 'o':
+       if (optarg != NULL) {
+ 	idle_timeout = atol(optarg);
+@@ -622,9 +617,6 @@
+   ac -= optind;
+   av += optind;
+ 
+-  if (fg && !forcesyslog && isatty(fileno(stderr)))
+-    setvbuf(stderr, NULL, _IOLBF, 0);
+-
+   if ((fp = fopen(config, "r")) != NULL) {
+     if (readconf(fp) != 0) {
+       /* readconf error */
+@@ -654,7 +646,7 @@
+   if (serv_sock_ind == 0) {   /* no valid ifs yet */
+     if (serv_init(":") < 0) { /* use default */
+       /* fatal */
+-      msg_out(crit, "cannot open server socket: %m");
++      msg_out(crit, "cannot open server socket\n");
+       exit(1);
+     }
+   }
+@@ -663,7 +655,7 @@
+   if ( ! threading ) {
+ #endif
+     if (queue_init() != 0) {
+-      msg_out(crit, "cannot init signal queue");
++      msg_out(crit, "cannot init signal queue\n");
+       exit(1);
+     }
+ #ifdef USE_THREAD
+diff -ruN a/Makefile.in b/Makefile.in
+--- a/Makefile.in	2020-12-13 09:29:12.000000000 +0800
++++ b/Makefile.in	2026-10-11 02:54:47.411210673 +0800
+@@ -1,6 +1,6 @@
+ #
+ #  Makefile
+-#  $Id$
++#  $Id: Makefile.in,v 1.6 2009/12/08 08:38:38 bulkstream Exp $
+ #
+ 
+ SHELL	= /bin/sh
+diff -ruN a/readconf.c b/readconf.c
+--- a/readconf.c	2020-12-13 09:29:12.000000000 +0800
++++ b/readconf.c	2026-10-11 02:54:47.403758545 +0800
+@@ -1,6 +1,6 @@
+ /*
+   readconf.c:
+-  $Id$
++  $Id: readconf.c,v 1.19 2017/09/01 07:04:50 bulkstream Exp $
+ 
+ Copyright (C) 2001-2018 Tomo.M (author).
+ All rights reserved.
+@@ -333,7 +333,7 @@
+ 
+ void parse_err(int sev, int line, char *msg)
+ {
+-  msg_out(sev, "%s: line %d: %s", CONFIG, line, msg);
++  msg_out(sev, "%s: line %d: %s\n", CONFIG, line, msg);
+ }
+ 
+ int str_to_addr(char *addr, bin_addr *dest)
+diff -ruN a/README.md b/README.md
+--- a/README.md	2020-12-13 09:29:12.000000000 +0800
++++ b/README.md	1970-01-01 08:00:00.000000000 +0800
+@@ -1,29 +0,0 @@
+-Srelay - the SOCKS proxy and Relay
+-==================================
+-
+-Imported from [sourceforge](http://socks-relay.sourceforge.net/).
+-
+-What is it?
+-============
+-
+-* Srelay is a socks 4/5 protocol proxy server.
+-* Supports socks connect/bind request in the protocol v4, v4a, and v5.
+-* Supports socks server chaining with both v4 and v5 servers.
+-* Supports Username/Password authentication in v5 (not recommended).
+-* Testing on FreeBSD 8.1R, Solaris 8, 10, Linux-i386, MacOS 10.5.
+-* Supports IPv6 as well as IPv4.
+-* Srelay is Free.
+-	      
+-Documents
+-=========
+-
+-Config Sample: [basic config](http://socks-relay.sourceforge.net/samples.html)
+-
+-References
+-==========
+-(These document links do not assure the compliancy of this software. Yeah, indeed.)
+-
+-* [SOCKS Protocol Version 4](http://socks-relay.sourceforge.net/socks4.protocol.txt)
+-* [SOCKS Protocol Version 4A socks 4a](http://socks-relay.sourceforge.net/socks4a.protocol.txt)
+-* SOCKS Protocol Version 5 [RFC 1928](http://www.ietf.org/rfc/rfc1928.txt)
+-* Username/Password Authentication for SOCKS V5 [RFC 1929](http://www.ietf.org/rfc/rfc1929.txt)
+diff -ruN a/relay.c b/relay.c
+--- a/relay.c	2020-12-13 09:29:12.000000000 +0800
++++ b/relay.c	2026-10-11 02:54:47.411822219 +0800
+@@ -1,6 +1,6 @@
+ /*
+   relay.c:
+-  $Id$
++  $Id: relay.c,v 1.21 2017/08/16 13:00:01 bulkstream Exp $
+ 
+ Copyright (C) 2001-2010 Tomo.M (author).
+ All rights reserved.
+@@ -318,36 +318,33 @@
+ 	ri.from = state->r; ri.to = state->s; ri.flags = 0;
+ 	if ((wc = forward(&ri)) <= 0)
+ 	  done++;
+-	else {
++	else
+ 	  li.bc += wc; li.dnl += wc;
+-	}
++
+ 	FD_CLR(state->r, &rfds);
+       }
+       if (FD_ISSET(state->r, &xfds)) {
+ 	ri.from = state->r; ri.to = state->s; ri.flags = MSG_OOB;
+ 	if ((wc = forward(&ri)) <= 0)
+ 	  done++;
+-	else {
++	else
+ 	  li.bc += wc; li.dnl += wc;
+-	}
+ 	FD_CLR(state->r, &xfds);
+       }
+       if (FD_ISSET(state->s, &rfds)) {
+ 	ri.from = state->s; ri.to = state->r; ri.flags = 0;
+ 	if ((wc = forward(&ri)) <= 0)
+ 	  done++;
+-	else {
++	else
+ 	  li.bc += wc; li.upl += wc;
+-	}
+ 	FD_CLR(state->s, &rfds);
+       }
+       if (FD_ISSET(state->s, &xfds)) {
+ 	ri.from = state->s; ri.to = state->r; ri.flags = MSG_OOB;
+ 	if ((wc = forward(&ri)) <= 0)
+ 	  done++;
+-	else {
++	else
+ 	  li.bc += wc; li.upl += wc;
+-	}
+ 	FD_CLR(state->s, &xfds);
+       }
+       if (done > 0)
+@@ -420,9 +417,8 @@
+ 	ri.dir = UP;
+ 	if ((wc = forward_udp(&ri, state->sr.udp, state->hops)) < 0)
+ 	  done++;
+-	else {
++	else
+ 	  li.bc += wc; li.upl += wc;
+-	}
+ 	FD_CLR(state->sr.udp->d, &rfds);
+       }
+       if (state->sr.udp->u >= 0 && FD_ISSET(state->sr.udp->u, &rfds)) {
+@@ -430,9 +426,8 @@
+ 	ri.dir = DOWN;
+ 	if ((wc = forward_udp(&ri, state->sr.udp, state->hops)) < 0)
+ 	  done++;
+-	else {
++	else
+ 	  li.bc += wc; li.dnl += wc;
+-	}
+ 	FD_CLR(state->sr.udp->d, &rfds);
+       }
+       /* packets on TCP channel may indicate
+diff -ruN a/scripts/rc.srelay b/scripts/rc.srelay
+--- a/scripts/rc.srelay	2020-12-13 09:29:12.000000000 +0800
++++ b/scripts/rc.srelay	2026-10-11 02:54:47.409882873 +0800
+@@ -1,7 +1,7 @@
+ #!/bin/bash
+ #     startup script for srelay
+ #							Tomo.M
+-#  $Id$
++#  $Id: rc.srelay,v 1.1 2009/09/02 13:41:40 bulkstream Exp $
+ # chkconfig: 345 99 0
+ # description: Srelay is a SOCKS proxy.
+ 
+diff -ruN a/scripts/srelay.sh b/scripts/srelay.sh
+--- a/scripts/srelay.sh	2020-12-13 09:29:12.000000000 +0800
++++ b/scripts/srelay.sh	2026-10-11 02:54:47.408588491 +0800
+@@ -1,7 +1,7 @@
+ #!/bin/sh
+ #   startup script for srelay
+ #   	srelay_enable="Yes" in /etc/rc.conf needed for enable.
+-#   $Id$
++#   $Id: srelay.sh,v 1.1 2009/09/02 13:41:40 bulkstream Exp $
+ #							Tomo.M
+ 
+ # PROVIDE: srelay
+diff -ruN a/scripts/svc-srelay b/scripts/svc-srelay
+--- a/scripts/svc-srelay	2020-12-13 09:29:12.000000000 +0800
++++ b/scripts/svc-srelay	2026-10-11 02:54:47.408847367 +0800
+@@ -1,6 +1,6 @@
+ #!/bin/sh
+ #   startup script for srelay
+-#   $Id$
++#   $Id: svc-srelay,v 1.1 2009/09/02 13:41:40 bulkstream Exp $
+ #							Tomo.M
+ 
+ name="srelay"
+diff -ruN a/socks.c b/socks.c
+--- a/socks.c	2020-12-13 09:29:12.000000000 +0800
++++ b/socks.c	2026-10-11 02:54:47.404886552 +0800
+@@ -1,6 +1,6 @@
+ /*
+   socks.c:
+-  $Id$
++  $Id: socks.c,v 1.30 2017/09/01 07:04:50 bulkstream Exp $
+ 
+ Copyright (C) 2001-2010 Tomo.M (author).
+ All rights reserved.
+@@ -445,7 +445,7 @@
+       return(-1);
+     }
+ 
+-    listen(acs, INT_MAX);
++    listen(acs, 64);
+     /* get my socket name again to acquire an
+        actual listen port number */
+     len = SS_LEN;
+@@ -1167,12 +1167,10 @@
+     /* get resp */
+     r = get_line(state->r, buf, sizeof(buf));
+     if (r >= 12) {
+-      while (r>0 && ((c=*p) != ' ' && c != '\t')) {
++      while (r>0 && ((c=*p) != ' ' && c != '\t'))
+ 	p++; r--;
+-      }
+-      while (r>0 && ((c=*p) == ' ' || c == '\t')) {
++      while (r>0 && ((c=*p) == ' ' || c == '\t'))
+ 	p++; r--;
+-      }
+       if (strncmp(p, "200", 3) == 0) {
+ 	/* redirection not supported */
+ 	do { /* skip resp headers */
+@@ -1268,23 +1266,6 @@
+       }
+     }
+ 
+-    if (bindout) {
+-      struct sockaddr_in localaddr;
+-      memset(&localaddr, 0, sizeof(struct sockaddr_in));
+-      if (inet_aton(bindout, &localaddr.sin_addr) == 0) {
+-        /* inet_aton error */
+-        error = EINVAL;
+-        close(cs);
+-        continue;
+-      }
+-      if (bind(cs, (struct sockaddr *) &localaddr, sizeof(localaddr)) <0) {
+-	/* bind error */
+-	error = errno;
+-	close(cs);
+-	continue;
+-      }
+-    }
+-
+     if (connect(cs, res->ai_addr, res->ai_addrlen) == 0) {
+       error = 0;
+       break;
+@@ -1564,10 +1545,9 @@
+ 	  if ( addr.atype != proxy_tbl[i].dest.atype )
+ 	    continue;
+ 	  if (addr_comp(&addr, &(proxy_tbl[i].dest),
+-			proxy_tbl[i].mask) == 0) {
++			proxy_tbl[i].mask) == 0)
+ 	    match++;
+-	    break;
+-	  }
++	  break;
+ 	}
+ 	if ( match )
+ 	  break;
+diff -ruN a/srelay.8 b/srelay.8
+--- a/srelay.8	2020-12-13 09:29:12.000000000 +0800
++++ b/srelay.8	2026-10-11 02:54:47.412025178 +0800
+@@ -1,7 +1,7 @@
+ '\"
+ .\" Copyright (C) 2001-2010, Tomo.M
+ .\" All Rights Reserved
+-.\" $Id$
++.\" $Id: srelay.8,v 1.6 2010/10/15 13:40:47 bulkstream Exp $
+ .TH srelay 8 "27 Mar 2003"
+ .if n .tr \--
+ .SH NAME
+@@ -53,9 +53,6 @@
+ .B \-u \fI file \fP
+ srelay password file used in intermediate SOCKS5 server.
+ .TP
+-.B \-U \fI file \fP
+-srelay local password file to authenticate users instead of using system passwd file.
+-.TP
+ .B \-a \fP[n|p]
+ authentication method.
+ .RS
+@@ -145,7 +142,7 @@
+ .br
+ # IPv6 destinations go through Gateway
+ .br
+-[::]				-		100.200.1.1
++::				-		100.200.1.1
+ .br
+ # IPv4 destinations go through another Gateway
+ .br
+@@ -153,7 +150,7 @@
+ .br
+ # (IPv6 to IPv4 destinations)
+ .br
+-0.0.0.0				-	[3002::1:4321:250:8bff:ffa8:1234]
++0.0.0.0				-	3002::1:4321:250:8bff:ffa8:1234
+ .br
+ # no next-hop means connect direct.
+ .br
+@@ -179,26 +176,20 @@
+ 
+ The listing order of proxy and proxy2 is farthest first order.
+ 
++
++
++
+ .br
+ .SS srelay.passwd
+ Username/Password information for connecting next-hop socks server.
+ .br
+-
+ # this line is comment.
+ .br
+-# next-hop server[/port]	username	password
++# next-hop server	username	password
+ .br
+ 123.234.0.1		hogehoga	xyz$12#
+ .br
+-10.11.22.1/1080		opopop		tutut555
+-
+-.SS srelay.localpwd
+-Username/Password-hash information for authenticate srelay users.
+-.br
+-
+-user1:$5$mq5pkSax.bRc2W1/$mHZDQafnG.TOxwsxqwFjzWA7mjP44mo2zPREHw.CsH2
+-user2:$5$8sv7vPq0GRJw50n0$eiRFdvPNPOuNooR.3cKKO2Ie0GTZm2QxehseG2.V45C
+-.br
++10.11.22.1		opopop		tutut555
+ .SH FILES
+ .TP
+ .B /usr/local/etc/srelay.conf
+diff -ruN a/srelay.conf b/srelay.conf
+--- a/srelay.conf	2020-12-13 09:29:12.000000000 +0800
++++ b/srelay.conf	2026-10-11 02:54:47.410781171 +0800
+@@ -1,6 +1,6 @@
+ #
+ #  srelay.conf
+-#  $Id$
++#  $Id: srelay.conf,v 1.6 2013/03/28 14:03:53 bulkstream Exp $
+ #
+ #  dest[/mask]			port	proxy		proxy-port
+ ; intranet
+diff -ruN a/srelay.h b/srelay.h
+--- a/srelay.h	2020-12-13 09:29:12.000000000 +0800
++++ b/srelay.h	2026-10-11 02:54:47.411500383 +0800
+@@ -1,6 +1,6 @@
+ /*
+   srelay.h:
+-  $Id$
++  $Id: srelay.h,v 1.36 2017/09/01 08:39:12 bulkstream Exp $
+          common definitions.
+ 
+ Copyright (C) 2001-2010 Tomo.M (author).
+@@ -165,7 +165,7 @@
+ # else
+ #   define THREAD_LIMIT    1     /* wooo !!! */
+ # endif
+-# define MAX_THREAD (THREAD_LIMIT > 128 ? 128 : THREAD_LIMIT)
++# define MAX_THREAD (THREAD_LIMIT > 64 ? 64 : THREAD_LIMIT)
+ 
+ # define MUTEX_LOCK(mutex) \
+     if (threading) { \
+@@ -401,7 +401,6 @@
+ extern char method_tab[];
+ extern int bind_restrict;
+ extern int same_interface;
+-extern char *bindout;
+ #ifdef HAVE_LIBWRAP
+ extern int use_tcpwrap;
+ #endif /* HAVE_LIBWRAP */
+diff -ruN a/srelay.passwd b/srelay.passwd
+--- a/srelay.passwd	2020-12-13 09:29:12.000000000 +0800
++++ b/srelay.passwd	2026-10-11 02:54:47.411008005 +0800
+@@ -1,7 +1,6 @@
+ #
+ #  srelay proxy passwd.
+-#  $Id$
++#  $Id: srelay.passwd,v 1.2 2002/12/06 02:15:01 bulkstream Exp $
+ #
+-# proxy[/port]	user		passwd
++# proxy		user		passwd
+ 192.168.1.1	hogahoge	%"aXhe
+-2.2.2.100/10080	hogehoge	%"aXhe
+diff -ruN a/util.c b/util.c
+--- a/util.c	2020-12-13 09:29:12.000000000 +0800
++++ b/util.c	2026-10-11 02:54:47.404132256 +0800
+@@ -1,6 +1,6 @@
+ /*
+   util.c:
+-  $Id$
++  $Id: util.c,v 1.15 2017/09/06 09:41:19 bulkstream Exp $
+ 
+ Copyright (C) 2001-2010 Tomo.M (author).
+ All rights reserved.
+@@ -73,16 +73,14 @@
+     gethostname(host, sizeof(host));
+     strftime(timestr, sizeof(timestr), "%b %e %T", localtime_r(&ts, &stamp));
+     fprintf(stderr, "%s %s ", timestr, host);
+-    va_start(ap, fmt);
++  va_start(ap, fmt);
+     vfprintf(stderr, fmt, ap);
+     va_end(ap);
+-    /* syslog adds a newline if one is not present, do the same here */
+-    if (fmt[strlen(fmt) - 1] != '\n')
+-      putc('\n', stderr);
++    fprintf(stderr, "\n");
+   } else {
+     va_start(ap, fmt);
+     vsyslog(priority, fmt, ap);
+-    va_end(ap);
++  va_end(ap);
+   }
+   fflush(NULL);
+ }
+diff -ruN a/v6defs.h b/v6defs.h
+--- a/v6defs.h	2020-12-13 09:29:12.000000000 +0800
++++ b/v6defs.h	2026-10-11 02:54:47.402698080 +0800
+@@ -1,6 +1,6 @@
+ /*
+   v6defs.h:
+-  $Id$
++  $Id: v6defs.h,v 1.4 2010/10/15 13:40:48 bulkstream Exp $
+          IPv6 related definisions mainly for old Solaris.
+ 
+ Copyright (C) 2003-2010 Tomo.M (author).

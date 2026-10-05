@@ -1,0 +1,83 @@
+--- a/examples/bootfloppy/etc/init.d/rcS
++++ b/examples/bootfloppy/etc/init.d/rcS
+@@ -1,3 +0,0 @@
+-#! /bin/sh
+-
+-/bin/mount -a
+
+--- a/libbb/udp_io.c
++++ b/libbb/udp_io.c
+@@ -179,6 +179,7 @@
+ 			/*#  define pktinfo(cmsgptr) ( (struct in6_pktinfo*)(CMSG_DATA(cmsgptr)) )*/
+ 			/*to6->sin6_addr = pktinfo(cmsgptr)->ipi6_addr; - may be unaligned */
+ 			memcpy(&to6->sin6_addr, (char*)(CMSG_DATA(cmsgptr)) + IPI6_ADDR_OFF, sizeof(to6->sin6_addr));
++			to6->sin6_scope_id = ((struct in6_pktinfo*)(CMSG_DATA(cmsgptr)))->ipi6_ifindex;
+ 			/*to6->sin6_port = 123; */
+ 			break;
+ 		}
+
+--- a/modutils/modutils.c
++++ b/modutils/modutils.c
+@@ -94,26 +94,30 @@
+ 
+ char* FAST_FUNC filename2modname(const char *filename, char *modname)
+ {
+-	char local_modname[MODULE_NAME_LEN];
+ 	int i;
+ 	const char *from;
+ 
+ 	if (filename == NULL)
+ 		return NULL;
+-	if (modname == NULL)
+-		modname = local_modname;
++
+ 	// Disabled since otherwise "modprobe dir/name" would work
+ 	// as if it is "modprobe name". It is unclear why
+ 	// 'basenamization' was here in the first place.
+ 	//from = bb_get_last_path_component_nostrip(filename);
+ 	from = filename;
++
++	if (modname == NULL) {
++		char local_modname[MODULE_NAME_LEN];
++		for (i = 0; i < (MODULE_NAME_LEN-1) && from[i] != '\0' && from[i] != '.'; i++)
++			local_modname[i] = (from[i] == '-') ? '_' : from[i];
++		local_modname[i] = '\0';
++		return xstrdup(local_modname);
++	}
++
+ 	for (i = 0; i < (MODULE_NAME_LEN-1) && from[i] != '\0' && from[i] != '.'; i++)
+ 		modname[i] = (from[i] == '-') ? '_' : from[i];
+ 	modname[i] = '\0';
+ 
+-	if (modname == local_modname)
+-		return xstrdup(modname);
+-
+ 	return modname;
+ }
+ 
+
+--- a/scripts/basic/docproc.c
++++ b/scripts/basic/docproc.c
+@@ -87,7 +87,7 @@
+ 	fflush(stdout);
+ 	switch(pid=fork()) {
+ 		case -1:
+-			perror("vfork"+1);
++			perror("fork");
+ 			exit(1);
+ 		case  0:
+ 			rflen  = strlen(getenv("SRCTREE"));
+@@ -152,9 +152,9 @@
+  * Files are separated by tabs.
+  */
+ void adddep(char * file)		   { printf("\t%s", file); }
+-void adddep2(char * file, char * line)     { line = line; adddep(file); }
+-void noaction(char * line)		   { line = line; }
+-void noaction2(char * file, char * line)   { file = file; line = line; }
++void adddep2(char * file, char * line)     { (void)line; adddep(file); }
++void noaction(char * line)		   { (void)line; }
++void noaction2(char * file, char * line)   { (void)file; (void)line; }
+ 
+ /* Echo the line without further action */
+ void printline(char * line)               { printf("%s", line); }
+

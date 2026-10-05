@@ -1,0 +1,91 @@
+--- a/src/igmpproxy.h	2022-10-29 18:01:46.000000000 +0800
++++ b/src/igmpproxy.h	2026-10-10 13:03:38.088024424 +0800
+@@ -53,6 +53,10 @@
+ #include <limits.h>
+ #include <pwd.h>
+ 
++#ifndef LOGIN_NAME_MAX
++#define LOGIN_NAME_MAX 256
++#endif
++
+ #include <sys/socket.h>
+ #include <sys/un.h>
+ #include <sys/ioctl.h>
+--- a/src/mroute-api.c	2022-10-29 18:01:46.000000000 +0800
++++ b/src/mroute-api.c	2026-10-10 13:03:38.096826284 +0800
+@@ -227,7 +227,7 @@
+ 
+     rc = setsockopt( MRouterFD, IPPROTO_IP, MRT_DEL_MFC,
+                     (void *)&CtlReq, sizeof( CtlReq ) );
+-    if (rc)
++    if (rc && errno != ENOENT)
+         my_log( LOG_WARNING, errno, "MRT_DEL_MFC" );
+ 
+     return rc;
+--- a/igmpproxy.conf	2022-10-29 18:01:46.000000000 +0800
++++ b/igmpproxy.conf	2026-10-10 13:03:38.062760896 +0800
+@@ -1,46 +1,42 @@
+ ########################################################
+ #
+-#   Example configuration file for the IgmpProxy
+-#   --------------------------------------------
++#   igmpproxy 0.4 配置文件 (Padavan)
++#   ---------------------------------
+ #
+-#   The configuration file must define one upstream
+-#   interface, and one or more downstream interfaces.
++#   必须定义一个 upstream 接口和一个或多个 downstream 接口。
+ #
+-#   If multicast traffic originates outside the
+-#   upstream subnet, the "altnet" option can be
+-#   used in order to define legal multicast sources.
+-#   (Se example...)
++#   WAN 接口名取决于连接方式:
++#   - PPPoE: ppp0
++#   - DHCP/静态IP: 通常是 eth3 (部分型号可能不同)
+ #
+-#   The "quickleave" should be used to avoid saturation
+-#   of the upstream link. The option should only
+-#   be used if it's absolutely nessecary to
+-#   accurately imitate just one Client.
++#   可用 ip route show | grep default 查看当前 WAN 接口
+ #
+ ########################################################
+ 
+ ##------------------------------------------------------
+-## Enable Quickleave mode (Sends Leave instantly)
++## 启用 Quickleave 模式 (收到 Leave 后立即发送)
+ ##------------------------------------------------------
+ quickleave
+ 
+ 
+ ##------------------------------------------------------
+-## Configuration for eth0 (Upstream Interface)
++## 上游接口 (WAN) - PPPoE 模式使用 ppp0
++## 如果使用 DHCP/静态IP，请将 ppp0 改为对应的 WAN 接口名
+ ##------------------------------------------------------
+-phyint eth0 upstream  ratelimit 0  threshold 1
+-        altnet 10.0.0.0/8 
+-        altnet 192.168.0.0/24
++phyint ppp0 upstream  ratelimit 0  threshold 1
+ 
+ 
+ ##------------------------------------------------------
+-## Configuration for eth1 (Downstream Interface)
++## 下游接口 (LAN)
+ ##------------------------------------------------------
+-phyint eth1 downstream  ratelimit 0  threshold 1
++phyint br0 downstream  ratelimit 0  threshold 1
+ 
+ 
+ ##------------------------------------------------------
+-## Configuration for eth2 (Disabled Interface)
++## 禁用其他接口
+ ##------------------------------------------------------
+ phyint eth2 disabled
+-
+-
++phyint eth3 disabled
++phyint lo disabled
++phyint ra0 disabled
++phyint rax0 disabled

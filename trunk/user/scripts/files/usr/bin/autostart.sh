@@ -1,0 +1,121 @@
+#!/bin/sh
+#
+# Copyright (C) 2022 TurBoTse <860018505@qq.com>
+#
+#nvram set ntp_ready=0
+
+mkdir -p /tmp/dnsmasq.dom
+logger -t "防止 DNSmasq 启动失败，创建/tmp/dnsmasq.dom/"
+
+# ap relay monitor [simonchen]
+if [ "$(nvram get ap_relay_enable)" = "1" ]; then
+	/usr/bin/ap_script.sh >/dev/null 2>&1 &
+fi
+smartdns_conf="/etc/storage/smartdns_custom.conf"
+dnsmasq_Conf="/etc/storage/dnsmasq/dnsmasq.conf"
+smartdns_Ini="/etc/storage/smartdns_conf.ini"
+sdns_port=$(nvram get sdns_port)
+
+logger -t "自动启动" "正在检查路由是否已连接互联网..."
+count=0
+while :
+do
+	ping -c 1 -W 1 -q 223.5.5.5 1>/dev/null 2>&1
+	if [ "$?" == "0" ]; then
+		break
+	fi
+	sleep 5
+	ping -c 1 -W 1 -q baidu.com 1>/dev/null 2>&1
+	if [ "$?" == "0" ]; then
+		break
+	fi
+	sleep 5
+	count=$((count+1))
+	if [ $count -gt 18 ]; then
+		break
+	fi
+done
+
+if [ "$(nvram get pppoemwan_enable)" = "1" ] ; then
+sleep 20
+fi
+
+if [ "$(nvram get sqm_enable)" = "1" ] ; then
+sleep 10
+logger -t "自动启动" "正在启动 SQM QOS..."
+/usr/lib/sqm/run.sh
+fi
+
+if [ "$(nvram get adbyby_enable)" = "1" ] ; then
+logger -t "自动启动" "正在启动 Adbyby plus..."
+/usr/bin/adbyby.sh start
+fi
+
+if [ "$(nvram get adg_enable)" = "1" ] ; then
+logger -t "自动启动" "正在启动 adguardhome..."
+/usr/bin/adguardhome.sh start
+fi
+
+if [ "$(nvram get ss_enable)" = "1" ] ; then
+logger -t "自动启动" "正在启动科学上网..."
+/usr/bin/shadowsocks.sh start
+fi
+
+if [ "$(nvram get singbox_enable)" = "1" ] ; then
+logger -t "自动启动" "Starting sing-box..."
+/usr/bin/singbox.sh start
+fi
+
+if [ "$(nvram get sdns_enable)" = "1" ] ; then
+   if [ -f "$smartdns_conf" ] ; then
+       sed -i '/去广告/d' $smartdns_conf
+       sed -i '/adbyby/d' $smartdns_conf
+       sed -i '/no-resolv/d' "$dnsmasq_Conf"
+       sed -i '/server=127.0.0.1#'"$sdns_port"'/d' "$dnsmasq_Conf"
+       sed -i '/port=0/d' "$dnsmasq_Conf"
+       rm  -f "$smartdns_Ini"
+   fi
+logger -t "自动启动" "正在启动 SmartDNS..."
+/usr/bin/smartdns.sh start
+fi
+
+if [ "$(nvram get aliddns_enable)" = "1" ] ; then
+logger -t "自动启动" "正在启动阿里 ddns..."
+/usr/bin/aliddns.sh start
+fi
+
+if [ "$(nvram get ddnsto_enable)" = "1" ] ; then
+logger -t "自动启动" "正在启动 ddnsto..."
+/usr/bin/ddnsto.sh start
+fi
+
+if [ "$(nvram get aliyundrive_enable)" = "1" ] ; then
+logger -t "自动启动" "正在启动阿里云盘..."
+/usr/bin/aliyundrive-webdav.sh start
+fi
+
+if [ "$(nvram get zerotier_enable)" = "1" ] ; then
+logger -t "自动启动" "正在启动 zerotier..."
+/usr/bin/zerotier.sh start
+fi
+
+if [ "$(nvram get wireguard_enable)" = "1" ] ; then
+logger -t "自动启动" "正在启动 wireguard..."
+/usr/bin/wireguard.sh start
+fi
+
+if [ "$(nvram get frpc_enable)" = "1" ] ; then
+logger -t "自动启动" "正在启动 frp client..."
+/usr/bin/frp.sh start
+fi
+
+# 跨 AP 无线客户端 RSSI 采集（启用且配置了 ap_slave_ips）
+if [ "$(nvram get ap_rssi_enable)" = "1" ] && [ -n "$(nvram get ap_slave_ips)" ] ; then
+	logger -t "自动启动" "正在配置跨 AP RSSI 采集定时任务..."
+	AP_RSSI_INTERVAL=$(nvram get ap_rssi_interval)
+	[ -z "$AP_RSSI_INTERVAL" ] && AP_RSSI_INTERVAL=1
+	[ "$AP_RSSI_INTERVAL" -lt 1 ] 2>/dev/null && AP_RSSI_INTERVAL=1
+	[ "$AP_RSSI_INTERVAL" -gt 60 ] 2>/dev/null && AP_RSSI_INTERVAL=60
+	/sbin/check_crontab.sh a/$AP_RSSI_INTERVAL a a a a ap_rssi_collect.sh
+	/usr/bin/ap_rssi_collect.sh &
+fi

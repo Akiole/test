@@ -1,0 +1,54 @@
+diff -ruN antfs-07.19/dir.c antfs-07.19.new/dir.c
+--- antfs-07.19/dir.c	2026-10-10 21:39:51.427340754 +0800
++++ antfs-07.19.new/dir.c	2026-10-10 21:51:39.208752885 +0800
+@@ -30,6 +30,13 @@
+ #include "dir.h"
+ #include "reparse.h"
+ 
++/*
++ * Force old follow_link/put_link API for kernels with patchlevel > 255.
++ * LINUX_VERSION_CODE for 4.4.302 overflows and compares as >= 4.5.0,
++ * causing use of set_delayed_call/get_link which do not exist in 4.4.
++ */
++#define ANTFS_FORCE_OLD_FOLLOW_LINK 1
++
+ /**
+  * Check if we are in the /FRITZ directory.
+  *
+@@ -1267,7 +1274,7 @@
+  * evaluate it!
+  */
+ 
+-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 5, 0)
++#if !defined(ANTFS_FORCE_OLD_FOLLOW_LINK) && LINUX_VERSION_CODE >= KERNEL_VERSION(4, 5, 0)
+ static const char *antfs_get_link(struct dentry *dentry, struct inode *inode,
+ 				  struct delayed_call *done)
+ #elif LINUX_VERSION_CODE >= KERNEL_VERSION(4, 2, 0)
+@@ -1381,7 +1388,7 @@
+ 	mutex_unlock(&dentry->d_inode->i_mutex);
+ #endif
+ 
+-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 5, 0)
++#if !defined(ANTFS_FORCE_OLD_FOLLOW_LINK) && LINUX_VERSION_CODE >= KERNEL_VERSION(4, 5, 0)
+ 	set_delayed_call(done, kfree_link, link);
+ 	return err < 0 ? ERR_PTR(err) : link;
+ #elif LINUX_VERSION_CODE >= KERNEL_VERSION(4, 2, 0)
+@@ -1439,15 +1446,15 @@
+ static const struct inode_operations antfs_symlink_inode_operations
+ __maybe_unused = {
+ 	.setattr = antfs_setattr,
+-#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 5, 0)
++#if defined(ANTFS_FORCE_OLD_FOLLOW_LINK) || LINUX_VERSION_CODE < KERNEL_VERSION(4, 5, 0)
+ 	.follow_link = antfs_follow_link,
+ #endif
+ #if LINUX_VERSION_CODE < KERNEL_VERSION(4, 2, 0)
+ 	.put_link = antfs_put_link,
+-#elif LINUX_VERSION_CODE < KERNEL_VERSION(4, 5, 0)
++#elif defined(ANTFS_FORCE_OLD_FOLLOW_LINK) || LINUX_VERSION_CODE < KERNEL_VERSION(4, 5, 0)
+ 	.put_link = kfree_put_link,
+ #endif
+-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 5, 0)
++#if !defined(ANTFS_FORCE_OLD_FOLLOW_LINK) && LINUX_VERSION_CODE >= KERNEL_VERSION(4, 5, 0)
+ 	.get_link = antfs_get_link,
+ #endif
+ #if LINUX_VERSION_CODE < KERNEL_VERSION(4, 10, 0)

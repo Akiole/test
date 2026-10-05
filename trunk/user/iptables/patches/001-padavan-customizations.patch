@@ -1,0 +1,5968 @@
+--- a/extensions/libebt_mark.xlate
++++ b/extensions/libebt_mark.xlate
+@@ -0,0 +1,11 @@
++ebtables-translate -A INPUT --mark-set 42
++nft add rule bridge filter INPUT mark set 0x2a counter
++
++ebtables-translate -A INPUT --mark-or 42 --mark-target RETURN
++nft add rule bridge filter INPUT mark set mark or 0x2a counter return
++
++ebtables-translate -A INPUT --mark-and 42 --mark-target ACCEPT
++nft add rule bridge filter INPUT mark set mark and 0x2a counter accept
++
++ebtables-translate -A INPUT --mark-xor 42 --mark-target DROP
++nft add rule bridge filter INPUT mark set mark xor 0x2a counter drop
+--- a/extensions/libip6t_DNAT.c
++++ b/extensions/libip6t_DNAT.c
+@@ -0,0 +1,411 @@
++/*
++ * Copyright (c) 2011 Patrick McHardy <kaber@trash.net>
++ *
++ * Based on Rusty Russell's IPv4 DNAT target. Development of IPv6 NAT
++ * funded by Astaro.
++ */
++
++#include <stdio.h>
++#include <netdb.h>
++#include <string.h>
++#include <stdlib.h>
++#include <xtables.h>
++#include <iptables.h>
++#include <limits.h> /* INT_MAX in ip_tables.h */
++#include <linux/netfilter_ipv6/ip6_tables.h>
++#include <linux/netfilter/nf_nat.h>
++
++enum {
++	O_TO_DEST = 0,
++	O_RANDOM,
++	O_PERSISTENT,
++	O_X_TO_DEST,
++	F_TO_DEST   = 1 << O_TO_DEST,
++	F_RANDOM   = 1 << O_RANDOM,
++	F_X_TO_DEST = 1 << O_X_TO_DEST,
++};
++
++static void DNAT_help(void)
++{
++	printf(
++"DNAT target options:\n"
++" --to-destination [<ipaddr>[-<ipaddr>]][:port[-port]]\n"
++"				Address to map destination to.\n"
++"[--random] [--persistent]\n");
++}
++
++static void DNAT_help_v2(void)
++{
++	printf(
++"DNAT target options:\n"
++" --to-destination [<ipaddr>[-<ipaddr>]][:port[-port[/port]]]\n"
++"				Address to map destination to.\n"
++"[--random] [--persistent]\n");
++}
++
++static const struct xt_option_entry DNAT_opts[] = {
++	{.name = "to-destination", .id = O_TO_DEST, .type = XTTYPE_STRING,
++	 .flags = XTOPT_MAND | XTOPT_MULTI},
++	{.name = "random", .id = O_RANDOM, .type = XTTYPE_NONE},
++	{.name = "persistent", .id = O_PERSISTENT, .type = XTTYPE_NONE},
++	XTOPT_TABLEEND,
++};
++
++/* Ranges expected in network order. */
++static void
++parse_to(const char *orig_arg, int portok, struct nf_nat_range2 *range, int rev)
++{
++	char *arg, *start, *end = NULL, *colon = NULL, *dash, *error;
++	const struct in6_addr *ip;
++
++	arg = strdup(orig_arg);
++	if (arg == NULL)
++		xtables_error(RESOURCE_PROBLEM, "strdup");
++
++	start = strchr(arg, '[');
++	if (start == NULL) {
++		start = arg;
++		/* Lets assume one colon is port information. Otherwise its an IPv6 address */
++		colon = strchr(arg, ':');
++		if (colon && strchr(colon+1, ':'))
++			colon = NULL;
++	}
++	else {
++		start++;
++		end = strchr(start, ']');
++		if (end == NULL)
++			xtables_error(PARAMETER_PROBLEM,
++				      "Invalid address format");
++
++		*end = '\0';
++		colon = strchr(end + 1, ':');
++	}
++
++	if (colon) {
++		int port;
++
++		if (!portok)
++			xtables_error(PARAMETER_PROBLEM,
++				   "Need TCP, UDP, SCTP or DCCP with port specification");
++
++		range->flags |= NF_NAT_RANGE_PROTO_SPECIFIED;
++
++		port = atoi(colon+1);
++		if (port <= 0 || port > 65535)
++			xtables_error(PARAMETER_PROBLEM,
++				   "Port `%s' not valid\n", colon+1);
++
++		error = strchr(colon+1, ':');
++		if (error)
++			xtables_error(PARAMETER_PROBLEM,
++				   "Invalid port:port syntax - use dash\n");
++
++		dash = strchr(colon, '-');
++		if (!dash) {
++			range->min_proto.tcp.port
++				= range->max_proto.tcp.port
++				= htons(port);
++		} else {
++			int maxport;
++
++			maxport = atoi(dash + 1);
++			if (maxport <= 0 || maxport > 65535)
++				xtables_error(PARAMETER_PROBLEM,
++					   "Port `%s' not valid\n", dash+1);
++			if (maxport < port)
++				/* People are stupid. */
++				xtables_error(PARAMETER_PROBLEM,
++					   "Port range `%s' funky\n", colon+1);
++			range->min_proto.tcp.port = htons(port);
++			range->max_proto.tcp.port = htons(maxport);
++
++			if (rev >= 2) {
++				char *slash = strchr(dash, '/');
++				if (slash) {
++					int baseport;
++
++					baseport = atoi(slash + 1);
++					if (baseport <= 0 || baseport > 65535)
++						xtables_error(PARAMETER_PROBLEM,
++								 "Port `%s' not valid\n", slash+1);
++					range->flags |= NF_NAT_RANGE_PROTO_OFFSET;
++					range->base_proto.tcp.port = htons(baseport);
++				}
++			}
++		}
++		/* Starts with colon or [] colon? No IP info...*/
++		if (colon == arg || colon == arg+2) {
++			free(arg);
++			return;
++		}
++		*colon = '\0';
++	}
++
++	range->flags |= NF_NAT_RANGE_MAP_IPS;
++	dash = strchr(start, '-');
++	if (colon && dash && dash > colon)
++		dash = NULL;
++
++	if (dash)
++		*dash = '\0';
++
++	ip = xtables_numeric_to_ip6addr(start);
++	if (!ip)
++		xtables_error(PARAMETER_PROBLEM, "Bad IP address \"%s\"\n",
++			      start);
++	range->min_addr.in6 = *ip;
++	if (dash) {
++		ip = xtables_numeric_to_ip6addr(dash + 1);
++		if (!ip)
++			xtables_error(PARAMETER_PROBLEM, "Bad IP address \"%s\"\n",
++				      dash+1);
++		range->max_addr.in6 = *ip;
++	} else
++		range->max_addr = range->min_addr;
++
++	free(arg);
++	return;
++}
++
++static void _DNAT_parse(struct xt_option_call *cb,
++		struct nf_nat_range2 *range, int rev)
++{
++	const struct ip6t_entry *entry = cb->xt_entry;
++	int portok;
++
++	if (entry->ipv6.proto == IPPROTO_TCP ||
++	    entry->ipv6.proto == IPPROTO_UDP ||
++	    entry->ipv6.proto == IPPROTO_SCTP ||
++	    entry->ipv6.proto == IPPROTO_DCCP ||
++	    entry->ipv6.proto == IPPROTO_ICMP)
++		portok = 1;
++	else
++		portok = 0;
++
++	xtables_option_parse(cb);
++	switch (cb->entry->id) {
++	case O_TO_DEST:
++		if (cb->xflags & F_X_TO_DEST) {
++			xtables_error(PARAMETER_PROBLEM,
++				      "DNAT: Multiple --to-destination not supported");
++		}
++		parse_to(cb->arg, portok, range, rev);
++		cb->xflags |= F_X_TO_DEST;
++		break;
++	case O_PERSISTENT:
++		range->flags |= NF_NAT_RANGE_PERSISTENT;
++		break;
++	}
++}
++
++static void DNAT_parse(struct xt_option_call *cb)
++{
++	struct nf_nat_range *range_v1 = (void *)cb->data;
++	struct nf_nat_range2 range = {};
++
++	memcpy(&range, range_v1, sizeof(*range_v1));
++	_DNAT_parse(cb, &range, 1);
++	memcpy(range_v1, &range, sizeof(*range_v1));
++}
++
++static void DNAT_parse_v2(struct xt_option_call *cb)
++{
++	_DNAT_parse(cb, (struct nf_nat_range2 *)cb->data, 2);
++}
++
++static void _DNAT_fcheck(struct xt_fcheck_call *cb, unsigned int *flags)
++{
++	static const unsigned int f = F_TO_DEST | F_RANDOM;
++
++	if ((cb->xflags & f) == f)
++		*flags |= NF_NAT_RANGE_PROTO_RANDOM;
++}
++
++static void DNAT_fcheck(struct xt_fcheck_call *cb)
++{
++	_DNAT_fcheck(cb, &((struct nf_nat_range *)cb->data)->flags);
++}
++
++static void DNAT_fcheck_v2(struct xt_fcheck_call *cb)
++{
++	_DNAT_fcheck(cb, &((struct nf_nat_range2 *)cb->data)->flags);
++}
++
++static void print_range(const struct nf_nat_range2 *range, int rev)
++{
++	if (range->flags & NF_NAT_RANGE_MAP_IPS) {
++		if (range->flags & NF_NAT_RANGE_PROTO_SPECIFIED)
++			printf("[");
++		printf("%s", xtables_ip6addr_to_numeric(&range->min_addr.in6));
++		if (memcmp(&range->min_addr, &range->max_addr,
++			   sizeof(range->min_addr)))
++			printf("-%s", xtables_ip6addr_to_numeric(&range->max_addr.in6));
++		if (range->flags & NF_NAT_RANGE_PROTO_SPECIFIED)
++			printf("]");
++	}
++	if (range->flags & NF_NAT_RANGE_PROTO_SPECIFIED) {
++		printf(":");
++		printf("%hu", ntohs(range->min_proto.tcp.port));
++		if (range->max_proto.tcp.port != range->min_proto.tcp.port)
++			printf("-%hu", ntohs(range->max_proto.tcp.port));
++		if (rev >= 2 && (range->flags & NF_NAT_RANGE_PROTO_OFFSET))
++			printf("/%hu", ntohs(range->base_proto.tcp.port));
++	}
++}
++
++static void _DNAT_print(const struct nf_nat_range2 *range, int rev)
++{
++	printf(" to:");
++	print_range(range, rev);
++	if (range->flags & NF_NAT_RANGE_PROTO_RANDOM)
++		printf(" random");
++	if (range->flags & NF_NAT_RANGE_PERSISTENT)
++		printf(" persistent");
++}
++
++static void DNAT_print(const void *ip, const struct xt_entry_target *target,
++                       int numeric)
++{
++	const struct nf_nat_range *range_v1 = (const void *)target->data;
++	struct nf_nat_range2 range = {};
++
++	memcpy(&range, range_v1, sizeof(*range_v1));
++	_DNAT_print(&range, 1);
++}
++
++static void DNAT_print_v2(const void *ip, const struct xt_entry_target *target,
++                          int numeric)
++{
++	_DNAT_print((const struct nf_nat_range2 *)target->data, 2);
++}
++
++static void _DNAT_save(const struct nf_nat_range2 *range, int rev)
++{
++	printf(" --to-destination ");
++	print_range(range, rev);
++	if (range->flags & NF_NAT_RANGE_PROTO_RANDOM)
++		printf(" --random");
++	if (range->flags & NF_NAT_RANGE_PERSISTENT)
++		printf(" --persistent");
++}
++
++static void DNAT_save(const void *ip, const struct xt_entry_target *target)
++{
++	const struct nf_nat_range *range_v1 = (const void *)target->data;
++	struct nf_nat_range2 range = {};
++
++	memcpy(&range, range_v1, sizeof(*range_v1));
++	_DNAT_save(&range, 1);
++}
++
++static void DNAT_save_v2(const void *ip, const struct xt_entry_target *target)
++{
++	_DNAT_save((const struct nf_nat_range2 *)target->data, 2);
++}
++
++static void print_range_xlate(const struct nf_nat_range2 *range,
++			      struct xt_xlate *xl, int rev)
++{
++	bool proto_specified = range->flags & NF_NAT_RANGE_PROTO_SPECIFIED;
++
++	if (range->flags & NF_NAT_RANGE_MAP_IPS) {
++		xt_xlate_add(xl, "%s%s%s",
++			     proto_specified ? "[" : "",
++			     xtables_ip6addr_to_numeric(&range->min_addr.in6),
++			     proto_specified ? "]" : "");
++
++		if (memcmp(&range->min_addr, &range->max_addr,
++			   sizeof(range->min_addr))) {
++			xt_xlate_add(xl, "-%s%s%s",
++				     proto_specified ? "[" : "",
++				     xtables_ip6addr_to_numeric(&range->max_addr.in6),
++				     proto_specified ? "]" : "");
++		}
++	}
++	if (proto_specified) {
++		xt_xlate_add(xl, ":%hu", ntohs(range->min_proto.tcp.port));
++
++		if (range->max_proto.tcp.port != range->min_proto.tcp.port)
++			xt_xlate_add(xl, "-%hu",
++				   ntohs(range->max_proto.tcp.port));
++	}
++}
++
++static int _DNAT_xlate(struct xt_xlate *xl,
++		      const struct nf_nat_range2 *range, int rev)
++{
++	bool sep_need = false;
++	const char *sep = " ";
++
++	xt_xlate_add(xl, "dnat to ");
++	print_range_xlate(range, xl, rev);
++	if (range->flags & NF_NAT_RANGE_PROTO_RANDOM) {
++		xt_xlate_add(xl, " random");
++		sep_need = true;
++	}
++	if (range->flags & NF_NAT_RANGE_PERSISTENT) {
++		if (sep_need)
++			sep = ",";
++		xt_xlate_add(xl, "%spersistent", sep);
++	}
++
++	return 1;
++}
++
++static int DNAT_xlate(struct xt_xlate *xl,
++		      const struct xt_xlate_tg_params *params)
++{
++	const struct nf_nat_range *range_v1 = (const void *)params->target->data;
++	struct nf_nat_range2 range = {};
++
++	memcpy(&range, range_v1, sizeof(*range_v1));
++	_DNAT_xlate(xl, &range, 1);
++
++	return 1;
++}
++
++static int DNAT_xlate_v2(struct xt_xlate *xl,
++		      const struct xt_xlate_tg_params *params)
++{
++	_DNAT_xlate(xl, (const struct nf_nat_range2 *)params->target->data, 2);
++
++	return 1;
++}
++
++static struct xtables_target dnat_tg_reg[] = {
++	{
++		.name		= "DNAT",
++		.version	= XTABLES_VERSION,
++		.family		= NFPROTO_IPV6,
++		.revision	= 1,
++		.size		= XT_ALIGN(sizeof(struct nf_nat_range)),
++		.userspacesize	= XT_ALIGN(sizeof(struct nf_nat_range)),
++		.help		= DNAT_help,
++		.print		= DNAT_print,
++		.save		= DNAT_save,
++		.x6_parse	= DNAT_parse,
++		.x6_fcheck	= DNAT_fcheck,
++		.x6_options	= DNAT_opts,
++		.xlate		= DNAT_xlate,
++	},
++	{
++		.name		= "DNAT",
++		.version	= XTABLES_VERSION,
++		.family		= NFPROTO_IPV6,
++		.revision	= 2,
++		.size		= XT_ALIGN(sizeof(struct nf_nat_range2)),
++		.userspacesize	= XT_ALIGN(sizeof(struct nf_nat_range2)),
++		.help		= DNAT_help_v2,
++		.print		= DNAT_print_v2,
++		.save		= DNAT_save_v2,
++		.x6_parse	= DNAT_parse_v2,
++		.x6_fcheck	= DNAT_fcheck_v2,
++		.x6_options	= DNAT_opts,
++		.xlate		= DNAT_xlate_v2,
++	},
++};
++
++void _init(void)
++{
++	xtables_register_targets(dnat_tg_reg, ARRAY_SIZE(dnat_tg_reg));
++}
+--- a/extensions/libip6t_DNAT.txlate
++++ b/extensions/libip6t_DNAT.txlate
+@@ -0,0 +1,11 @@
++ip6tables-translate -t nat -A prerouting -i eth1 -p tcp --dport 8080 -j DNAT --to-destination [fec0::1234]:80
++nft add rule ip6 nat prerouting iifname "eth1" tcp dport 8080 counter dnat to [fec0::1234]:80
++
++ip6tables-translate -t nat -A prerouting -p tcp -j DNAT --to-destination [fec0::1234]:1-20
++nft add rule ip6 nat prerouting meta l4proto tcp counter dnat to [fec0::1234]:1-20
++
++ip6tables-translate -t nat -A prerouting -p tcp -j DNAT --to-destination [fec0::1234]:80 --persistent
++nft add rule ip6 nat prerouting meta l4proto tcp counter dnat to [fec0::1234]:80 persistent
++
++ip6tables-translate -t nat -A prerouting -p tcp -j DNAT --to-destination [fec0::1234]:80 --random --persistent
++nft add rule ip6 nat prerouting meta l4proto tcp counter dnat to [fec0::1234]:80 random,persistent
+--- a/extensions/libip6t_FULLCONENAT.c
++++ b/extensions/libip6t_FULLCONENAT.c
+@@ -0,0 +1,220 @@
++#include <stdio.h>
++#include <netdb.h>
++#include <string.h>
++#include <stdlib.h>
++#include <getopt.h>
++#include <xtables.h>
++#include <limits.h> /* INT_MAX in ip_tables.h */
++#include <linux/netfilter_ipv6/ip6_tables.h>
++#include <linux/netfilter/nf_nat.h>
++
++#ifndef NF_NAT_RANGE_PROTO_RANDOM_FULLY
++#define NF_NAT_RANGE_PROTO_RANDOM_FULLY (1 << 4)
++#endif
++
++enum {
++	O_TO_PORTS = 0,
++	O_RANDOM,
++	O_RANDOM_FULLY,
++	O_TO_SRC,
++	O_PERSISTENT,
++};
++
++static void FULLCONENAT_help(void)
++{
++	printf(
++"FULLCONENAT target options:\n"
++" --to-source [<ipaddr>[-<ipaddr>]] [--persistent]\n"
++"				Address to map source to.\n"
++" --to-ports <port>[-<port>]\n"
++"				Port (range) to map to.\n"
++" --random\n"
++"				Randomize source port.\n"
++" --random-fully\n"
++"				Fully randomize source port.\n");
++}
++
++static const struct xt_option_entry FULLCONENAT_opts[] = {
++	{.name = "to-ports", .id = O_TO_PORTS, .type = XTTYPE_STRING},
++	{.name = "random", .id = O_RANDOM, .type = XTTYPE_NONE},
++	{.name = "random-fully", .id = O_RANDOM_FULLY, .type = XTTYPE_NONE},
++	{.name = "to-source", .id = O_TO_SRC, .type = XTTYPE_STRING},
++	{.name = "persistent", .id = O_PERSISTENT, .type = XTTYPE_NONE},
++	XTOPT_TABLEEND,
++};
++
++static void parse_to(const char *orig_arg, struct nf_nat_range *r)
++{
++	char *arg, *dash, *error;
++	const struct in6_addr *ip;
++
++	arg = strdup(orig_arg);
++	if (arg == NULL)
++		xtables_error(RESOURCE_PROBLEM, "strdup");
++
++	r->flags |= NF_NAT_RANGE_MAP_IPS;
++	dash = strchr(arg, '-');
++
++	if (dash)
++		*dash = '\0';
++
++	ip = xtables_numeric_to_ip6addr(arg);
++	if (!ip)
++		xtables_error(PARAMETER_PROBLEM, "Bad IP address \"%s\"\n",
++			   arg);
++	r->min_addr.in6 = *ip;
++	if (dash) {
++		ip = xtables_numeric_to_ip6addr(dash+1);
++		if (!ip)
++			xtables_error(PARAMETER_PROBLEM, "Bad IP address \"%s\"\n",
++				   dash+1);
++		r->max_addr.in6 = *ip;
++	} else
++		r->max_addr = r->min_addr;
++
++	free(arg);
++}
++
++/* Parses ports */
++static void
++parse_ports(const char *arg, struct nf_nat_range *r)
++{
++	char *end;
++	unsigned int port, maxport;
++
++	r->flags |= NF_NAT_RANGE_PROTO_SPECIFIED;
++
++	if (!xtables_strtoui(arg, &end, &port, 0, UINT16_MAX))
++		xtables_param_act(XTF_BAD_VALUE, "FULLCONENAT", "--to-ports", arg);
++
++	switch (*end) {
++	case '\0':
++		r->min_proto.tcp.port
++			= r->max_proto.tcp.port
++			= htons(port);
++		return;
++	case '-':
++		if (!xtables_strtoui(end + 1, NULL, &maxport, 0, UINT16_MAX))
++			break;
++
++		if (maxport < port)
++			break;
++
++		r->min_proto.tcp.port = htons(port);
++		r->max_proto.tcp.port = htons(maxport);
++		return;
++	default:
++		break;
++	}
++	xtables_param_act(XTF_BAD_VALUE, "FULLCONENAT", "--to-ports", arg);
++}
++
++static void FULLCONENAT_parse(struct xt_option_call *cb)
++{
++	const struct ip6t_entry *entry = cb->xt_entry;
++	struct nf_nat_range *r = cb->data;
++	int portok;
++
++	if (entry->ipv6.proto == IPPROTO_TCP
++	    || entry->ipv6.proto == IPPROTO_UDP
++	    || entry->ipv6.proto == IPPROTO_SCTP
++	    || entry->ipv6.proto == IPPROTO_DCCP
++	    || entry->ipv6.proto == IPPROTO_ICMP)
++		portok = 1;
++	else
++		portok = 0;
++
++	xtables_option_parse(cb);
++	switch (cb->entry->id) {
++	case O_TO_PORTS:
++		if (!portok)
++			xtables_error(PARAMETER_PROBLEM,
++				   "Need TCP, UDP, SCTP or DCCP with port specification");
++		parse_ports(cb->arg, r);
++		break;
++	case O_TO_SRC:
++		parse_to(cb->arg, r);
++		break;
++	case O_RANDOM_FULLY:
++		r->flags |=  NF_NAT_RANGE_PROTO_RANDOM_FULLY;
++		break;
++	case O_RANDOM:
++		r->flags |=  NF_NAT_RANGE_PROTO_RANDOM;
++		break;
++	case O_PERSISTENT:
++		r->flags |=  NF_NAT_RANGE_PERSISTENT;
++		break;
++	}
++}
++
++static void
++FULLCONENAT_print(const void *ip, const struct xt_entry_target *target,
++                 int numeric)
++{
++	const struct nf_nat_range *r = (const void *)target->data;
++
++	if (r->flags & NF_NAT_RANGE_MAP_IPS) {
++		printf(" to:%s", xtables_ip6addr_to_numeric(&r->min_addr.in6));
++		if (memcmp(&r->min_addr, &r->max_addr, sizeof(r->min_addr)))
++			printf("-%s", xtables_ip6addr_to_numeric(&r->max_addr.in6));
++	}
++
++	if (r->flags & NF_NAT_RANGE_PROTO_SPECIFIED) {
++		printf(" masq ports: ");
++		printf("%hu", ntohs(r->min_proto.tcp.port));
++		if (r->max_proto.tcp.port != r->min_proto.tcp.port)
++			printf("-%hu", ntohs(r->max_proto.tcp.port));
++		if (r->flags & NF_NAT_RANGE_PERSISTENT)
++			printf(" persistent");
++	}
++
++	if (r->flags & NF_NAT_RANGE_PROTO_RANDOM)
++		printf(" random");
++
++	if (r->flags & NF_NAT_RANGE_PROTO_RANDOM_FULLY)
++		printf(" random-fully");
++}
++
++static void
++FULLCONENAT_save(const void *ip, const struct xt_entry_target *target)
++{
++	const struct nf_nat_range *r = (const void *)target->data;
++
++	if (r->flags & NF_NAT_RANGE_MAP_IPS) {
++		printf(" --to-source %s", xtables_ip6addr_to_numeric(&r->min_addr.in6));
++		if (memcmp(&r->min_addr, &r->max_addr, sizeof(r->min_addr)))
++			printf("-%s", xtables_ip6addr_to_numeric(&r->max_addr.in6));
++		if (r->flags & NF_NAT_RANGE_PERSISTENT)
++			printf(" --persistent");
++	}
++
++	if (r->flags & NF_NAT_RANGE_PROTO_SPECIFIED) {
++		printf(" --to-ports %hu", ntohs(r->min_proto.tcp.port));
++		if (r->max_proto.tcp.port != r->min_proto.tcp.port)
++			printf("-%hu", ntohs(r->max_proto.tcp.port));
++	}
++
++	if (r->flags & NF_NAT_RANGE_PROTO_RANDOM)
++		printf(" --random");
++
++	if (r->flags & NF_NAT_RANGE_PROTO_RANDOM_FULLY)
++		printf(" --random-fully");
++}
++
++static struct xtables_target fullconenat_tg_reg = {
++	.name		= "FULLCONENAT",
++	.version	= XTABLES_VERSION,
++	.family		= NFPROTO_IPV6,
++	.size		= XT_ALIGN(sizeof(struct nf_nat_range)),
++	.userspacesize	= XT_ALIGN(sizeof(struct nf_nat_range)),
++	.help		= FULLCONENAT_help,
++	.x6_parse	= FULLCONENAT_parse,
++	.print		= FULLCONENAT_print,
++	.save		= FULLCONENAT_save,
++	.x6_options	= FULLCONENAT_opts,
++};
++
++void _init(void)
++{
++	xtables_register_target(&fullconenat_tg_reg);
++}
+--- a/extensions/libip6t_HL.c
++++ b/extensions/libip6t_HL.c
+@@ -1,127 +1,137 @@
+ /*
+- * IPv6 Hop Limit Target module
++ * IPv6 Hop Limit matching module
+  * Maciej Soltysiak <solt@dns.toxicfilms.tv>
+- * Based on HW's ttl target
+- * This program is distributed under the terms of GNU GPL
++ * Based on HW's ttl match
++ * This program is released under the terms of GNU GPL
++ * Cleanups by Stephane Ouellette <ouellettes@videotron.ca>
+  */
+ #include <stdio.h>
+ #include <xtables.h>
+-#include <linux/netfilter_ipv6/ip6t_HL.h>
++#include <linux/netfilter_ipv6/ip6t_hl.h>
+ 
+ enum {
+-	O_HL_SET = 0,
+-	O_HL_INC,
+-	O_HL_DEC,
+-	F_HL_SET = 1 << O_HL_SET,
+-	F_HL_INC = 1 << O_HL_INC,
+-	F_HL_DEC = 1 << O_HL_DEC,
+-	F_ANY    = F_HL_SET | F_HL_INC | F_HL_DEC,
++	O_HL_EQ = 0,
++	O_HL_LT,
++	O_HL_GT,
++	F_HL_EQ = 1 << O_HL_EQ,
++	F_HL_LT = 1 << O_HL_LT,
++	F_HL_GT = 1 << O_HL_GT,
++	F_ANY  = F_HL_EQ | F_HL_LT | F_HL_GT,
+ };
+ 
+-#define s struct ip6t_HL_info
+-static const struct xt_option_entry HL_opts[] = {
+-	{.name = "hl-set", .type = XTTYPE_UINT8, .id = O_HL_SET,
+-	 .excl = F_ANY, .flags = XTOPT_PUT, XTOPT_POINTER(s, hop_limit)},
+-	{.name = "hl-dec", .type = XTTYPE_UINT8, .id = O_HL_DEC,
+-	 .excl = F_ANY, .flags = XTOPT_PUT, XTOPT_POINTER(s, hop_limit),
+-	 .min = 1},
+-	{.name = "hl-inc", .type = XTTYPE_UINT8, .id = O_HL_INC,
+-	 .excl = F_ANY, .flags = XTOPT_PUT, XTOPT_POINTER(s, hop_limit),
+-	 .min = 1},
+-	XTOPT_TABLEEND,
+-};
+-#undef s
+-
+-static void HL_help(void)
++static void hl_help(void)
+ {
+ 	printf(
+-"HL target options\n"
+-"  --hl-set value		Set HL to <value 0-255>\n"
+-"  --hl-dec value		Decrement HL by <value 1-255>\n"
+-"  --hl-inc value		Increment HL by <value 1-255>\n");
++"hl match options:\n"
++"[!] --hl-eq value	Match hop limit value\n"
++"  --hl-lt value	Match HL < value\n"
++"  --hl-gt value	Match HL > value\n");
+ }
+ 
+-static void HL_parse(struct xt_option_call *cb)
++static void hl_parse(struct xt_option_call *cb)
+ {
+-	struct ip6t_HL_info *info = cb->data;
++	struct ip6t_hl_info *info = cb->data;
+ 
+ 	xtables_option_parse(cb);
+ 	switch (cb->entry->id) {
+-	case O_HL_SET:
+-		info->mode = IP6T_HL_SET;
++	case O_HL_EQ:
++		info->mode = cb->invert ? IP6T_HL_NE : IP6T_HL_EQ;
+ 		break;
+-	case O_HL_INC:
+-		info->mode = IP6T_HL_INC;
++	case O_HL_LT:
++		info->mode = IP6T_HL_LT;
+ 		break;
+-	case O_HL_DEC:
+-		info->mode = IP6T_HL_DEC;
++	case O_HL_GT:
++		info->mode = IP6T_HL_GT;
+ 		break;
+ 	}
+ }
+ 
+-static void HL_check(struct xt_fcheck_call *cb)
++static void hl_check(struct xt_fcheck_call *cb)
+ {
+ 	if (!(cb->xflags & F_ANY))
+ 		xtables_error(PARAMETER_PROBLEM,
+-				"HL: You must specify an action");
++			"HL match: You must specify one of "
++			"`--hl-eq', `--hl-lt', `--hl-gt'");
+ }
+ 
+-static void HL_save(const void *ip, const struct xt_entry_target *target)
++static void hl_print(const void *ip, const struct xt_entry_match *match,
++                     int numeric)
+ {
+-	const struct ip6t_HL_info *info = 
+-		(struct ip6t_HL_info *) target->data;
++	static const char *const op[] = {
++		[IP6T_HL_EQ] = "==",
++		[IP6T_HL_NE] = "!=",
++		[IP6T_HL_LT] = "<",
++		[IP6T_HL_GT] = ">" };
+ 
+-	switch (info->mode) {
+-		case IP6T_HL_SET:
+-			printf(" --hl-set");
+-			break;
+-		case IP6T_HL_DEC:
+-			printf(" --hl-dec");
+-			break;
++	const struct ip6t_hl_info *info = 
++		(struct ip6t_hl_info *) match->data;
+ 
+-		case IP6T_HL_INC:
+-			printf(" --hl-inc");
+-			break;
+-	}
+-	printf(" %u", info->hop_limit);
++	printf(" HL match HL %s %u", op[info->mode], info->hop_limit);
+ }
+ 
+-static void HL_print(const void *ip, const struct xt_entry_target *target,
+-                     int numeric)
++static void hl_save(const void *ip, const struct xt_entry_match *match)
+ {
+-	const struct ip6t_HL_info *info =
+-		(struct ip6t_HL_info *) target->data;
++	static const char *const op[] = {
++		[IP6T_HL_EQ] = "--hl-eq",
++		[IP6T_HL_NE] = "! --hl-eq",
++		[IP6T_HL_LT] = "--hl-lt",
++		[IP6T_HL_GT] = "--hl-gt" };
+ 
+-	printf(" HL ");
+-	switch (info->mode) {
+-		case IP6T_HL_SET:
+-			printf("set to");
+-			break;
+-		case IP6T_HL_DEC:
+-			printf("decrement by");
+-			break;
+-		case IP6T_HL_INC:
+-			printf("increment by");
+-			break;
+-	}
+-	printf(" %u", info->hop_limit);
++	const struct ip6t_hl_info *info =
++		(struct ip6t_hl_info *) match->data;
++
++	printf(" %s %u", op[info->mode], info->hop_limit);
+ }
+ 
+-static struct xtables_target hl_tg6_reg = {
+-	.name 		= "HL",
+-	.version	= XTABLES_VERSION,
+-	.family		= NFPROTO_IPV6,
+-	.size		= XT_ALIGN(sizeof(struct ip6t_HL_info)),
+-	.userspacesize	= XT_ALIGN(sizeof(struct ip6t_HL_info)),
+-	.help		= HL_help,
+-	.print		= HL_print,
+-	.save		= HL_save,
+-	.x6_parse	= HL_parse,
+-	.x6_fcheck	= HL_check,
+-	.x6_options	= HL_opts,
++static const char *const op[] = {
++	[IP6T_HL_EQ] = "",
++	[IP6T_HL_NE] = "!= ",
++	[IP6T_HL_LT] = "lt ",
++	[IP6T_HL_GT] = "gt "
+ };
+ 
+-void _init(void)
++static int hl_xlate(struct xt_xlate *xl,
++		    const struct xt_xlate_mt_params *params)
++{
++	const struct ip6t_hl_info *info =
++		(struct ip6t_hl_info *) params->match->data;
++
++	xt_xlate_add(xl, "ip6 hoplimit %s%u", op[info->mode], info->hop_limit);
++
++	return 1;
++}
++
++#define s struct ip6t_hl_info
++static const struct xt_option_entry hl_opts[] = {
++	{.name = "hl-lt", .id = O_HL_LT, .excl = F_ANY, .type = XTTYPE_UINT8,
++	 .flags = XTOPT_PUT, XTOPT_POINTER(s, hop_limit)},
++	{.name = "hl-gt", .id = O_HL_GT, .excl = F_ANY, .type = XTTYPE_UINT8,
++	 .flags = XTOPT_PUT, XTOPT_POINTER(s, hop_limit)},
++	{.name = "hl-eq", .id = O_HL_EQ, .excl = F_ANY, .type = XTTYPE_UINT8,
++	 .flags = XTOPT_INVERT | XTOPT_PUT, XTOPT_POINTER(s, hop_limit)},
++	{.name = "hl", .id = O_HL_EQ, .excl = F_ANY, .type = XTTYPE_UINT8,
++	 .flags = XTOPT_PUT, XTOPT_POINTER(s, hop_limit)},
++	XTOPT_TABLEEND,
++};
++#undef s
++
++static struct xtables_match hl_mt6_reg = {
++	.name          = "hl",
++	.version       = XTABLES_VERSION,
++	.family        = NFPROTO_IPV6,
++	.size          = XT_ALIGN(sizeof(struct ip6t_hl_info)),
++	.userspacesize = XT_ALIGN(sizeof(struct ip6t_hl_info)),
++	.help          = hl_help,
++	.print         = hl_print,
++	.save          = hl_save,
++	.x6_parse      = hl_parse,
++	.x6_fcheck     = hl_check,
++	.x6_options    = hl_opts,
++	.xlate	       = hl_xlate,
++};
++
++
++void _init(void) 
+ {
+-	xtables_register_target(&hl_tg6_reg);
++	xtables_register_match(&hl_mt6_reg);
+ }
+--- a/extensions/libip6t_HL.man
++++ b/extensions/libip6t_HL.man
+@@ -1,17 +1,10 @@
+-This is used to modify the Hop Limit field in IPv6 header. The Hop Limit field
+-is similar to what is known as TTL value in IPv4.  Setting or incrementing the
+-Hop Limit field can potentially be very dangerous, so it should be avoided at
+-any cost. This target is only valid in
+-.B mangle
+-table.
+-.PP
+-.B Don't ever set or increment the value on packets that leave your local network!
++This module matches the Hop Limit field in the IPv6 header.
+ .TP
+-\fB\-\-hl\-set\fP \fIvalue\fP
+-Set the Hop Limit to `value'.
++[\fB!\fP] \fB\-\-hl\-eq\fP \fIvalue\fP
++Matches if Hop Limit equals \fIvalue\fP.
+ .TP
+-\fB\-\-hl\-dec\fP \fIvalue\fP
+-Decrement the Hop Limit `value' times.
++\fB\-\-hl\-lt\fP \fIvalue\fP
++Matches if Hop Limit is less than \fIvalue\fP.
+ .TP
+-\fB\-\-hl\-inc\fP \fIvalue\fP
+-Increment the Hop Limit `value' times.
++\fB\-\-hl\-gt\fP \fIvalue\fP
++Matches if Hop Limit is greater than \fIvalue\fP.
+--- a/extensions/libip6t_HL.t
++++ b/extensions/libip6t_HL.t
+@@ -1,10 +1,8 @@
+-:PREROUTING,INPUT,FORWARD,OUTPUT,POSTROUTING
+-*mangle
+--j HL --hl-set 42;=;OK
+--j HL --hl-inc 1;=;OK
+--j HL --hl-dec 1;=;OK
+--j HL --hl-set 256;;FAIL
+--j HL --hl-inc 0;;FAIL
+--j HL --hl-dec 0;;FAIL
+--j HL --hl-dec 1 --hl-inc 1;;FAIL
+--j HL --hl-set --hl-inc 1;;FAIL
++:INPUT,FORWARD,OUTPUT
++-m hl;;FAIL
++-m hl --hl-eq 42;=;OK
++-m hl ! --hl-eq 42;=;OK
++-m hl --hl-lt 42;=;OK
++-m hl --hl-gt 42;=;OK
++-m hl --hl-gt 42 --hl-eq 42;;FAIL
++-m hl --hl-gt;;FAIL
+--- a/extensions/libip6t_LOG.c
++++ b/extensions/libip6t_LOG.c
+@@ -0,0 +1,250 @@
++#include <stdio.h>
++#include <string.h>
++#include <syslog.h>
++#include <xtables.h>
++#include <linux/netfilter_ipv6/ip6t_LOG.h>
++
++#ifndef IP6T_LOG_UID	/* Old kernel */
++#define IP6T_LOG_UID	0x08
++#undef  IP6T_LOG_MASK
++#define IP6T_LOG_MASK	0x0f
++#endif
++
++#define LOG_DEFAULT_LEVEL LOG_WARNING
++
++enum {
++	O_LOG_LEVEL = 0,
++	O_LOG_PREFIX,
++	O_LOG_TCPSEQ,
++	O_LOG_TCPOPTS,
++	O_LOG_IPOPTS,
++	O_LOG_UID,
++	O_LOG_MAC,
++};
++
++static void LOG_help(void)
++{
++	printf(
++"LOG target options:\n"
++" --log-level level		Level of logging (numeric or see syslog.conf)\n"
++" --log-prefix prefix		Prefix log messages with this prefix.\n"
++" --log-tcp-sequence		Log TCP sequence numbers.\n"
++" --log-tcp-options		Log TCP options.\n"
++" --log-ip-options		Log IP options.\n"
++" --log-uid			Log UID owning the local socket.\n"
++" --log-macdecode		Decode MAC addresses and protocol.\n");
++}
++
++#define s struct ip6t_log_info
++static const struct xt_option_entry LOG_opts[] = {
++	{.name = "log-level", .id = O_LOG_LEVEL, .type = XTTYPE_SYSLOGLEVEL,
++	 .flags = XTOPT_PUT, XTOPT_POINTER(s, level)},
++	{.name = "log-prefix", .id = O_LOG_PREFIX, .type = XTTYPE_STRING,
++	 .flags = XTOPT_PUT, XTOPT_POINTER(s, prefix), .min = 1},
++	{.name = "log-tcp-sequence", .id = O_LOG_TCPSEQ, .type = XTTYPE_NONE},
++	{.name = "log-tcp-options", .id = O_LOG_TCPOPTS, .type = XTTYPE_NONE},
++	{.name = "log-ip-options", .id = O_LOG_IPOPTS, .type = XTTYPE_NONE},
++	{.name = "log-uid", .id = O_LOG_UID, .type = XTTYPE_NONE},
++	{.name = "log-macdecode", .id = O_LOG_MAC, .type = XTTYPE_NONE},
++	XTOPT_TABLEEND,
++};
++#undef s
++
++static void LOG_init(struct xt_entry_target *t)
++{
++	struct ip6t_log_info *loginfo = (struct ip6t_log_info *)t->data;
++
++	loginfo->level = LOG_DEFAULT_LEVEL;
++
++}
++
++struct ip6t_log_names {
++	const char *name;
++	unsigned int level;
++};
++
++struct ip6t_log_xlate {
++	const char *name;
++	unsigned int level;
++};
++
++static const struct ip6t_log_names ip6t_log_names[]
++= { { .name = "alert",   .level = LOG_ALERT },
++    { .name = "crit",    .level = LOG_CRIT },
++    { .name = "debug",   .level = LOG_DEBUG },
++    { .name = "emerg",   .level = LOG_EMERG },
++    { .name = "error",   .level = LOG_ERR },		/* DEPRECATED */
++    { .name = "info",    .level = LOG_INFO },
++    { .name = "notice",  .level = LOG_NOTICE },
++    { .name = "panic",   .level = LOG_EMERG },		/* DEPRECATED */
++    { .name = "warning", .level = LOG_WARNING }
++};
++
++static void LOG_parse(struct xt_option_call *cb)
++{
++	struct ip6t_log_info *info = cb->data;
++
++	xtables_option_parse(cb);
++	switch (cb->entry->id) {
++	case O_LOG_PREFIX:
++		if (strchr(cb->arg, '\n') != NULL)
++			xtables_error(PARAMETER_PROBLEM,
++				   "Newlines not allowed in --log-prefix");
++		break;
++	case O_LOG_TCPSEQ:
++		info->logflags |= IP6T_LOG_TCPSEQ;
++		break;
++	case O_LOG_TCPOPTS:
++		info->logflags |= IP6T_LOG_TCPOPT;
++		break;
++	case O_LOG_IPOPTS:
++		info->logflags |= IP6T_LOG_IPOPT;
++		break;
++	case O_LOG_UID:
++		info->logflags |= IP6T_LOG_UID;
++		break;
++	case O_LOG_MAC:
++		info->logflags |= IP6T_LOG_MACDECODE;
++		break;
++	}
++}
++
++static void LOG_print(const void *ip, const struct xt_entry_target *target,
++                      int numeric)
++{
++	const struct ip6t_log_info *loginfo
++		= (const struct ip6t_log_info *)target->data;
++	unsigned int i = 0;
++
++	printf(" LOG");
++	if (numeric)
++		printf(" flags %u level %u",
++		       loginfo->logflags, loginfo->level);
++	else {
++		for (i = 0; i < ARRAY_SIZE(ip6t_log_names); ++i)
++			if (loginfo->level == ip6t_log_names[i].level) {
++				printf(" level %s", ip6t_log_names[i].name);
++				break;
++			}
++		if (i == ARRAY_SIZE(ip6t_log_names))
++			printf(" UNKNOWN level %u", loginfo->level);
++		if (loginfo->logflags & IP6T_LOG_TCPSEQ)
++			printf(" tcp-sequence");
++		if (loginfo->logflags & IP6T_LOG_TCPOPT)
++			printf(" tcp-options");
++		if (loginfo->logflags & IP6T_LOG_IPOPT)
++			printf(" ip-options");
++		if (loginfo->logflags & IP6T_LOG_UID)
++			printf(" uid");
++		if (loginfo->logflags & IP6T_LOG_MACDECODE)
++			printf(" macdecode");
++		if (loginfo->logflags & ~(IP6T_LOG_MASK))
++			printf(" unknown-flags");
++	}
++
++	if (strcmp(loginfo->prefix, "") != 0)
++		printf(" prefix \"%s\"", loginfo->prefix);
++}
++
++static void LOG_save(const void *ip, const struct xt_entry_target *target)
++{
++	const struct ip6t_log_info *loginfo
++		= (const struct ip6t_log_info *)target->data;
++
++	if (strcmp(loginfo->prefix, "") != 0) {
++		printf(" --log-prefix");
++		xtables_save_string(loginfo->prefix);
++	}
++
++	if (loginfo->level != LOG_DEFAULT_LEVEL)
++		printf(" --log-level %d", loginfo->level);
++
++	if (loginfo->logflags & IP6T_LOG_TCPSEQ)
++		printf(" --log-tcp-sequence");
++	if (loginfo->logflags & IP6T_LOG_TCPOPT)
++		printf(" --log-tcp-options");
++	if (loginfo->logflags & IP6T_LOG_IPOPT)
++		printf(" --log-ip-options");
++	if (loginfo->logflags & IP6T_LOG_UID)
++		printf(" --log-uid");
++	if (loginfo->logflags & IP6T_LOG_MACDECODE)
++		printf(" --log-macdecode");
++}
++
++static const struct ip6t_log_xlate ip6t_log_xlate_names[] = {
++	{"alert",       LOG_ALERT },
++	{"crit",        LOG_CRIT },
++	{"debug",       LOG_DEBUG },
++	{"emerg",       LOG_EMERG },
++	{"err",         LOG_ERR },
++	{"info",        LOG_INFO },
++	{"notice",      LOG_NOTICE },
++	{"warn",        LOG_WARNING }
++};
++
++static int LOG_xlate(struct xt_xlate *xl,
++		     const struct xt_xlate_tg_params *params)
++{
++	const struct ip6t_log_info *loginfo =
++		(const struct ip6t_log_info *)params->target->data;
++	unsigned int i = 0;
++
++	xt_xlate_add(xl, "log");
++	if (strcmp(loginfo->prefix, "") != 0) {
++		if (params->escape_quotes)
++			xt_xlate_add(xl, " prefix \\\"%s\\\"", loginfo->prefix);
++		else
++			xt_xlate_add(xl, " prefix \"%s\"", loginfo->prefix);
++	}
++
++	for (i = 0; i < ARRAY_SIZE(ip6t_log_xlate_names); ++i)
++		if (loginfo->level == ip6t_log_xlate_names[i].level &&
++		    loginfo->level != LOG_DEFAULT_LEVEL) {
++			xt_xlate_add(xl, " level %s",
++				   ip6t_log_xlate_names[i].name);
++			break;
++		}
++
++	if ((loginfo->logflags & IP6T_LOG_MASK) == IP6T_LOG_MASK) {
++		xt_xlate_add(xl, " flags all");
++	} else {
++		if (loginfo->logflags & (IP6T_LOG_TCPSEQ | IP6T_LOG_TCPOPT)) {
++			const char *delim = " ";
++
++			xt_xlate_add(xl, " flags tcp");
++			if (loginfo->logflags & IP6T_LOG_TCPSEQ) {
++				xt_xlate_add(xl, " sequence");
++				delim = ",";
++			}
++			if (loginfo->logflags & IP6T_LOG_TCPOPT)
++				xt_xlate_add(xl, "%soptions", delim);
++		}
++		if (loginfo->logflags & IP6T_LOG_IPOPT)
++			xt_xlate_add(xl, " flags ip options");
++		if (loginfo->logflags & IP6T_LOG_UID)
++			xt_xlate_add(xl, " flags skuid");
++		if (loginfo->logflags & IP6T_LOG_MACDECODE)
++			xt_xlate_add(xl, " flags ether");
++	}
++
++	return 1;
++}
++static struct xtables_target log_tg6_reg = {
++	.name          = "LOG",
++	.version       = XTABLES_VERSION,
++	.family        = NFPROTO_IPV6,
++	.size          = XT_ALIGN(sizeof(struct ip6t_log_info)),
++	.userspacesize = XT_ALIGN(sizeof(struct ip6t_log_info)),
++	.help          = LOG_help,
++	.init          = LOG_init,
++	.print         = LOG_print,
++	.save          = LOG_save,
++	.x6_parse      = LOG_parse,
++	.x6_options    = LOG_opts,
++	.xlate	       = LOG_xlate,
++};
++
++void _init(void)
++{
++	xtables_register_target(&log_tg6_reg);
++}
+--- a/extensions/libip6t_MASQUERADE.c
++++ b/extensions/libip6t_MASQUERADE.c
+@@ -0,0 +1,188 @@
++/*
++ * Copyright (c) 2011 Patrick McHardy <kaber@trash.net>
++ *
++ * Based on Rusty Russell's IPv4 MASQUERADE target. Development of IPv6 NAT
++ * funded by Astaro.
++ */
++
++#include <stdio.h>
++#include <netdb.h>
++#include <string.h>
++#include <stdlib.h>
++#include <getopt.h>
++#include <xtables.h>
++#include <limits.h> /* INT_MAX in ip_tables.h */
++#include <linux/netfilter_ipv6/ip6_tables.h>
++#include <linux/netfilter/nf_nat.h>
++
++enum {
++	O_TO_PORTS = 0,
++	O_RANDOM,
++	O_RANDOM_FULLY,
++};
++
++static void MASQUERADE_help(void)
++{
++	printf(
++"MASQUERADE target options:\n"
++" --to-ports <port>[-<port>]\n"
++"				Port (range) to map to.\n"
++" --random\n"
++"				Randomize source port.\n"
++" --random-fully\n"
++"				Fully randomize source port.\n");
++}
++
++static const struct xt_option_entry MASQUERADE_opts[] = {
++	{.name = "to-ports", .id = O_TO_PORTS, .type = XTTYPE_STRING},
++	{.name = "random", .id = O_RANDOM, .type = XTTYPE_NONE},
++	{.name = "random-fully", .id = O_RANDOM_FULLY, .type = XTTYPE_NONE},
++	XTOPT_TABLEEND,
++};
++
++/* Parses ports */
++static void
++parse_ports(const char *arg, struct nf_nat_range *r)
++{
++	char *end;
++	unsigned int port, maxport;
++
++	r->flags |= NF_NAT_RANGE_PROTO_SPECIFIED;
++
++	if (!xtables_strtoui(arg, &end, &port, 0, UINT16_MAX))
++		xtables_param_act(XTF_BAD_VALUE, "MASQUERADE", "--to-ports", arg);
++
++	switch (*end) {
++	case '\0':
++		r->min_proto.tcp.port
++			= r->max_proto.tcp.port
++			= htons(port);
++		return;
++	case '-':
++		if (!xtables_strtoui(end + 1, NULL, &maxport, 0, UINT16_MAX))
++			break;
++
++		if (maxport < port)
++			break;
++
++		r->min_proto.tcp.port = htons(port);
++		r->max_proto.tcp.port = htons(maxport);
++		return;
++	default:
++		break;
++	}
++	xtables_param_act(XTF_BAD_VALUE, "MASQUERADE", "--to-ports", arg);
++}
++
++static void MASQUERADE_parse(struct xt_option_call *cb)
++{
++	const struct ip6t_entry *entry = cb->xt_entry;
++	struct nf_nat_range *r = cb->data;
++	int portok;
++
++	if (entry->ipv6.proto == IPPROTO_TCP ||
++	    entry->ipv6.proto == IPPROTO_UDP ||
++	    entry->ipv6.proto == IPPROTO_SCTP ||
++	    entry->ipv6.proto == IPPROTO_DCCP ||
++	    entry->ipv6.proto == IPPROTO_ICMP)
++		portok = 1;
++	else
++		portok = 0;
++
++	xtables_option_parse(cb);
++	switch (cb->entry->id) {
++	case O_TO_PORTS:
++		if (!portok)
++			xtables_error(PARAMETER_PROBLEM,
++				   "Need TCP, UDP, SCTP or DCCP with port specification");
++		parse_ports(cb->arg, r);
++		break;
++	case O_RANDOM:
++		r->flags |=  NF_NAT_RANGE_PROTO_RANDOM;
++		break;
++	case O_RANDOM_FULLY:
++		r->flags |=  NF_NAT_RANGE_PROTO_RANDOM_FULLY;
++		break;
++	}
++}
++
++static void
++MASQUERADE_print(const void *ip, const struct xt_entry_target *target,
++                 int numeric)
++{
++	const struct nf_nat_range *r = (const void *)target->data;
++
++	if (r->flags & NF_NAT_RANGE_PROTO_SPECIFIED) {
++		printf(" masq ports: ");
++		printf("%hu", ntohs(r->min_proto.tcp.port));
++		if (r->max_proto.tcp.port != r->min_proto.tcp.port)
++			printf("-%hu", ntohs(r->max_proto.tcp.port));
++	}
++
++	if (r->flags & NF_NAT_RANGE_PROTO_RANDOM)
++		printf(" random");
++
++	if (r->flags & NF_NAT_RANGE_PROTO_RANDOM_FULLY)
++		printf(" random-fully");
++}
++
++static void
++MASQUERADE_save(const void *ip, const struct xt_entry_target *target)
++{
++	const struct nf_nat_range *r = (const void *)target->data;
++
++	if (r->flags & NF_NAT_RANGE_PROTO_SPECIFIED) {
++		printf(" --to-ports %hu", ntohs(r->min_proto.tcp.port));
++		if (r->max_proto.tcp.port != r->min_proto.tcp.port)
++			printf("-%hu", ntohs(r->max_proto.tcp.port));
++	}
++
++	if (r->flags & NF_NAT_RANGE_PROTO_RANDOM)
++		printf(" --random");
++
++	if (r->flags & NF_NAT_RANGE_PROTO_RANDOM_FULLY)
++		printf(" --random-fully");
++}
++
++static int MASQUERADE_xlate(struct xt_xlate *xl,
++			    const struct xt_xlate_tg_params *params)
++{
++	const struct nf_nat_range *r = (const void *)params->target->data;
++
++	xt_xlate_add(xl, "masquerade");
++
++	if (r->flags & NF_NAT_RANGE_PROTO_SPECIFIED) {
++		xt_xlate_add(xl, " to :%hu", ntohs(r->min_proto.tcp.port));
++		if (r->max_proto.tcp.port != r->min_proto.tcp.port)
++			xt_xlate_add(xl, "-%hu", ntohs(r->max_proto.tcp.port));
++	}
++
++	xt_xlate_add(xl, " ");
++	if (r->flags & NF_NAT_RANGE_PROTO_RANDOM)
++		xt_xlate_add(xl, "random ");
++
++	xt_xlate_add(xl, " ");
++	if (r->flags & NF_NAT_RANGE_PROTO_RANDOM_FULLY)
++		xt_xlate_add(xl, "random-fully ");
++
++	return 1;
++}
++
++static struct xtables_target masquerade_tg_reg = {
++	.name		= "MASQUERADE",
++	.version	= XTABLES_VERSION,
++	.family		= NFPROTO_IPV6,
++	.size		= XT_ALIGN(sizeof(struct nf_nat_range)),
++	.userspacesize	= XT_ALIGN(sizeof(struct nf_nat_range)),
++	.help		= MASQUERADE_help,
++	.x6_parse	= MASQUERADE_parse,
++	.print		= MASQUERADE_print,
++	.save		= MASQUERADE_save,
++	.x6_options	= MASQUERADE_opts,
++	.xlate		= MASQUERADE_xlate,
++};
++
++void _init(void)
++{
++	xtables_register_target(&masquerade_tg_reg);
++}
+--- a/extensions/libip6t_REDIRECT.c
++++ b/extensions/libip6t_REDIRECT.c
+@@ -0,0 +1,170 @@
++/*
++ * Copyright (c) 2011 Patrick McHardy <kaber@trash.net>
++ *
++ * Based on Rusty Russell's IPv4 REDIRECT target. Development of IPv6 NAT
++ * funded by Astaro.
++ */
++
++#include <stdio.h>
++#include <string.h>
++#include <stdlib.h>
++#include <xtables.h>
++#include <limits.h> /* INT_MAX in ip_tables.h */
++#include <linux/netfilter_ipv6/ip6_tables.h>
++#include <linux/netfilter/nf_nat.h>
++
++enum {
++	O_TO_PORTS = 0,
++	O_RANDOM,
++	F_TO_PORTS = 1 << O_TO_PORTS,
++	F_RANDOM   = 1 << O_RANDOM,
++};
++
++static void REDIRECT_help(void)
++{
++	printf(
++"REDIRECT target options:\n"
++" --to-ports <port>[-<port>]\n"
++"				Port (range) to map to.\n"
++" [--random]\n");
++}
++
++static const struct xt_option_entry REDIRECT_opts[] = {
++	{.name = "to-ports", .id = O_TO_PORTS, .type = XTTYPE_STRING},
++	{.name = "random", .id = O_RANDOM, .type = XTTYPE_NONE},
++	XTOPT_TABLEEND,
++};
++
++/* Parses ports */
++static void
++parse_ports(const char *arg, struct nf_nat_range *range)
++{
++	char *end = "";
++	unsigned int port, maxport;
++
++	range->flags |= NF_NAT_RANGE_PROTO_SPECIFIED;
++
++	if (!xtables_strtoui(arg, &end, &port, 0, UINT16_MAX) &&
++	    (port = xtables_service_to_port(arg, NULL)) == (unsigned)-1)
++		xtables_param_act(XTF_BAD_VALUE, "REDIRECT", "--to-ports", arg);
++
++	switch (*end) {
++	case '\0':
++		range->min_proto.tcp.port
++			= range->max_proto.tcp.port
++			= htons(port);
++		return;
++	case '-':
++		if (!xtables_strtoui(end + 1, NULL, &maxport, 0, UINT16_MAX) &&
++		    (maxport = xtables_service_to_port(end + 1, NULL)) == (unsigned)-1)
++			break;
++
++		if (maxport < port)
++			break;
++
++		range->min_proto.tcp.port = htons(port);
++		range->max_proto.tcp.port = htons(maxport);
++		return;
++	default:
++		break;
++	}
++	xtables_param_act(XTF_BAD_VALUE, "REDIRECT", "--to-ports", arg);
++}
++
++static void REDIRECT_parse(struct xt_option_call *cb)
++{
++	const struct ip6t_entry *entry = cb->xt_entry;
++	struct nf_nat_range *range = (void *)(*cb->target)->data;
++	int portok;
++
++	if (entry->ipv6.proto == IPPROTO_TCP
++	    || entry->ipv6.proto == IPPROTO_UDP
++	    || entry->ipv6.proto == IPPROTO_SCTP
++	    || entry->ipv6.proto == IPPROTO_DCCP
++	    || entry->ipv6.proto == IPPROTO_ICMP)
++		portok = 1;
++	else
++		portok = 0;
++
++	xtables_option_parse(cb);
++	switch (cb->entry->id) {
++	case O_TO_PORTS:
++		if (!portok)
++			xtables_error(PARAMETER_PROBLEM,
++				   "Need TCP, UDP, SCTP or DCCP with port specification");
++		parse_ports(cb->arg, range);
++		if (cb->xflags & F_RANDOM)
++			range->flags |= NF_NAT_RANGE_PROTO_RANDOM;
++		break;
++	case O_RANDOM:
++		if (cb->xflags & F_TO_PORTS)
++			range->flags |= NF_NAT_RANGE_PROTO_RANDOM;
++		break;
++	}
++}
++
++static void REDIRECT_print(const void *ip, const struct xt_entry_target *target,
++                           int numeric)
++{
++	const struct nf_nat_range *range = (const void *)target->data;
++
++	if (range->flags & NF_NAT_RANGE_PROTO_SPECIFIED) {
++		printf(" redir ports ");
++		printf("%hu", ntohs(range->min_proto.tcp.port));
++		if (range->max_proto.tcp.port != range->min_proto.tcp.port)
++			printf("-%hu", ntohs(range->max_proto.tcp.port));
++		if (range->flags & NF_NAT_RANGE_PROTO_RANDOM)
++			printf(" random");
++	}
++}
++
++static void REDIRECT_save(const void *ip, const struct xt_entry_target *target)
++{
++	const struct nf_nat_range *range = (const void *)target->data;
++
++	if (range->flags & NF_NAT_RANGE_PROTO_SPECIFIED) {
++		printf(" --to-ports ");
++		printf("%hu", ntohs(range->min_proto.tcp.port));
++		if (range->max_proto.tcp.port != range->min_proto.tcp.port)
++			printf("-%hu", ntohs(range->max_proto.tcp.port));
++		if (range->flags & NF_NAT_RANGE_PROTO_RANDOM)
++			printf(" --random");
++	}
++}
++
++static int REDIRECT_xlate(struct xt_xlate *xl,
++			  const struct xt_xlate_tg_params *params)
++{
++	const struct nf_nat_range *range = (const void *)params->target->data;
++
++	if (range->flags & NF_NAT_RANGE_PROTO_SPECIFIED) {
++		xt_xlate_add(xl, "redirect to :%hu",
++			   ntohs(range->min_proto.tcp.port));
++		if (range->max_proto.tcp.port != range->min_proto.tcp.port)
++			xt_xlate_add(xl, "-%hu ",
++				   ntohs(range->max_proto.tcp.port));
++		if (range->flags & NF_NAT_RANGE_PROTO_RANDOM)
++			xt_xlate_add(xl, " random ");
++	}
++
++	return 1;
++}
++
++static struct xtables_target redirect_tg_reg = {
++	.name		= "REDIRECT",
++	.version	= XTABLES_VERSION,
++	.family		= NFPROTO_IPV6,
++	.size		= XT_ALIGN(sizeof(struct nf_nat_range)),
++	.userspacesize	= XT_ALIGN(sizeof(struct nf_nat_range)),
++	.help		= REDIRECT_help,
++	.x6_parse	= REDIRECT_parse,
++	.print		= REDIRECT_print,
++	.save		= REDIRECT_save,
++	.x6_options	= REDIRECT_opts,
++	.xlate		= REDIRECT_xlate,
++};
++
++void _init(void)
++{
++	xtables_register_target(&redirect_tg_reg);
++}
+--- a/extensions/libip6t_REDIRECT.t
++++ b/extensions/libip6t_REDIRECT.t
+@@ -0,0 +1,6 @@
++:PREROUTING,OUTPUT
++*nat
++-p tcp -j REDIRECT --to-ports 42;=;OK
++-p udp -j REDIRECT --to-ports 42-1234;=;OK
++-p tcp -j REDIRECT --to-ports 42-1234 --random;=;OK
++-j REDIRECT --to-ports 42;;FAIL
+--- a/extensions/libip6t_REDIRECT.txlate
++++ b/extensions/libip6t_REDIRECT.txlate
+@@ -0,0 +1,5 @@
++ip6tables-translate -t nat -A prerouting -p tcp --dport 80 -j REDIRECT --to-ports 8080
++nft add rule ip6 nat prerouting tcp dport 80 counter redirect to :8080
++
++ip6tables-translate -t nat -A prerouting -p tcp --dport 80 -j REDIRECT --to-ports 8080 --random
++nft add rule ip6 nat prerouting tcp dport 80 counter redirect to :8080 random
+--- a/extensions/libip6t_SNAT.c
++++ b/extensions/libip6t_SNAT.c
+@@ -0,0 +1,317 @@
++/*
++ * Copyright (c) 2011 Patrick McHardy <kaber@trash.net>
++ *
++ * Based on Rusty Russell's IPv4 SNAT target. Development of IPv6 NAT
++ * funded by Astaro.
++ */
++
++#include <stdio.h>
++#include <netdb.h>
++#include <string.h>
++#include <stdlib.h>
++#include <xtables.h>
++#include <iptables.h>
++#include <limits.h> /* INT_MAX in ip_tables.h */
++#include <linux/netfilter_ipv6/ip6_tables.h>
++#include <linux/netfilter/nf_nat.h>
++
++enum {
++	O_TO_SRC = 0,
++	O_RANDOM,
++	O_RANDOM_FULLY,
++	O_PERSISTENT,
++	O_X_TO_SRC,
++	F_TO_SRC       = 1 << O_TO_SRC,
++	F_RANDOM       = 1 << O_RANDOM,
++	F_RANDOM_FULLY = 1 << O_RANDOM_FULLY,
++	F_X_TO_SRC     = 1 << O_X_TO_SRC,
++};
++
++static void SNAT_help(void)
++{
++	printf(
++"SNAT target options:\n"
++" --to-source [<ipaddr>[-<ipaddr>]][:port[-port]]\n"
++"				Address to map source to.\n"
++"[--random] [--random-fully] [--persistent]\n");
++}
++
++static const struct xt_option_entry SNAT_opts[] = {
++	{.name = "to-source", .id = O_TO_SRC, .type = XTTYPE_STRING,
++	 .flags = XTOPT_MAND | XTOPT_MULTI},
++	{.name = "random", .id = O_RANDOM, .type = XTTYPE_NONE},
++	{.name = "random-fully", .id = O_RANDOM_FULLY, .type = XTTYPE_NONE},
++	{.name = "persistent", .id = O_PERSISTENT, .type = XTTYPE_NONE},
++	XTOPT_TABLEEND,
++};
++
++/* Ranges expected in network order. */
++static void
++parse_to(const char *orig_arg, int portok, struct nf_nat_range *range)
++{
++	char *arg, *start, *end = NULL, *colon = NULL, *dash, *error;
++	const struct in6_addr *ip;
++
++	arg = strdup(orig_arg);
++	if (arg == NULL)
++		xtables_error(RESOURCE_PROBLEM, "strdup");
++
++	start = strchr(arg, '[');
++	if (start == NULL) {
++		start = arg;
++		/* Lets assume one colon is port information. Otherwise its an IPv6 address */
++		colon = strchr(arg, ':');
++		if (colon && strchr(colon+1, ':'))
++			colon = NULL;
++	}
++	else {
++		start++;
++		end = strchr(start, ']');
++		if (end == NULL)
++			xtables_error(PARAMETER_PROBLEM,
++				      "Invalid address format");
++
++		*end = '\0';
++		colon = strchr(end + 1, ':');
++	}
++
++	if (colon) {
++		int port;
++
++		if (!portok)
++			xtables_error(PARAMETER_PROBLEM,
++				   "Need TCP, UDP, SCTP or DCCP with port specification");
++
++		range->flags |= NF_NAT_RANGE_PROTO_SPECIFIED;
++
++		port = atoi(colon+1);
++		if (port <= 0 || port > 65535)
++			xtables_error(PARAMETER_PROBLEM,
++				   "Port `%s' not valid\n", colon+1);
++
++		error = strchr(colon+1, ':');
++		if (error)
++			xtables_error(PARAMETER_PROBLEM,
++				   "Invalid port:port syntax - use dash\n");
++
++		dash = strchr(colon, '-');
++		if (!dash) {
++			range->min_proto.tcp.port
++				= range->max_proto.tcp.port
++				= htons(port);
++		} else {
++			int maxport;
++
++			maxport = atoi(dash + 1);
++			if (maxport <= 0 || maxport > 65535)
++				xtables_error(PARAMETER_PROBLEM,
++					   "Port `%s' not valid\n", dash+1);
++			if (maxport < port)
++				/* People are stupid. */
++				xtables_error(PARAMETER_PROBLEM,
++					   "Port range `%s' funky\n", colon+1);
++			range->min_proto.tcp.port = htons(port);
++			range->max_proto.tcp.port = htons(maxport);
++		}
++		/* Starts with colon or [] colon? No IP info...*/
++		if (colon == arg || colon == arg+2) {
++			free(arg);
++			return;
++		}
++		*colon = '\0';
++	}
++
++	range->flags |= NF_NAT_RANGE_MAP_IPS;
++	dash = strchr(start, '-');
++	if (colon && dash && dash > colon)
++		dash = NULL;
++
++	if (dash)
++		*dash = '\0';
++
++	ip = xtables_numeric_to_ip6addr(start);
++	if (!ip)
++		xtables_error(PARAMETER_PROBLEM, "Bad IP address \"%s\"\n",
++			      start);
++	range->min_addr.in6 = *ip;
++	if (dash) {
++		ip = xtables_numeric_to_ip6addr(dash + 1);
++		if (!ip)
++			xtables_error(PARAMETER_PROBLEM, "Bad IP address \"%s\"\n",
++				      dash+1);
++		range->max_addr.in6 = *ip;
++	} else
++		range->max_addr = range->min_addr;
++
++	free(arg);
++	return;
++}
++
++static void SNAT_parse(struct xt_option_call *cb)
++{
++	const struct ip6t_entry *entry = cb->xt_entry;
++	struct nf_nat_range *range = cb->data;
++	int portok;
++
++	if (entry->ipv6.proto == IPPROTO_TCP ||
++	    entry->ipv6.proto == IPPROTO_UDP ||
++	    entry->ipv6.proto == IPPROTO_SCTP ||
++	    entry->ipv6.proto == IPPROTO_DCCP ||
++	    entry->ipv6.proto == IPPROTO_ICMP)
++		portok = 1;
++	else
++		portok = 0;
++
++	xtables_option_parse(cb);
++	switch (cb->entry->id) {
++	case O_TO_SRC:
++		if (cb->xflags & F_X_TO_SRC) {
++			xtables_error(PARAMETER_PROBLEM,
++				      "SNAT: Multiple --to-source not supported");
++		}
++		parse_to(cb->arg, portok, range);
++		cb->xflags |= F_X_TO_SRC;
++		break;
++	case O_PERSISTENT:
++		range->flags |= NF_NAT_RANGE_PERSISTENT;
++		break;
++	}
++}
++
++static void SNAT_fcheck(struct xt_fcheck_call *cb)
++{
++	static const unsigned int f = F_TO_SRC | F_RANDOM;
++	static const unsigned int r = F_TO_SRC | F_RANDOM_FULLY;
++	struct nf_nat_range *range = cb->data;
++
++	if ((cb->xflags & f) == f)
++		range->flags |= NF_NAT_RANGE_PROTO_RANDOM;
++	if ((cb->xflags & r) == r)
++		range->flags |= NF_NAT_RANGE_PROTO_RANDOM_FULLY;
++}
++
++static void print_range(const struct nf_nat_range *range)
++{
++	if (range->flags & NF_NAT_RANGE_MAP_IPS) {
++		if (range->flags & NF_NAT_RANGE_PROTO_SPECIFIED)
++			printf("[");
++		printf("%s", xtables_ip6addr_to_numeric(&range->min_addr.in6));
++		if (memcmp(&range->min_addr, &range->max_addr,
++			   sizeof(range->min_addr)))
++			printf("-%s", xtables_ip6addr_to_numeric(&range->max_addr.in6));
++		if (range->flags & NF_NAT_RANGE_PROTO_SPECIFIED)
++			printf("]");
++	}
++	if (range->flags & NF_NAT_RANGE_PROTO_SPECIFIED) {
++		printf(":");
++		printf("%hu", ntohs(range->min_proto.tcp.port));
++		if (range->max_proto.tcp.port != range->min_proto.tcp.port)
++			printf("-%hu", ntohs(range->max_proto.tcp.port));
++	}
++}
++
++static void SNAT_print(const void *ip, const struct xt_entry_target *target,
++                       int numeric)
++{
++	const struct nf_nat_range *range = (const void *)target->data;
++
++	printf(" to:");
++	print_range(range);
++	if (range->flags & NF_NAT_RANGE_PROTO_RANDOM)
++		printf(" random");
++	if (range->flags & NF_NAT_RANGE_PROTO_RANDOM_FULLY)
++		printf(" random-fully");
++	if (range->flags & NF_NAT_RANGE_PERSISTENT)
++		printf(" persistent");
++}
++
++static void SNAT_save(const void *ip, const struct xt_entry_target *target)
++{
++	const struct nf_nat_range *range = (const void *)target->data;
++
++	printf(" --to-source ");
++	print_range(range);
++	if (range->flags & NF_NAT_RANGE_PROTO_RANDOM)
++		printf(" --random");
++	if (range->flags & NF_NAT_RANGE_PROTO_RANDOM_FULLY)
++		printf(" --random-fully");
++	if (range->flags & NF_NAT_RANGE_PERSISTENT)
++		printf(" --persistent");
++}
++
++static void print_range_xlate(const struct nf_nat_range *range,
++			      struct xt_xlate *xl)
++{
++	bool proto_specified = range->flags & NF_NAT_RANGE_PROTO_SPECIFIED;
++
++	if (range->flags & NF_NAT_RANGE_MAP_IPS) {
++		xt_xlate_add(xl, "%s%s%s",
++			     proto_specified ? "[" : "",
++			     xtables_ip6addr_to_numeric(&range->min_addr.in6),
++			     proto_specified ? "]" : "");
++
++		if (memcmp(&range->min_addr, &range->max_addr,
++			   sizeof(range->min_addr))) {
++			xt_xlate_add(xl, "-%s%s%s",
++				     proto_specified ? "[" : "",
++				     xtables_ip6addr_to_numeric(&range->max_addr.in6),
++				     proto_specified ? "]" : "");
++		}
++	}
++	if (proto_specified) {
++		xt_xlate_add(xl, ":%hu", ntohs(range->min_proto.tcp.port));
++
++		if (range->max_proto.tcp.port != range->min_proto.tcp.port)
++			xt_xlate_add(xl, "-%hu",
++				   ntohs(range->max_proto.tcp.port));
++	}
++}
++
++static int SNAT_xlate(struct xt_xlate *xl,
++		      const struct xt_xlate_tg_params *params)
++{
++	const struct nf_nat_range *range = (const void *)params->target->data;
++	bool sep_need = false;
++	const char *sep = " ";
++
++	xt_xlate_add(xl, "snat to ");
++	print_range_xlate(range, xl);
++	if (range->flags & NF_NAT_RANGE_PROTO_RANDOM) {
++		xt_xlate_add(xl, " random");
++		sep_need = true;
++	}
++	if (range->flags & NF_NAT_RANGE_PROTO_RANDOM_FULLY) {
++		if (sep_need)
++			sep = ",";
++		xt_xlate_add(xl, "%sfully-random", sep);
++		sep_need = true;
++	}
++	if (range->flags & NF_NAT_RANGE_PERSISTENT) {
++		if (sep_need)
++			sep = ",";
++		xt_xlate_add(xl, "%spersistent", sep);
++	}
++
++	return 1;
++}
++
++static struct xtables_target snat_tg_reg = {
++	.name		= "SNAT",
++	.version	= XTABLES_VERSION,
++	.family		= NFPROTO_IPV6,
++	.revision	= 1,
++	.size		= XT_ALIGN(sizeof(struct nf_nat_range)),
++	.userspacesize	= XT_ALIGN(sizeof(struct nf_nat_range)),
++	.help		= SNAT_help,
++	.x6_parse	= SNAT_parse,
++	.x6_fcheck	= SNAT_fcheck,
++	.print		= SNAT_print,
++	.save		= SNAT_save,
++	.x6_options	= SNAT_opts,
++	.xlate		= SNAT_xlate,
++};
++
++void _init(void)
++{
++	xtables_register_target(&snat_tg_reg);
++}
+--- a/extensions/libipt_CLUSTERIP.t
++++ b/extensions/libipt_CLUSTERIP.t
+@@ -0,0 +1,4 @@
++:INPUT
++-d 10.31.3.236/32 -i lo -j CLUSTERIP --new --hashmode sourceip --clustermac 01:AA:7B:47:F7:D7 --total-nodes 2 --local-node 0 --hash-init 1;=;FAIL
++-d 10.31.3.236/32 -i lo -j CLUSTERIP --new --hashmode sourceip --clustermac 01:AA:7B:47:F7:D7 --total-nodes 2 --local-node 1 --hash-init 1;=;OK
++-d 10.31.3.236/32 -i lo -j CLUSTERIP --new --hashmode sourceip --clustermac 01:AA:7B:47:F7:D7 --total-nodes 2 --local-node 2 --hash-init 1;=;OK
+--- a/extensions/libipt_DNAT.c
++++ b/extensions/libipt_DNAT.c
+@@ -0,0 +1,555 @@
++#include <stdio.h>
++#include <netdb.h>
++#include <string.h>
++#include <stdlib.h>
++#include <xtables.h>
++#include <iptables.h> /* get_kernel_version */
++#include <limits.h> /* INT_MAX in ip_tables.h */
++#include <linux/netfilter_ipv4/ip_tables.h>
++#include <linux/netfilter/nf_nat.h>
++
++enum {
++	O_TO_DEST = 0,
++	O_RANDOM,
++	O_PERSISTENT,
++	O_X_TO_DEST, /* hidden flag */
++	F_TO_DEST   = 1 << O_TO_DEST,
++	F_RANDOM    = 1 << O_RANDOM,
++	F_X_TO_DEST = 1 << O_X_TO_DEST,
++};
++
++/* Dest NAT data consists of a multi-range, indicating where to map
++   to. */
++struct ipt_natinfo
++{
++	struct xt_entry_target t;
++	struct nf_nat_ipv4_multi_range_compat mr;
++};
++
++static void DNAT_help(void)
++{
++	printf(
++"DNAT target options:\n"
++" --to-destination [<ipaddr>[-<ipaddr>]][:port[-port]]\n"
++"				Address to map destination to.\n"
++"[--random] [--persistent]\n");
++}
++
++static void DNAT_help_v2(void)
++{
++	printf(
++"DNAT target options:\n"
++" --to-destination [<ipaddr>[-<ipaddr>]][:port[-port[/port]]]\n"
++"				Address to map destination to.\n"
++"[--random] [--persistent]\n");
++}
++
++static const struct xt_option_entry DNAT_opts[] = {
++	{.name = "to-destination", .id = O_TO_DEST, .type = XTTYPE_STRING,
++	 .flags = XTOPT_MAND | XTOPT_MULTI},
++	{.name = "random", .id = O_RANDOM, .type = XTTYPE_NONE},
++	{.name = "persistent", .id = O_PERSISTENT, .type = XTTYPE_NONE},
++	XTOPT_TABLEEND,
++};
++
++static struct ipt_natinfo *
++append_range(struct ipt_natinfo *info, const struct nf_nat_ipv4_range *range)
++{
++	unsigned int size;
++
++	/* One rangesize already in struct ipt_natinfo */
++	size = XT_ALIGN(sizeof(*info) + info->mr.rangesize * sizeof(*range));
++
++	info = realloc(info, size);
++	if (!info)
++		xtables_error(OTHER_PROBLEM, "Out of memory\n");
++
++	info->t.u.target_size = size;
++	info->mr.range[info->mr.rangesize] = *range;
++	info->mr.rangesize++;
++
++	return info;
++}
++
++/* Ranges expected in network order. */
++static struct xt_entry_target *
++parse_to(const char *orig_arg, int portok, struct ipt_natinfo *info)
++{
++	struct nf_nat_ipv4_range range;
++	char *arg, *colon, *dash, *error;
++	const struct in_addr *ip;
++
++	arg = strdup(orig_arg);
++	if (arg == NULL)
++		xtables_error(RESOURCE_PROBLEM, "strdup");
++	memset(&range, 0, sizeof(range));
++	colon = strchr(arg, ':');
++
++	if (colon) {
++		int port;
++
++		if (!portok)
++			xtables_error(PARAMETER_PROBLEM,
++				   "Need TCP, UDP, SCTP or DCCP with port specification");
++
++		range.flags |= NF_NAT_RANGE_PROTO_SPECIFIED;
++
++		port = atoi(colon+1);
++		if (port <= 0 || port > 65535)
++			xtables_error(PARAMETER_PROBLEM,
++				   "Port `%s' not valid\n", colon+1);
++
++		error = strchr(colon+1, ':');
++		if (error)
++			xtables_error(PARAMETER_PROBLEM,
++				   "Invalid port:port syntax - use dash\n");
++
++		dash = strchr(colon, '-');
++		if (!dash) {
++			range.min.tcp.port
++				= range.max.tcp.port
++				= htons(port);
++		} else {
++			int maxport;
++
++			maxport = atoi(dash + 1);
++			if (maxport <= 0 || maxport > 65535)
++				xtables_error(PARAMETER_PROBLEM,
++					   "Port `%s' not valid\n", dash+1);
++			if (maxport < port)
++				/* People are stupid. */
++				xtables_error(PARAMETER_PROBLEM,
++					   "Port range `%s' funky\n", colon+1);
++			range.min.tcp.port = htons(port);
++			range.max.tcp.port = htons(maxport);
++		}
++		/* Starts with a colon? No IP info...*/
++		if (colon == arg) {
++			free(arg);
++			return &(append_range(info, &range)->t);
++		}
++		*colon = '\0';
++	}
++
++	range.flags |= NF_NAT_RANGE_MAP_IPS;
++	dash = strchr(arg, '-');
++	if (colon && dash && dash > colon)
++		dash = NULL;
++
++	if (dash)
++		*dash = '\0';
++
++	ip = xtables_numeric_to_ipaddr(arg);
++	if (!ip)
++		xtables_error(PARAMETER_PROBLEM, "Bad IP address \"%s\"\n",
++			   arg);
++	range.min_ip = ip->s_addr;
++	if (dash) {
++		ip = xtables_numeric_to_ipaddr(dash+1);
++		if (!ip)
++			xtables_error(PARAMETER_PROBLEM, "Bad IP address \"%s\"\n",
++				   dash+1);
++		range.max_ip = ip->s_addr;
++	} else
++		range.max_ip = range.min_ip;
++
++	free(arg);
++	return &(append_range(info, &range)->t);
++}
++
++static void DNAT_parse(struct xt_option_call *cb)
++{
++	const struct ipt_entry *entry = cb->xt_entry;
++	struct ipt_natinfo *info = (void *)(*cb->target);
++	int portok;
++
++	if (entry->ip.proto == IPPROTO_TCP
++	    || entry->ip.proto == IPPROTO_UDP
++	    || entry->ip.proto == IPPROTO_SCTP
++	    || entry->ip.proto == IPPROTO_DCCP
++	    || entry->ip.proto == IPPROTO_ICMP)
++		portok = 1;
++	else
++		portok = 0;
++
++	xtables_option_parse(cb);
++	switch (cb->entry->id) {
++	case O_TO_DEST:
++		if (cb->xflags & F_X_TO_DEST) {
++			if (!kernel_version)
++				get_kernel_version();
++			if (kernel_version > LINUX_VERSION(2, 6, 10))
++				xtables_error(PARAMETER_PROBLEM,
++					   "DNAT: Multiple --to-destination not supported");
++		}
++		*cb->target = parse_to(cb->arg, portok, info);
++		cb->xflags |= F_X_TO_DEST;
++		break;
++	case O_PERSISTENT:
++		info->mr.range[0].flags |= NF_NAT_RANGE_PERSISTENT;
++		break;
++	}
++}
++
++static void DNAT_fcheck(struct xt_fcheck_call *cb)
++{
++	static const unsigned int f = F_TO_DEST | F_RANDOM;
++	struct nf_nat_ipv4_multi_range_compat *mr = cb->data;
++
++	if ((cb->xflags & f) == f)
++		mr->range[0].flags |= NF_NAT_RANGE_PROTO_RANDOM;
++}
++
++static void print_range(const struct nf_nat_ipv4_range *r)
++{
++	if (r->flags & NF_NAT_RANGE_MAP_IPS) {
++		struct in_addr a;
++
++		a.s_addr = r->min_ip;
++		printf("%s", xtables_ipaddr_to_numeric(&a));
++		if (r->max_ip != r->min_ip) {
++			a.s_addr = r->max_ip;
++			printf("-%s", xtables_ipaddr_to_numeric(&a));
++		}
++	}
++	if (r->flags & NF_NAT_RANGE_PROTO_SPECIFIED) {
++		printf(":");
++		printf("%hu", ntohs(r->min.tcp.port));
++		if (r->max.tcp.port != r->min.tcp.port)
++			printf("-%hu", ntohs(r->max.tcp.port));
++	}
++}
++
++static void DNAT_print(const void *ip, const struct xt_entry_target *target,
++                       int numeric)
++{
++	const struct ipt_natinfo *info = (const void *)target;
++	unsigned int i = 0;
++
++	printf(" to:");
++	for (i = 0; i < info->mr.rangesize; i++) {
++		print_range(&info->mr.range[i]);
++		if (info->mr.range[i].flags & NF_NAT_RANGE_PROTO_RANDOM)
++			printf(" random");
++		if (info->mr.range[i].flags & NF_NAT_RANGE_PERSISTENT)
++			printf(" persistent");
++	}
++}
++
++static void DNAT_save(const void *ip, const struct xt_entry_target *target)
++{
++	const struct ipt_natinfo *info = (const void *)target;
++	unsigned int i = 0;
++
++	for (i = 0; i < info->mr.rangesize; i++) {
++		printf(" --to-destination ");
++		print_range(&info->mr.range[i]);
++		if (info->mr.range[i].flags & NF_NAT_RANGE_PROTO_RANDOM)
++			printf(" --random");
++		if (info->mr.range[i].flags & NF_NAT_RANGE_PERSISTENT)
++			printf(" --persistent");
++	}
++}
++
++static void print_range_xlate(const struct nf_nat_ipv4_range *r,
++			struct xt_xlate *xl)
++{
++	if (r->flags & NF_NAT_RANGE_MAP_IPS) {
++		struct in_addr a;
++
++		a.s_addr = r->min_ip;
++		xt_xlate_add(xl, "%s", xtables_ipaddr_to_numeric(&a));
++		if (r->max_ip != r->min_ip) {
++			a.s_addr = r->max_ip;
++			xt_xlate_add(xl, "-%s", xtables_ipaddr_to_numeric(&a));
++		}
++	}
++	if (r->flags & NF_NAT_RANGE_PROTO_SPECIFIED) {
++		xt_xlate_add(xl, ":%hu", ntohs(r->min.tcp.port));
++		if (r->max.tcp.port != r->min.tcp.port)
++			xt_xlate_add(xl, "-%hu", ntohs(r->max.tcp.port));
++	}
++}
++
++static int DNAT_xlate(struct xt_xlate *xl,
++		      const struct xt_xlate_tg_params *params)
++{
++	const struct ipt_natinfo *info = (const void *)params->target;
++	unsigned int i = 0;
++	bool sep_need = false;
++	const char *sep = " ";
++
++	for (i = 0; i < info->mr.rangesize; i++) {
++		xt_xlate_add(xl, "dnat to ");
++		print_range_xlate(&info->mr.range[i], xl);
++		if (info->mr.range[i].flags & NF_NAT_RANGE_PROTO_RANDOM) {
++			xt_xlate_add(xl, " random");
++			sep_need = true;
++		}
++		if (info->mr.range[i].flags & NF_NAT_RANGE_PERSISTENT) {
++			if (sep_need)
++				sep = ",";
++			xt_xlate_add(xl, "%spersistent", sep);
++		}
++	}
++
++	return 1;
++}
++
++static void
++parse_to_v2(const char *orig_arg, int portok, struct nf_nat_range2 *range)
++{
++	char *arg, *colon, *dash, *error;
++	const struct in_addr *ip;
++
++	arg = strdup(orig_arg);
++	if (arg == NULL)
++		xtables_error(RESOURCE_PROBLEM, "strdup");
++
++	colon = strchr(arg, ':');
++	if (colon) {
++		int port;
++
++		if (!portok)
++			xtables_error(PARAMETER_PROBLEM,
++				   "Need TCP, UDP, SCTP or DCCP with port specification");
++
++		range->flags |= NF_NAT_RANGE_PROTO_SPECIFIED;
++
++		port = atoi(colon+1);
++		if (port <= 0 || port > 65535)
++			xtables_error(PARAMETER_PROBLEM,
++				   "Port `%s' not valid\n", colon+1);
++
++		error = strchr(colon+1, ':');
++		if (error)
++			xtables_error(PARAMETER_PROBLEM,
++				   "Invalid port:port syntax - use dash\n");
++
++		dash = strchr(colon, '-');
++		if (!dash) {
++			range->min_proto.tcp.port
++				= range->max_proto.tcp.port
++				= htons(port);
++		} else {
++			int maxport;
++			char *slash;
++
++			maxport = atoi(dash + 1);
++			if (maxport <= 0 || maxport > 65535)
++				xtables_error(PARAMETER_PROBLEM,
++					   "Port `%s' not valid\n", dash+1);
++			if (maxport < port)
++				/* People are stupid. */
++				xtables_error(PARAMETER_PROBLEM,
++					   "Port range `%s' funky\n", colon+1);
++			range->min_proto.tcp.port = htons(port);
++			range->max_proto.tcp.port = htons(maxport);
++
++			slash = strchr(dash, '/');
++			if (slash) {
++				int baseport;
++
++				baseport = atoi(slash + 1);
++				if (baseport <= 0 || baseport > 65535)
++					xtables_error(PARAMETER_PROBLEM,
++							 "Port `%s' not valid\n", slash+1);
++				range->flags |= NF_NAT_RANGE_PROTO_OFFSET;
++				range->base_proto.tcp.port = htons(baseport);
++			}
++		}
++		/* Starts with a colon? No IP info...*/
++		if (colon == arg) {
++			free(arg);
++			return;
++		}
++		*colon = '\0';
++	}
++
++	range->flags |= NF_NAT_RANGE_MAP_IPS;
++	dash = strchr(arg, '-');
++	if (colon && dash && dash > colon)
++		dash = NULL;
++
++	if (dash)
++		*dash = '\0';
++
++	ip = xtables_numeric_to_ipaddr(arg);
++	if (!ip)
++		xtables_error(PARAMETER_PROBLEM, "Bad IP address \"%s\"\n",
++			   arg);
++	range->min_addr.in = *ip;
++	if (dash) {
++		ip = xtables_numeric_to_ipaddr(dash+1);
++		if (!ip)
++			xtables_error(PARAMETER_PROBLEM, "Bad IP address \"%s\"\n",
++				   dash+1);
++		range->max_addr.in = *ip;
++	} else
++		range->max_addr = range->min_addr;
++
++	free(arg);
++	return;
++}
++
++static void DNAT_parse_v2(struct xt_option_call *cb)
++{
++	const struct ipt_entry *entry = cb->xt_entry;
++	struct nf_nat_range2 *range = cb->data;
++	int portok;
++
++	if (entry->ip.proto == IPPROTO_TCP
++	    || entry->ip.proto == IPPROTO_UDP
++	    || entry->ip.proto == IPPROTO_SCTP
++	    || entry->ip.proto == IPPROTO_DCCP
++	    || entry->ip.proto == IPPROTO_ICMP)
++		portok = 1;
++	else
++		portok = 0;
++
++	xtables_option_parse(cb);
++	switch (cb->entry->id) {
++	case O_TO_DEST:
++		if (cb->xflags & F_X_TO_DEST) {
++			xtables_error(PARAMETER_PROBLEM,
++				   "DNAT: Multiple --to-destination not supported");
++		}
++		parse_to_v2(cb->arg, portok, range);
++		cb->xflags |= F_X_TO_DEST;
++		break;
++	case O_PERSISTENT:
++		range->flags |= NF_NAT_RANGE_PERSISTENT;
++		break;
++	}
++}
++
++static void DNAT_fcheck_v2(struct xt_fcheck_call *cb)
++{
++	static const unsigned int f = F_TO_DEST | F_RANDOM;
++	struct nf_nat_range2 *range = cb->data;
++
++	if ((cb->xflags & f) == f)
++		range->flags |= NF_NAT_RANGE_PROTO_RANDOM;
++}
++
++static void print_range_v2(const struct nf_nat_range2 *range)
++{
++	if (range->flags & NF_NAT_RANGE_MAP_IPS) {
++		printf("%s", xtables_ipaddr_to_numeric(&range->min_addr.in));
++		if (memcmp(&range->min_addr, &range->max_addr,
++			   sizeof(range->min_addr)))
++			printf("-%s", xtables_ipaddr_to_numeric(&range->max_addr.in));
++	}
++	if (range->flags & NF_NAT_RANGE_PROTO_SPECIFIED) {
++		printf(":");
++		printf("%hu", ntohs(range->min_proto.tcp.port));
++		if (range->max_proto.tcp.port != range->min_proto.tcp.port)
++			printf("-%hu", ntohs(range->max_proto.tcp.port));
++		if (range->flags & NF_NAT_RANGE_PROTO_OFFSET)
++			printf("/%hu", ntohs(range->base_proto.tcp.port));
++	}
++}
++
++static void DNAT_print_v2(const void *ip, const struct xt_entry_target *target,
++                       int numeric)
++{
++	const struct nf_nat_range2 *range = (const void *)target->data;
++
++	printf(" to:");
++	print_range_v2(range);
++	if (range->flags & NF_NAT_RANGE_PROTO_RANDOM)
++		printf(" random");
++	if (range->flags & NF_NAT_RANGE_PERSISTENT)
++		printf(" persistent");
++}
++
++static void DNAT_save_v2(const void *ip, const struct xt_entry_target *target)
++{
++	const struct nf_nat_range2 *range = (const void *)target->data;
++
++	printf(" --to-destination ");
++	print_range_v2(range);
++	if (range->flags & NF_NAT_RANGE_PROTO_RANDOM)
++		printf(" --random");
++	if (range->flags & NF_NAT_RANGE_PERSISTENT)
++		printf(" --persistent");
++}
++
++static void print_range_xlate_v2(const struct nf_nat_range2 *range,
++			      struct xt_xlate *xl)
++{
++	if (range->flags & NF_NAT_RANGE_MAP_IPS) {
++		xt_xlate_add(xl, "%s", xtables_ipaddr_to_numeric(&range->min_addr.in));
++		if (memcmp(&range->min_addr, &range->max_addr,
++			   sizeof(range->min_addr))) {
++			xt_xlate_add(xl, "-%s", xtables_ipaddr_to_numeric(&range->max_addr.in));
++		}
++	}
++	if (range->flags & NF_NAT_RANGE_PROTO_SPECIFIED) {
++		xt_xlate_add(xl, ":%hu", ntohs(range->min_proto.tcp.port));
++		if (range->max_proto.tcp.port != range->min_proto.tcp.port)
++			xt_xlate_add(xl, "-%hu", ntohs(range->max_proto.tcp.port));
++		if (range->flags & NF_NAT_RANGE_PROTO_OFFSET)
++			xt_xlate_add(xl, ";%hu", ntohs(range->base_proto.tcp.port));
++	}
++}
++
++static int DNAT_xlate_v2(struct xt_xlate *xl,
++		      const struct xt_xlate_tg_params *params)
++{
++	const struct nf_nat_range2 *range = (const void *)params->target->data;
++	bool sep_need = false;
++	const char *sep = " ";
++
++	xt_xlate_add(xl, "dnat to ");
++	print_range_xlate_v2(range, xl);
++	if (range->flags & NF_NAT_RANGE_PROTO_RANDOM) {
++		xt_xlate_add(xl, " random");
++		sep_need = true;
++	}
++	if (range->flags & NF_NAT_RANGE_PERSISTENT) {
++		if (sep_need)
++			sep = ",";
++		xt_xlate_add(xl, "%spersistent", sep);
++	}
++
++	return 1;
++}
++
++static struct xtables_target dnat_tg_reg[] = {
++	{
++		.name		= "DNAT",
++		.version	= XTABLES_VERSION,
++		.family		= NFPROTO_IPV4,
++		.revision	= 0,
++		.size		= XT_ALIGN(sizeof(struct nf_nat_ipv4_multi_range_compat)),
++		.userspacesize	= XT_ALIGN(sizeof(struct nf_nat_ipv4_multi_range_compat)),
++		.help		= DNAT_help,
++		.print		= DNAT_print,
++		.save		= DNAT_save,
++		.x6_parse	= DNAT_parse,
++		.x6_fcheck	= DNAT_fcheck,
++		.x6_options	= DNAT_opts,
++		.xlate		= DNAT_xlate,
++	},
++	{
++		.name		= "DNAT",
++		.version	= XTABLES_VERSION,
++		.family		= NFPROTO_IPV4,
++		.revision	= 2,
++		.size		= XT_ALIGN(sizeof(struct nf_nat_range2)),
++		.userspacesize	= XT_ALIGN(sizeof(struct nf_nat_range2)),
++		.help		= DNAT_help_v2,
++		.print		= DNAT_print_v2,
++		.save		= DNAT_save_v2,
++		.x6_parse	= DNAT_parse_v2,
++		.x6_fcheck	= DNAT_fcheck_v2,
++		.x6_options	= DNAT_opts,
++		.xlate		= DNAT_xlate_v2,
++	},
++};
++
++void _init(void)
++{
++	xtables_register_targets(dnat_tg_reg, ARRAY_SIZE(dnat_tg_reg));
++}
+--- a/extensions/libipt_DNAT.txlate
++++ b/extensions/libipt_DNAT.txlate
+@@ -0,0 +1,14 @@
++iptables-translate -t nat -A prerouting -p tcp -o eth0 -j DNAT --to-destination 1.2.3.4
++nft add rule ip nat prerouting oifname "eth0" ip protocol tcp counter dnat to 1.2.3.4
++
++iptables-translate -t nat -A prerouting -p tcp -d 15.45.23.67 --dport 80 -j DNAT --to-destination 192.168.1.1-192.168.1.10
++nft add rule ip nat prerouting ip daddr 15.45.23.67 tcp dport 80 counter dnat to 192.168.1.1-192.168.1.10
++
++iptables-translate -t nat -A prerouting -p tcp -o eth0 -j DNAT --to-destination 1.2.3.4:1-1023
++nft add rule ip nat prerouting oifname "eth0" ip protocol tcp counter dnat to 1.2.3.4:1-1023
++
++iptables-translate -t nat -A prerouting -p tcp -o eth0 -j DNAT --to-destination 1.2.3.4 --random
++nft add rule ip nat prerouting oifname "eth0" ip protocol tcp counter dnat to 1.2.3.4 random
++
++iptables-translate -t nat -A prerouting -p tcp -o eth0 -j DNAT --to-destination 1.2.3.4 --random --persistent
++nft add rule ip nat prerouting oifname "eth0" ip protocol tcp counter dnat to 1.2.3.4 random,persistent
+--- a/extensions/libipt_FULLCONENAT.c
++++ b/extensions/libipt_FULLCONENAT.c
+@@ -0,0 +1,232 @@
++#include <stdio.h>
++#include <netdb.h>
++#include <string.h>
++#include <stdlib.h>
++#include <getopt.h>
++#include <xtables.h>
++#include <limits.h> /* INT_MAX in ip_tables.h */
++#include <linux/netfilter_ipv4/ip_tables.h>
++#include <linux/netfilter/nf_nat.h>
++
++#ifndef NF_NAT_RANGE_PROTO_RANDOM_FULLY
++#define NF_NAT_RANGE_PROTO_RANDOM_FULLY (1 << 4)
++#endif
++
++enum {
++	O_TO_PORTS = 0,
++	O_RANDOM,
++	O_RANDOM_FULLY,
++	O_TO_SRC,
++};
++
++static void FULLCONENAT_help(void)
++{
++	printf(
++"FULLCONENAT target options:\n"
++" --to-source [<ipaddr>[-<ipaddr>]]\n"
++"				Address to map source to.\n"
++" --to-ports <port>[-<port>]\n"
++"				Port (range) to map to.\n"
++" --random\n"
++"				Randomize source port.\n"
++" --random-fully\n"
++"				Fully randomize source port.\n");
++}
++
++static const struct xt_option_entry FULLCONENAT_opts[] = {
++	{.name = "to-ports", .id = O_TO_PORTS, .type = XTTYPE_STRING},
++	{.name = "random", .id = O_RANDOM, .type = XTTYPE_NONE},
++	{.name = "random-fully", .id = O_RANDOM_FULLY, .type = XTTYPE_NONE},
++	{.name = "to-source", .id = O_TO_SRC, .type = XTTYPE_STRING},
++	XTOPT_TABLEEND,
++};
++
++static void parse_to(const char *orig_arg, struct nf_nat_ipv4_multi_range_compat *mr)
++{
++	char *arg, *dash, *error;
++	const struct in_addr *ip;
++
++	arg = strdup(orig_arg);
++	if (arg == NULL)
++		xtables_error(RESOURCE_PROBLEM, "strdup");
++
++	mr->range[0].flags |= NF_NAT_RANGE_MAP_IPS;
++	dash = strchr(arg, '-');
++
++	if (dash)
++		*dash = '\0';
++
++	ip = xtables_numeric_to_ipaddr(arg);
++	if (!ip)
++		xtables_error(PARAMETER_PROBLEM, "Bad IP address \"%s\"\n",
++			   arg);
++	mr->range[0].min_ip = ip->s_addr;
++	if (dash) {
++		ip = xtables_numeric_to_ipaddr(dash+1);
++		if (!ip)
++			xtables_error(PARAMETER_PROBLEM, "Bad IP address \"%s\"\n",
++				   dash+1);
++		mr->range[0].max_ip = ip->s_addr;
++	} else
++		mr->range[0].max_ip = mr->range[0].min_ip;
++
++	free(arg);
++}
++
++static void FULLCONENAT_init(struct xt_entry_target *t)
++{
++	struct nf_nat_ipv4_multi_range_compat *mr = (struct nf_nat_ipv4_multi_range_compat *)t->data;
++
++	/* Actually, it's 0, but it's ignored at the moment. */
++	mr->rangesize = 1;
++}
++
++/* Parses ports */
++static void
++parse_ports(const char *arg, struct nf_nat_ipv4_multi_range_compat *mr)
++{
++	char *end;
++	unsigned int port, maxport;
++
++	mr->range[0].flags |= NF_NAT_RANGE_PROTO_SPECIFIED;
++
++	if (!xtables_strtoui(arg, &end, &port, 0, UINT16_MAX))
++		xtables_param_act(XTF_BAD_VALUE, "FULLCONENAT", "--to-ports", arg);
++
++	switch (*end) {
++	case '\0':
++		mr->range[0].min.tcp.port
++			= mr->range[0].max.tcp.port
++			= htons(port);
++		return;
++	case '-':
++		if (!xtables_strtoui(end + 1, NULL, &maxport, 0, UINT16_MAX))
++			break;
++
++		if (maxport < port)
++			break;
++
++		mr->range[0].min.tcp.port = htons(port);
++		mr->range[0].max.tcp.port = htons(maxport);
++		return;
++	default:
++		break;
++	}
++	xtables_param_act(XTF_BAD_VALUE, "FULLCONENAT", "--to-ports", arg);
++}
++
++static void FULLCONENAT_parse(struct xt_option_call *cb)
++{
++	const struct ipt_entry *entry = cb->xt_entry;
++	int portok;
++	struct nf_nat_ipv4_multi_range_compat *mr = cb->data;
++
++	if (entry->ip.proto == IPPROTO_TCP
++	    || entry->ip.proto == IPPROTO_UDP
++	    || entry->ip.proto == IPPROTO_SCTP
++	    || entry->ip.proto == IPPROTO_DCCP
++	    || entry->ip.proto == IPPROTO_ICMP)
++		portok = 1;
++	else
++		portok = 0;
++
++	xtables_option_parse(cb);
++	switch (cb->entry->id) {
++	case O_TO_PORTS:
++		if (!portok)
++			xtables_error(PARAMETER_PROBLEM,
++				   "Need TCP, UDP, SCTP or DCCP with port specification");
++		parse_ports(cb->arg, mr);
++		break;
++	case O_TO_SRC:
++		parse_to(cb->arg, mr);
++		break;
++	case O_RANDOM:
++		mr->range[0].flags |=  NF_NAT_RANGE_PROTO_RANDOM;
++		break;
++	case O_RANDOM_FULLY:
++		mr->range[0].flags |=  NF_NAT_RANGE_PROTO_RANDOM_FULLY;
++		break;
++	}
++}
++
++static void
++FULLCONENAT_print(const void *ip, const struct xt_entry_target *target,
++                 int numeric)
++{
++	const struct nf_nat_ipv4_multi_range_compat *mr = (const void *)target->data;
++	const struct nf_nat_ipv4_range *r = &mr->range[0];
++
++	if (r->flags & NF_NAT_RANGE_MAP_IPS) {
++		struct in_addr a;
++
++		a.s_addr = r->min_ip;
++		printf(" to:%s", xtables_ipaddr_to_numeric(&a));
++		if (r->max_ip != r->min_ip) {
++			a.s_addr = r->max_ip;
++			printf("-%s", xtables_ipaddr_to_numeric(&a));
++		}
++	}
++
++	if (r->flags & NF_NAT_RANGE_PROTO_SPECIFIED) {
++		printf(" masq ports: ");
++		printf("%hu", ntohs(r->min.tcp.port));
++		if (r->max.tcp.port != r->min.tcp.port)
++			printf("-%hu", ntohs(r->max.tcp.port));
++	}
++
++	if (r->flags & NF_NAT_RANGE_PROTO_RANDOM)
++		printf(" random");
++
++	if (r->flags & NF_NAT_RANGE_PROTO_RANDOM_FULLY)
++		printf(" random-fully");
++}
++
++static void
++FULLCONENAT_save(const void *ip, const struct xt_entry_target *target)
++{
++	const struct nf_nat_ipv4_multi_range_compat *mr = (const void *)target->data;
++	const struct nf_nat_ipv4_range *r = &mr->range[0];
++
++	if (r->flags & NF_NAT_RANGE_MAP_IPS) {
++		struct in_addr a;
++
++		a.s_addr = r->min_ip;
++		printf(" --to-source %s", xtables_ipaddr_to_numeric(&a));
++		if (r->max_ip != r->min_ip) {
++			a.s_addr = r->max_ip;
++			printf("-%s", xtables_ipaddr_to_numeric(&a));
++		}
++	}
++
++	if (r->flags & NF_NAT_RANGE_PROTO_SPECIFIED) {
++		printf(" --to-ports %hu", ntohs(r->min.tcp.port));
++		if (r->max.tcp.port != r->min.tcp.port)
++			printf("-%hu", ntohs(r->max.tcp.port));
++	}
++
++	if (r->flags & NF_NAT_RANGE_PROTO_RANDOM)
++		printf(" --random");
++
++	if (r->flags & NF_NAT_RANGE_PROTO_RANDOM_FULLY)
++		printf(" --random-fully");
++}
++
++static struct xtables_target fullconenat_tg_reg = {
++	.name		= "FULLCONENAT",
++	.version	= XTABLES_VERSION,
++	.family		= NFPROTO_IPV4,
++	.size		= XT_ALIGN(sizeof(struct nf_nat_ipv4_multi_range_compat)),
++	.userspacesize	= XT_ALIGN(sizeof(struct nf_nat_ipv4_multi_range_compat)),
++	.help		= FULLCONENAT_help,
++	.init		= FULLCONENAT_init,
++	.x6_parse	= FULLCONENAT_parse,
++	.print		= FULLCONENAT_print,
++	.save		= FULLCONENAT_save,
++	.x6_options	= FULLCONENAT_opts,
++};
++
++void _init(void)
++{
++	xtables_register_target(&fullconenat_tg_reg);
++}
+--- a/extensions/libipt_LOG.c
++++ b/extensions/libipt_LOG.c
+@@ -0,0 +1,250 @@
++#include <stdio.h>
++#include <string.h>
++#include <syslog.h>
++#include <xtables.h>
++#include <linux/netfilter_ipv4/ipt_LOG.h>
++
++#define LOG_DEFAULT_LEVEL LOG_WARNING
++
++#ifndef IPT_LOG_UID /* Old kernel */
++#define IPT_LOG_UID	0x08	/* Log UID owning local socket */
++#undef  IPT_LOG_MASK
++#define IPT_LOG_MASK	0x0f
++#endif
++
++enum {
++	O_LOG_LEVEL = 0,
++	O_LOG_PREFIX,
++	O_LOG_TCPSEQ,
++	O_LOG_TCPOPTS,
++	O_LOG_IPOPTS,
++	O_LOG_UID,
++	O_LOG_MAC,
++};
++
++static void LOG_help(void)
++{
++	printf(
++"LOG target options:\n"
++" --log-level level		Level of logging (numeric or see syslog.conf)\n"
++" --log-prefix prefix		Prefix log messages with this prefix.\n\n"
++" --log-tcp-sequence		Log TCP sequence numbers.\n\n"
++" --log-tcp-options		Log TCP options.\n\n"
++" --log-ip-options		Log IP options.\n\n"
++" --log-uid			Log UID owning the local socket.\n\n"
++" --log-macdecode		Decode MAC addresses and protocol.\n\n");
++}
++
++#define s struct ipt_log_info
++static const struct xt_option_entry LOG_opts[] = {
++	{.name = "log-level", .id = O_LOG_LEVEL, .type = XTTYPE_SYSLOGLEVEL,
++	 .flags = XTOPT_PUT, XTOPT_POINTER(s, level)},
++	{.name = "log-prefix", .id = O_LOG_PREFIX, .type = XTTYPE_STRING,
++	 .flags = XTOPT_PUT, XTOPT_POINTER(s, prefix), .min = 1},
++	{.name = "log-tcp-sequence", .id = O_LOG_TCPSEQ, .type = XTTYPE_NONE},
++	{.name = "log-tcp-options", .id = O_LOG_TCPOPTS, .type = XTTYPE_NONE},
++	{.name = "log-ip-options", .id = O_LOG_IPOPTS, .type = XTTYPE_NONE},
++	{.name = "log-uid", .id = O_LOG_UID, .type = XTTYPE_NONE},
++	{.name = "log-macdecode", .id = O_LOG_MAC, .type = XTTYPE_NONE},
++	XTOPT_TABLEEND,
++};
++#undef s
++
++static void LOG_init(struct xt_entry_target *t)
++{
++	struct ipt_log_info *loginfo = (struct ipt_log_info *)t->data;
++
++	loginfo->level = LOG_DEFAULT_LEVEL;
++
++}
++
++struct ipt_log_names {
++	const char *name;
++	unsigned int level;
++};
++
++struct ipt_log_xlate {
++	const char *name;
++	unsigned int level;
++};
++
++static const struct ipt_log_names ipt_log_names[]
++= { { .name = "alert",   .level = LOG_ALERT },
++    { .name = "crit",    .level = LOG_CRIT },
++    { .name = "debug",   .level = LOG_DEBUG },
++    { .name = "emerg",   .level = LOG_EMERG },
++    { .name = "error",   .level = LOG_ERR },		/* DEPRECATED */
++    { .name = "info",    .level = LOG_INFO },
++    { .name = "notice",  .level = LOG_NOTICE },
++    { .name = "panic",   .level = LOG_EMERG },		/* DEPRECATED */
++    { .name = "warning", .level = LOG_WARNING }
++};
++
++static void LOG_parse(struct xt_option_call *cb)
++{
++	struct ipt_log_info *info = cb->data;
++
++	xtables_option_parse(cb);
++	switch (cb->entry->id) {
++	case O_LOG_PREFIX:
++		if (strchr(cb->arg, '\n') != NULL)
++			xtables_error(PARAMETER_PROBLEM,
++				   "Newlines not allowed in --log-prefix");
++		break;
++	case O_LOG_TCPSEQ:
++		info->logflags |= IPT_LOG_TCPSEQ;
++		break;
++	case O_LOG_TCPOPTS:
++		info->logflags |= IPT_LOG_TCPOPT;
++		break;
++	case O_LOG_IPOPTS:
++		info->logflags |= IPT_LOG_IPOPT;
++		break;
++	case O_LOG_UID:
++		info->logflags |= IPT_LOG_UID;
++		break;
++	case O_LOG_MAC:
++		info->logflags |= IPT_LOG_MACDECODE;
++		break;
++	}
++}
++
++static void LOG_print(const void *ip, const struct xt_entry_target *target,
++                      int numeric)
++{
++	const struct ipt_log_info *loginfo
++		= (const struct ipt_log_info *)target->data;
++	unsigned int i = 0;
++
++	printf(" LOG");
++	if (numeric)
++		printf(" flags %u level %u",
++		       loginfo->logflags, loginfo->level);
++	else {
++		for (i = 0; i < ARRAY_SIZE(ipt_log_names); ++i)
++			if (loginfo->level == ipt_log_names[i].level) {
++				printf(" level %s", ipt_log_names[i].name);
++				break;
++			}
++		if (i == ARRAY_SIZE(ipt_log_names))
++			printf(" UNKNOWN level %u", loginfo->level);
++		if (loginfo->logflags & IPT_LOG_TCPSEQ)
++			printf(" tcp-sequence");
++		if (loginfo->logflags & IPT_LOG_TCPOPT)
++			printf(" tcp-options");
++		if (loginfo->logflags & IPT_LOG_IPOPT)
++			printf(" ip-options");
++		if (loginfo->logflags & IPT_LOG_UID)
++			printf(" uid");
++		if (loginfo->logflags & IPT_LOG_MACDECODE)
++			printf(" macdecode");
++		if (loginfo->logflags & ~(IPT_LOG_MASK))
++			printf(" unknown-flags");
++	}
++
++	if (strcmp(loginfo->prefix, "") != 0)
++		printf(" prefix \"%s\"", loginfo->prefix);
++}
++
++static void LOG_save(const void *ip, const struct xt_entry_target *target)
++{
++	const struct ipt_log_info *loginfo
++		= (const struct ipt_log_info *)target->data;
++
++	if (strcmp(loginfo->prefix, "") != 0) {
++		printf(" --log-prefix");
++		xtables_save_string(loginfo->prefix);
++	}
++
++	if (loginfo->level != LOG_DEFAULT_LEVEL)
++		printf(" --log-level %d", loginfo->level);
++
++	if (loginfo->logflags & IPT_LOG_TCPSEQ)
++		printf(" --log-tcp-sequence");
++	if (loginfo->logflags & IPT_LOG_TCPOPT)
++		printf(" --log-tcp-options");
++	if (loginfo->logflags & IPT_LOG_IPOPT)
++		printf(" --log-ip-options");
++	if (loginfo->logflags & IPT_LOG_UID)
++		printf(" --log-uid");
++	if (loginfo->logflags & IPT_LOG_MACDECODE)
++		printf(" --log-macdecode");
++}
++
++static const struct ipt_log_xlate ipt_log_xlate_names[] = {
++	{"alert",	LOG_ALERT },
++	{"crit",	LOG_CRIT },
++	{"debug",	LOG_DEBUG },
++	{"emerg",	LOG_EMERG },
++	{"err",		LOG_ERR },
++	{"info",	LOG_INFO },
++	{"notice",	LOG_NOTICE },
++	{"warn",	LOG_WARNING }
++};
++
++static int LOG_xlate(struct xt_xlate *xl,
++		     const struct xt_xlate_tg_params *params)
++{
++	const struct ipt_log_info *loginfo =
++		(const struct ipt_log_info *)params->target->data;
++	unsigned int i = 0;
++
++	xt_xlate_add(xl, "log");
++	if (strcmp(loginfo->prefix, "") != 0) {
++		if (params->escape_quotes)
++			xt_xlate_add(xl, " prefix \\\"%s\\\"", loginfo->prefix);
++		else
++			xt_xlate_add(xl, " prefix \"%s\"", loginfo->prefix);
++	}
++
++	for (i = 0; i < ARRAY_SIZE(ipt_log_xlate_names); ++i)
++		if (loginfo->level != LOG_DEFAULT_LEVEL &&
++		    loginfo->level == ipt_log_xlate_names[i].level) {
++			xt_xlate_add(xl, " level %s",
++				   ipt_log_xlate_names[i].name);
++			break;
++		}
++
++	if ((loginfo->logflags & IPT_LOG_MASK) == IPT_LOG_MASK) {
++		xt_xlate_add(xl, " flags all");
++	} else {
++		if (loginfo->logflags & (IPT_LOG_TCPSEQ | IPT_LOG_TCPOPT)) {
++			const char *delim = " ";
++
++			xt_xlate_add(xl, " flags tcp");
++			if (loginfo->logflags & IPT_LOG_TCPSEQ) {
++				xt_xlate_add(xl, " sequence");
++				delim = ",";
++			}
++			if (loginfo->logflags & IPT_LOG_TCPOPT)
++				xt_xlate_add(xl, "%soptions", delim);
++		}
++		if (loginfo->logflags & IPT_LOG_IPOPT)
++			xt_xlate_add(xl, " flags ip options");
++		if (loginfo->logflags & IPT_LOG_UID)
++			xt_xlate_add(xl, " flags skuid");
++		if (loginfo->logflags & IPT_LOG_MACDECODE)
++			xt_xlate_add(xl, " flags ether");
++	}
++
++	return 1;
++}
++static struct xtables_target log_tg_reg = {
++	.name          = "LOG",
++	.version       = XTABLES_VERSION,
++	.family        = NFPROTO_IPV4,
++	.size          = XT_ALIGN(sizeof(struct ipt_log_info)),
++	.userspacesize = XT_ALIGN(sizeof(struct ipt_log_info)),
++	.help          = LOG_help,
++	.init          = LOG_init,
++	.print         = LOG_print,
++	.save          = LOG_save,
++	.x6_parse      = LOG_parse,
++	.x6_options    = LOG_opts,
++	.xlate	       = LOG_xlate,
++};
++
++void _init(void)
++{
++	xtables_register_target(&log_tg_reg);
++}
+--- a/extensions/libipt_MASQUERADE.c
++++ b/extensions/libipt_MASQUERADE.c
+@@ -0,0 +1,209 @@
++#include <stdio.h>
++#include <netdb.h>
++#include <string.h>
++#include <stdlib.h>
++#include <getopt.h>
++#include <xtables.h>
++#include <limits.h> /* INT_MAX in ip_tables.h */
++#include <linux/netfilter_ipv4/ip_tables.h>
++#include <linux/netfilter/nf_nat.h>
++
++enum {
++	O_TO_PORTS = 0,
++	O_RANDOM,
++	O_RANDOM_FULLY,
++	O_MODE,
++};
++
++static void MASQUERADE_help(void)
++{
++	printf(
++"MASQUERADE target options:\n"
++" --to-ports <port>[-<port>]\n"
++"				Port (range) to map to.\n"
++" --random\n"
++"				Randomize source port.\n"
++" --random-fully\n"
++"				Fully randomize source port.\n"
++" --mode <fullcone|symmetric>\n"
++"				NAT mode.\n");
++
++}
++
++static const struct xt_option_entry MASQUERADE_opts[] = {
++	{.name = "to-ports", .id = O_TO_PORTS, .type = XTTYPE_STRING},
++	{.name = "random", .id = O_RANDOM, .type = XTTYPE_NONE},
++	{.name = "random-fully", .id = O_RANDOM_FULLY, .type = XTTYPE_NONE},
++	{.name = "mode", .id = O_MODE, .type = XTTYPE_STRING},
++	XTOPT_TABLEEND,
++};
++
++static void MASQUERADE_init(struct xt_entry_target *t)
++{
++	struct nf_nat_ipv4_multi_range_compat *mr = (struct nf_nat_ipv4_multi_range_compat *)t->data;
++
++	/* Actually, it's 0, but it's ignored at the moment. */
++	mr->rangesize = 1;
++}
++
++/* Parses ports */
++static void
++parse_ports(const char *arg, struct nf_nat_ipv4_multi_range_compat *mr)
++{
++	char *end;
++	unsigned int port, maxport;
++
++	mr->range[0].flags |= NF_NAT_RANGE_PROTO_SPECIFIED;
++
++	if (!xtables_strtoui(arg, &end, &port, 0, UINT16_MAX))
++		xtables_param_act(XTF_BAD_VALUE, "MASQUERADE", "--to-ports", arg);
++
++	switch (*end) {
++	case '\0':
++		mr->range[0].min.tcp.port
++			= mr->range[0].max.tcp.port
++			= htons(port);
++		return;
++	case '-':
++		if (!xtables_strtoui(end + 1, NULL, &maxport, 0, UINT16_MAX))
++			break;
++
++		if (maxport < port)
++			break;
++
++		mr->range[0].min.tcp.port = htons(port);
++		mr->range[0].max.tcp.port = htons(maxport);
++		return;
++	default:
++		break;
++	}
++	xtables_param_act(XTF_BAD_VALUE, "MASQUERADE", "--to-ports", arg);
++}
++
++static void MASQUERADE_parse(struct xt_option_call *cb)
++{
++	const struct ipt_entry *entry = cb->xt_entry;
++	int portok;
++	struct nf_nat_ipv4_multi_range_compat *mr = cb->data;
++
++	if (entry->ip.proto == IPPROTO_TCP
++	    || entry->ip.proto == IPPROTO_UDP
++	    || entry->ip.proto == IPPROTO_SCTP
++	    || entry->ip.proto == IPPROTO_DCCP
++	    || entry->ip.proto == IPPROTO_ICMP)
++		portok = 1;
++	else
++		portok = 0;
++	mr->range[0].min_ip = 0;
++
++	xtables_option_parse(cb);
++	switch (cb->entry->id) {
++	case O_TO_PORTS:
++		if (!portok)
++			xtables_error(PARAMETER_PROBLEM,
++				   "Need TCP, UDP, SCTP or DCCP with port specification");
++		parse_ports(cb->arg, mr);
++		break;
++	case O_RANDOM:
++		mr->range[0].flags |=  NF_NAT_RANGE_PROTO_RANDOM;
++		break;
++	case O_RANDOM_FULLY:
++		mr->range[0].flags |=  NF_NAT_RANGE_PROTO_RANDOM_FULLY;
++		break;
++	case O_MODE:
++		if (strcasecmp(cb->arg, "fullcone") == 0)
++			mr->range[0].min_ip = 1;
++		else if (strcasecmp(cb->arg, "symmetric") == 0)
++			mr->range[0].min_ip = 0;
++		else
++			xtables_error(PARAMETER_PROBLEM,
++				   "Unknown mode %s", cb->arg);
++		break;
++	}
++}
++
++static void
++MASQUERADE_print(const void *ip, const struct xt_entry_target *target,
++                 int numeric)
++{
++	const struct nf_nat_ipv4_multi_range_compat *mr = (const void *)target->data;
++	const struct nf_nat_ipv4_range *r = &mr->range[0];
++
++	if (r->flags & NF_NAT_RANGE_PROTO_SPECIFIED) {
++		printf(" masq ports: ");
++		printf("%hu", ntohs(r->min.tcp.port));
++		if (r->max.tcp.port != r->min.tcp.port)
++			printf("-%hu", ntohs(r->max.tcp.port));
++	}
++
++	if (r->flags & NF_NAT_RANGE_PROTO_RANDOM)
++		printf(" random");
++
++	if (r->flags & NF_NAT_RANGE_PROTO_RANDOM_FULLY)
++		printf(" random-fully");
++	if (r->min_ip == 1)
++		printf(" mode: fullcone");
++}
++
++static void
++MASQUERADE_save(const void *ip, const struct xt_entry_target *target)
++{
++	const struct nf_nat_ipv4_multi_range_compat *mr = (const void *)target->data;
++	const struct nf_nat_ipv4_range *r = &mr->range[0];
++
++	if (r->flags & NF_NAT_RANGE_PROTO_SPECIFIED) {
++		printf(" --to-ports %hu", ntohs(r->min.tcp.port));
++		if (r->max.tcp.port != r->min.tcp.port)
++			printf("-%hu", ntohs(r->max.tcp.port));
++	}
++
++	if (r->flags & NF_NAT_RANGE_PROTO_RANDOM)
++		printf(" --random");
++
++	if (r->flags & NF_NAT_RANGE_PROTO_RANDOM_FULLY)
++		printf(" --random-fully");
++	if (r->min_ip == 1)
++		printf(" --mode fullcone");
++}
++
++static int MASQUERADE_xlate(struct xt_xlate *xl,
++			    const struct xt_xlate_tg_params *params)
++{
++	const struct nf_nat_ipv4_multi_range_compat *mr =
++		(const void *)params->target->data;
++	const struct nf_nat_ipv4_range *r = &mr->range[0];
++
++	xt_xlate_add(xl, "masquerade");
++
++	if (r->flags & NF_NAT_RANGE_PROTO_SPECIFIED) {
++		xt_xlate_add(xl, " to :%hu", ntohs(r->min.tcp.port));
++		if (r->max.tcp.port != r->min.tcp.port)
++			xt_xlate_add(xl, "-%hu", ntohs(r->max.tcp.port));
++        }
++
++	xt_xlate_add(xl, " ");
++	if (r->flags & NF_NAT_RANGE_PROTO_RANDOM)
++		xt_xlate_add(xl, "random ");
++
++	return 1;
++}
++
++static struct xtables_target masquerade_tg_reg = {
++	.name		= "MASQUERADE",
++	.version	= XTABLES_VERSION,
++	.family		= NFPROTO_IPV4,
++	.size		= XT_ALIGN(sizeof(struct nf_nat_ipv4_multi_range_compat)),
++	.userspacesize	= XT_ALIGN(sizeof(struct nf_nat_ipv4_multi_range_compat)),
++	.help		= MASQUERADE_help,
++	.init		= MASQUERADE_init,
++	.x6_parse	= MASQUERADE_parse,
++	.print		= MASQUERADE_print,
++	.save		= MASQUERADE_save,
++	.x6_options	= MASQUERADE_opts,
++	.xlate		= MASQUERADE_xlate,
++};
++
++void _init(void)
++{
++	xtables_register_target(&masquerade_tg_reg);
++}
+--- a/extensions/libipt_REDIRECT.c
++++ b/extensions/libipt_REDIRECT.c
+@@ -0,0 +1,174 @@
++#include <stdio.h>
++#include <string.h>
++#include <stdlib.h>
++#include <xtables.h>
++#include <limits.h> /* INT_MAX in ip_tables.h */
++#include <linux/netfilter_ipv4/ip_tables.h>
++#include <linux/netfilter/nf_nat.h>
++
++enum {
++	O_TO_PORTS = 0,
++	O_RANDOM,
++	F_TO_PORTS = 1 << O_TO_PORTS,
++	F_RANDOM   = 1 << O_RANDOM,
++};
++
++static void REDIRECT_help(void)
++{
++	printf(
++"REDIRECT target options:\n"
++" --to-ports <port>[-<port>]\n"
++"				Port (range) to map to.\n"
++" [--random]\n");
++}
++
++static const struct xt_option_entry REDIRECT_opts[] = {
++	{.name = "to-ports", .id = O_TO_PORTS, .type = XTTYPE_STRING},
++	{.name = "random", .id = O_RANDOM, .type = XTTYPE_NONE},
++	XTOPT_TABLEEND,
++};
++
++static void REDIRECT_init(struct xt_entry_target *t)
++{
++	struct nf_nat_ipv4_multi_range_compat *mr = (struct nf_nat_ipv4_multi_range_compat *)t->data;
++
++	/* Actually, it's 0, but it's ignored at the moment. */
++	mr->rangesize = 1;
++}
++
++/* Parses ports */
++static void
++parse_ports(const char *arg, struct nf_nat_ipv4_multi_range_compat *mr)
++{
++	char *end = "";
++	unsigned int port, maxport;
++
++	mr->range[0].flags |= NF_NAT_RANGE_PROTO_SPECIFIED;
++
++	if (!xtables_strtoui(arg, &end, &port, 0, UINT16_MAX) &&
++	    (port = xtables_service_to_port(arg, NULL)) == (unsigned)-1)
++		xtables_param_act(XTF_BAD_VALUE, "REDIRECT", "--to-ports", arg);
++
++	switch (*end) {
++	case '\0':
++		mr->range[0].min.tcp.port
++			= mr->range[0].max.tcp.port
++			= htons(port);
++		return;
++	case '-':
++		if (!xtables_strtoui(end + 1, NULL, &maxport, 0, UINT16_MAX) &&
++		    (maxport = xtables_service_to_port(end + 1, NULL)) == (unsigned)-1)
++			break;
++
++		if (maxport < port)
++			break;
++
++		mr->range[0].min.tcp.port = htons(port);
++		mr->range[0].max.tcp.port = htons(maxport);
++		return;
++	default:
++		break;
++	}
++	xtables_param_act(XTF_BAD_VALUE, "REDIRECT", "--to-ports", arg);
++}
++
++static void REDIRECT_parse(struct xt_option_call *cb)
++{
++	const struct ipt_entry *entry = cb->xt_entry;
++	struct nf_nat_ipv4_multi_range_compat *mr = (void *)(*cb->target)->data;
++	int portok;
++
++	if (entry->ip.proto == IPPROTO_TCP
++	    || entry->ip.proto == IPPROTO_UDP
++	    || entry->ip.proto == IPPROTO_SCTP
++	    || entry->ip.proto == IPPROTO_DCCP
++	    || entry->ip.proto == IPPROTO_ICMP)
++		portok = 1;
++	else
++		portok = 0;
++
++	xtables_option_parse(cb);
++	switch (cb->entry->id) {
++	case O_TO_PORTS:
++		if (!portok)
++			xtables_error(PARAMETER_PROBLEM,
++				   "Need TCP, UDP, SCTP or DCCP with port specification");
++		parse_ports(cb->arg, mr);
++		if (cb->xflags & F_RANDOM)
++			mr->range[0].flags |= NF_NAT_RANGE_PROTO_RANDOM;
++		break;
++	case O_RANDOM:
++		if (cb->xflags & F_TO_PORTS)
++			mr->range[0].flags |= NF_NAT_RANGE_PROTO_RANDOM;
++		break;
++	}
++}
++
++static void REDIRECT_print(const void *ip, const struct xt_entry_target *target,
++                           int numeric)
++{
++	const struct nf_nat_ipv4_multi_range_compat *mr = (const void *)target->data;
++	const struct nf_nat_ipv4_range *r = &mr->range[0];
++
++	if (r->flags & NF_NAT_RANGE_PROTO_SPECIFIED) {
++		printf(" redir ports ");
++		printf("%hu", ntohs(r->min.tcp.port));
++		if (r->max.tcp.port != r->min.tcp.port)
++			printf("-%hu", ntohs(r->max.tcp.port));
++		if (mr->range[0].flags & NF_NAT_RANGE_PROTO_RANDOM)
++			printf(" random");
++	}
++}
++
++static void REDIRECT_save(const void *ip, const struct xt_entry_target *target)
++{
++	const struct nf_nat_ipv4_multi_range_compat *mr = (const void *)target->data;
++	const struct nf_nat_ipv4_range *r = &mr->range[0];
++
++	if (r->flags & NF_NAT_RANGE_PROTO_SPECIFIED) {
++		printf(" --to-ports ");
++		printf("%hu", ntohs(r->min.tcp.port));
++		if (r->max.tcp.port != r->min.tcp.port)
++			printf("-%hu", ntohs(r->max.tcp.port));
++		if (mr->range[0].flags & NF_NAT_RANGE_PROTO_RANDOM)
++			printf(" --random");
++	}
++}
++
++static int REDIRECT_xlate(struct xt_xlate *xl,
++			  const struct xt_xlate_tg_params *params)
++{
++	const struct nf_nat_ipv4_multi_range_compat *mr =
++		(const void *)params->target->data;
++	const struct nf_nat_ipv4_range *r = &mr->range[0];
++
++	if (r->flags & NF_NAT_RANGE_PROTO_SPECIFIED) {
++		xt_xlate_add(xl, "redirect to :%hu", ntohs(r->min.tcp.port));
++		if (r->max.tcp.port != r->min.tcp.port)
++			xt_xlate_add(xl, "-%hu ", ntohs(r->max.tcp.port));
++		if (mr->range[0].flags & NF_NAT_RANGE_PROTO_RANDOM)
++			xt_xlate_add(xl, " random ");
++	}
++
++	return 1;
++}
++
++static struct xtables_target redirect_tg_reg = {
++	.name		= "REDIRECT",
++	.version	= XTABLES_VERSION,
++	.family		= NFPROTO_IPV4,
++	.size		= XT_ALIGN(sizeof(struct nf_nat_ipv4_multi_range_compat)),
++	.userspacesize	= XT_ALIGN(sizeof(struct nf_nat_ipv4_multi_range_compat)),
++	.help		= REDIRECT_help,
++	.init		= REDIRECT_init,
++ 	.x6_parse	= REDIRECT_parse,
++	.print		= REDIRECT_print,
++	.save		= REDIRECT_save,
++	.x6_options	= REDIRECT_opts,
++	.xlate		= REDIRECT_xlate,
++};
++
++void _init(void)
++{
++	xtables_register_target(&redirect_tg_reg);
++}
+--- a/extensions/libipt_REDIRECT.t
++++ b/extensions/libipt_REDIRECT.t
+@@ -0,0 +1,6 @@
++:PREROUTING,OUTPUT
++*nat
++-p tcp -j REDIRECT --to-ports 42;=;OK
++-p udp -j REDIRECT --to-ports 42-1234;=;OK
++-p tcp -j REDIRECT --to-ports 42-1234 --random;=;OK
++-j REDIRECT --to-ports 42;;FAIL
+--- a/extensions/libipt_REDIRECT.txlate
++++ b/extensions/libipt_REDIRECT.txlate
+@@ -0,0 +1,5 @@
++iptables-translate -t nat -A prerouting -p tcp --dport 80 -j REDIRECT --to-ports 8080
++nft add rule ip nat prerouting tcp dport 80 counter redirect to :8080
++
++iptables-translate -t nat -A prerouting -p tcp --dport 80 -j REDIRECT --to-ports 8080 --random
++nft add rule ip nat prerouting tcp dport 80 counter redirect to :8080 random
+--- a/extensions/libipt_SNAT.c
++++ b/extensions/libipt_SNAT.c
+@@ -0,0 +1,325 @@
++#include <stdio.h>
++#include <netdb.h>
++#include <string.h>
++#include <stdlib.h>
++#include <xtables.h>
++#include <iptables.h>
++#include <limits.h> /* INT_MAX in ip_tables.h */
++#include <linux/netfilter_ipv4/ip_tables.h>
++#include <linux/netfilter/nf_nat.h>
++
++enum {
++	O_TO_SRC = 0,
++	O_RANDOM,
++	O_RANDOM_FULLY,
++	O_PERSISTENT,
++	O_X_TO_SRC,
++	F_TO_SRC       = 1 << O_TO_SRC,
++	F_RANDOM       = 1 << O_RANDOM,
++	F_RANDOM_FULLY = 1 << O_RANDOM_FULLY,
++	F_X_TO_SRC     = 1 << O_X_TO_SRC,
++};
++
++/* Source NAT data consists of a multi-range, indicating where to map
++   to. */
++struct ipt_natinfo
++{
++	struct xt_entry_target t;
++	struct nf_nat_ipv4_multi_range_compat mr;
++};
++
++static void SNAT_help(void)
++{
++	printf(
++"SNAT target options:\n"
++" --to-source [<ipaddr>[-<ipaddr>]][:port[-port]]\n"
++"				Address to map source to.\n"
++"[--random] [--random-fully] [--persistent]\n");
++}
++
++static const struct xt_option_entry SNAT_opts[] = {
++	{.name = "to-source", .id = O_TO_SRC, .type = XTTYPE_STRING,
++	 .flags = XTOPT_MAND | XTOPT_MULTI},
++	{.name = "random", .id = O_RANDOM, .type = XTTYPE_NONE},
++	{.name = "random-fully", .id = O_RANDOM_FULLY, .type = XTTYPE_NONE},
++	{.name = "persistent", .id = O_PERSISTENT, .type = XTTYPE_NONE},
++	XTOPT_TABLEEND,
++};
++
++static struct ipt_natinfo *
++append_range(struct ipt_natinfo *info, const struct nf_nat_ipv4_range *range)
++{
++	unsigned int size;
++
++	/* One rangesize already in struct ipt_natinfo */
++	size = XT_ALIGN(sizeof(*info) + info->mr.rangesize * sizeof(*range));
++
++	info = realloc(info, size);
++	if (!info)
++		xtables_error(OTHER_PROBLEM, "Out of memory\n");
++
++	info->t.u.target_size = size;
++	info->mr.range[info->mr.rangesize] = *range;
++	info->mr.rangesize++;
++
++	return info;
++}
++
++/* Ranges expected in network order. */
++static struct xt_entry_target *
++parse_to(const char *orig_arg, int portok, struct ipt_natinfo *info)
++{
++	struct nf_nat_ipv4_range range;
++	char *arg, *colon, *dash, *error;
++	const struct in_addr *ip;
++
++	arg = strdup(orig_arg);
++	if (arg == NULL)
++		xtables_error(RESOURCE_PROBLEM, "strdup");
++	memset(&range, 0, sizeof(range));
++	colon = strchr(arg, ':');
++
++	if (colon) {
++		int port;
++
++		if (!portok)
++			xtables_error(PARAMETER_PROBLEM,
++				   "Need TCP, UDP, SCTP or DCCP with port specification");
++
++		range.flags |= NF_NAT_RANGE_PROTO_SPECIFIED;
++
++		port = atoi(colon+1);
++		if (port <= 0 || port > 65535)
++			xtables_error(PARAMETER_PROBLEM,
++				   "Port `%s' not valid\n", colon+1);
++
++		error = strchr(colon+1, ':');
++		if (error)
++			xtables_error(PARAMETER_PROBLEM,
++				   "Invalid port:port syntax - use dash\n");
++
++		dash = strchr(colon, '-');
++		if (!dash) {
++			range.min.tcp.port
++				= range.max.tcp.port
++				= htons(port);
++		} else {
++			int maxport;
++
++			maxport = atoi(dash + 1);
++			if (maxport <= 0 || maxport > 65535)
++				xtables_error(PARAMETER_PROBLEM,
++					   "Port `%s' not valid\n", dash+1);
++			if (maxport < port)
++				/* People are stupid. */
++				xtables_error(PARAMETER_PROBLEM,
++					   "Port range `%s' funky\n", colon+1);
++			range.min.tcp.port = htons(port);
++			range.max.tcp.port = htons(maxport);
++		}
++		/* Starts with a colon? No IP info...*/
++		if (colon == arg) {
++			free(arg);
++			return &(append_range(info, &range)->t);
++		}
++		*colon = '\0';
++	}
++
++	range.flags |= NF_NAT_RANGE_MAP_IPS;
++	dash = strchr(arg, '-');
++	if (colon && dash && dash > colon)
++		dash = NULL;
++
++	if (dash)
++		*dash = '\0';
++
++	ip = xtables_numeric_to_ipaddr(arg);
++	if (!ip)
++		xtables_error(PARAMETER_PROBLEM, "Bad IP address \"%s\"\n",
++			   arg);
++	range.min_ip = ip->s_addr;
++	if (dash) {
++		ip = xtables_numeric_to_ipaddr(dash+1);
++		if (!ip)
++			xtables_error(PARAMETER_PROBLEM, "Bad IP address \"%s\"\n",
++				   dash+1);
++		range.max_ip = ip->s_addr;
++	} else
++		range.max_ip = range.min_ip;
++
++	free(arg);
++	return &(append_range(info, &range)->t);
++}
++
++static void SNAT_parse(struct xt_option_call *cb)
++{
++	const struct ipt_entry *entry = cb->xt_entry;
++	struct ipt_natinfo *info = (void *)(*cb->target);
++	int portok;
++
++	if (entry->ip.proto == IPPROTO_TCP
++	    || entry->ip.proto == IPPROTO_UDP
++	    || entry->ip.proto == IPPROTO_SCTP
++	    || entry->ip.proto == IPPROTO_DCCP
++	    || entry->ip.proto == IPPROTO_ICMP)
++		portok = 1;
++	else
++		portok = 0;
++
++	xtables_option_parse(cb);
++	switch (cb->entry->id) {
++	case O_TO_SRC:
++		if (cb->xflags & F_X_TO_SRC) {
++			if (!kernel_version)
++				get_kernel_version();
++			if (kernel_version > LINUX_VERSION(2, 6, 10))
++				xtables_error(PARAMETER_PROBLEM,
++					   "SNAT: Multiple --to-source not supported");
++		}
++		*cb->target = parse_to(cb->arg, portok, info);
++		cb->xflags |= F_X_TO_SRC;
++		break;
++	case O_PERSISTENT:
++		info->mr.range[0].flags |= NF_NAT_RANGE_PERSISTENT;
++		break;
++	}
++}
++
++static void SNAT_fcheck(struct xt_fcheck_call *cb)
++{
++	static const unsigned int f = F_TO_SRC | F_RANDOM;
++	static const unsigned int r = F_TO_SRC | F_RANDOM_FULLY;
++	struct nf_nat_ipv4_multi_range_compat *mr = cb->data;
++
++	if ((cb->xflags & f) == f)
++		mr->range[0].flags |= NF_NAT_RANGE_PROTO_RANDOM;
++	if ((cb->xflags & r) == r)
++		mr->range[0].flags |= NF_NAT_RANGE_PROTO_RANDOM_FULLY;
++}
++
++static void print_range(const struct nf_nat_ipv4_range *r)
++{
++	if (r->flags & NF_NAT_RANGE_MAP_IPS) {
++		struct in_addr a;
++
++		a.s_addr = r->min_ip;
++		printf("%s", xtables_ipaddr_to_numeric(&a));
++		if (r->max_ip != r->min_ip) {
++			a.s_addr = r->max_ip;
++			printf("-%s", xtables_ipaddr_to_numeric(&a));
++		}
++	}
++	if (r->flags & NF_NAT_RANGE_PROTO_SPECIFIED) {
++		printf(":");
++		printf("%hu", ntohs(r->min.tcp.port));
++		if (r->max.tcp.port != r->min.tcp.port)
++			printf("-%hu", ntohs(r->max.tcp.port));
++	}
++}
++
++static void SNAT_print(const void *ip, const struct xt_entry_target *target,
++                       int numeric)
++{
++	const struct ipt_natinfo *info = (const void *)target;
++	unsigned int i = 0;
++
++	printf(" to:");
++	for (i = 0; i < info->mr.rangesize; i++) {
++		print_range(&info->mr.range[i]);
++		if (info->mr.range[i].flags & NF_NAT_RANGE_PROTO_RANDOM)
++			printf(" random");
++		if (info->mr.range[i].flags & NF_NAT_RANGE_PROTO_RANDOM_FULLY)
++			printf(" random-fully");
++		if (info->mr.range[i].flags & NF_NAT_RANGE_PERSISTENT)
++			printf(" persistent");
++	}
++}
++
++static void SNAT_save(const void *ip, const struct xt_entry_target *target)
++{
++	const struct ipt_natinfo *info = (const void *)target;
++	unsigned int i = 0;
++
++	for (i = 0; i < info->mr.rangesize; i++) {
++		printf(" --to-source ");
++		print_range(&info->mr.range[i]);
++		if (info->mr.range[i].flags & NF_NAT_RANGE_PROTO_RANDOM)
++			printf(" --random");
++		if (info->mr.range[i].flags & NF_NAT_RANGE_PROTO_RANDOM_FULLY)
++			printf(" --random-fully");
++		if (info->mr.range[i].flags & NF_NAT_RANGE_PERSISTENT)
++			printf(" --persistent");
++	}
++}
++
++static void print_range_xlate(const struct nf_nat_ipv4_range *r,
++			      struct xt_xlate *xl)
++{
++	if (r->flags & NF_NAT_RANGE_MAP_IPS) {
++		struct in_addr a;
++
++		a.s_addr = r->min_ip;
++		xt_xlate_add(xl, "%s", xtables_ipaddr_to_numeric(&a));
++		if (r->max_ip != r->min_ip) {
++			a.s_addr = r->max_ip;
++			xt_xlate_add(xl, "-%s", xtables_ipaddr_to_numeric(&a));
++		}
++	}
++	if (r->flags & NF_NAT_RANGE_PROTO_SPECIFIED) {
++		xt_xlate_add(xl, ":");
++		xt_xlate_add(xl, "%hu", ntohs(r->min.tcp.port));
++		if (r->max.tcp.port != r->min.tcp.port)
++			xt_xlate_add(xl, "-%hu", ntohs(r->max.tcp.port));
++	}
++}
++
++static int SNAT_xlate(struct xt_xlate *xl,
++		      const struct xt_xlate_tg_params *params)
++{
++	const struct ipt_natinfo *info = (const void *)params->target;
++	unsigned int i = 0;
++	bool sep_need = false;
++	const char *sep = " ";
++
++	for (i = 0; i < info->mr.rangesize; i++) {
++		xt_xlate_add(xl, "snat to ");
++		print_range_xlate(&info->mr.range[i], xl);
++		if (info->mr.range[i].flags & NF_NAT_RANGE_PROTO_RANDOM) {
++			xt_xlate_add(xl, " random");
++			sep_need = true;
++		}
++		if (info->mr.range[i].flags & NF_NAT_RANGE_PROTO_RANDOM_FULLY) {
++			if (sep_need)
++				sep = ",";
++			xt_xlate_add(xl, "%sfully-random", sep);
++			sep_need = true;
++		}
++		if (info->mr.range[i].flags & NF_NAT_RANGE_PERSISTENT) {
++			if (sep_need)
++				sep = ",";
++			xt_xlate_add(xl, "%spersistent", sep);
++		}
++	}
++
++	return 1;
++}
++
++static struct xtables_target snat_tg_reg = {
++	.name		= "SNAT",
++	.version	= XTABLES_VERSION,
++	.family		= NFPROTO_IPV4,
++	.size		= XT_ALIGN(sizeof(struct nf_nat_ipv4_multi_range_compat)),
++	.userspacesize	= XT_ALIGN(sizeof(struct nf_nat_ipv4_multi_range_compat)),
++	.help		= SNAT_help,
++	.x6_parse	= SNAT_parse,
++	.x6_fcheck	= SNAT_fcheck,
++	.print		= SNAT_print,
++	.save		= SNAT_save,
++	.x6_options	= SNAT_opts,
++	.xlate		= SNAT_xlate,
++};
++
++void _init(void)
++{
++	xtables_register_target(&snat_tg_reg);
++}
+--- a/extensions/libipt_TTL.c
++++ b/extensions/libipt_TTL.c
+@@ -1,126 +1,165 @@
+-/* Shared library add-on to iptables for the TTL target
++/* Shared library add-on to iptables to add TTL matching support 
+  * (C) 2000 by Harald Welte <laforge@gnumonks.org>
+  *
+- * This program is distributed under the terms of GNU GPL
+- */
++ * This program is released under the terms of GNU GPL */
+ #include <stdio.h>
+ #include <xtables.h>
+-#include <linux/netfilter_ipv4/ipt_TTL.h>
++#include <linux/netfilter_ipv4/ipt_ttl.h>
+ 
+ enum {
+-	O_TTL_SET = 0,
+-	O_TTL_INC,
+-	O_TTL_DEC,
+-	F_TTL_SET = 1 << O_TTL_SET,
+-	F_TTL_INC = 1 << O_TTL_INC,
+-	F_TTL_DEC = 1 << O_TTL_DEC,
+-	F_ANY     = F_TTL_SET | F_TTL_INC | F_TTL_DEC,
++	O_TTL_EQ = 0,
++	O_TTL_LT,
++	O_TTL_GT,
++	F_TTL_EQ = 1 << O_TTL_EQ,
++	F_TTL_LT = 1 << O_TTL_LT,
++	F_TTL_GT = 1 << O_TTL_GT,
++	F_ANY    = F_TTL_EQ | F_TTL_LT | F_TTL_GT,
+ };
+ 
+-#define s struct ipt_TTL_info
+-static const struct xt_option_entry TTL_opts[] = {
+-	{.name = "ttl-set", .type = XTTYPE_UINT8, .id = O_TTL_SET,
+-	 .excl = F_ANY, .flags = XTOPT_PUT, XTOPT_POINTER(s, ttl)},
+-	{.name = "ttl-dec", .type = XTTYPE_UINT8, .id = O_TTL_DEC,
+-	 .excl = F_ANY, .flags = XTOPT_PUT, XTOPT_POINTER(s, ttl),
+-	 .min = 1},
+-	{.name = "ttl-inc", .type = XTTYPE_UINT8, .id = O_TTL_INC,
+-	 .excl = F_ANY, .flags = XTOPT_PUT, XTOPT_POINTER(s, ttl),
+-	 .min = 1},
+-	XTOPT_TABLEEND,
+-};
+-#undef s
+-
+-static void TTL_help(void)
++static void ttl_help(void)
+ {
+ 	printf(
+-"TTL target options\n"
+-"  --ttl-set value		Set TTL to <value 0-255>\n"
+-"  --ttl-dec value		Decrement TTL by <value 1-255>\n"
+-"  --ttl-inc value		Increment TTL by <value 1-255>\n");
++"ttl match options:\n"
++"[!] --ttl-eq value	Match time to live value\n"
++"  --ttl-lt value	Match TTL < value\n"
++"  --ttl-gt value	Match TTL > value\n");
+ }
+ 
+-static void TTL_parse(struct xt_option_call *cb)
++static void ttl_parse(struct xt_option_call *cb)
+ {
+-	struct ipt_TTL_info *info = cb->data;
++	struct ipt_ttl_info *info = cb->data;
+ 
+ 	xtables_option_parse(cb);
+ 	switch (cb->entry->id) {
+-	case O_TTL_SET:
+-		info->mode = IPT_TTL_SET;
++	case O_TTL_EQ:
++		info->mode = cb->invert ? IPT_TTL_NE : IPT_TTL_EQ;
+ 		break;
+-	case O_TTL_DEC:
+-		info->mode = IPT_TTL_DEC;
++	case O_TTL_LT:
++		info->mode = IPT_TTL_LT;
+ 		break;
+-	case O_TTL_INC:
+-		info->mode = IPT_TTL_INC;
++	case O_TTL_GT:
++		info->mode = IPT_TTL_GT;
+ 		break;
+ 	}
+ }
+ 
+-static void TTL_check(struct xt_fcheck_call *cb)
++static void ttl_check(struct xt_fcheck_call *cb)
+ {
+ 	if (!(cb->xflags & F_ANY))
+ 		xtables_error(PARAMETER_PROBLEM,
+-				"TTL: You must specify an action");
++			"TTL match: You must specify one of "
++			"`--ttl-eq', `--ttl-lt', `--ttl-gt");
+ }
+ 
+-static void TTL_save(const void *ip, const struct xt_entry_target *target)
++static void ttl_print(const void *ip, const struct xt_entry_match *match,
++                      int numeric)
+ {
+-	const struct ipt_TTL_info *info = 
+-		(struct ipt_TTL_info *) target->data;
++	const struct ipt_ttl_info *info = 
++		(struct ipt_ttl_info *) match->data;
+ 
++	printf(" TTL match ");
+ 	switch (info->mode) {
+-		case IPT_TTL_SET:
+-			printf(" --ttl-set");
++		case IPT_TTL_EQ:
++			printf("TTL ==");
+ 			break;
+-		case IPT_TTL_DEC:
+-			printf(" --ttl-dec");
++		case IPT_TTL_NE:
++			printf("TTL !=");
+ 			break;
+-
+-		case IPT_TTL_INC:
+-			printf(" --ttl-inc");
++		case IPT_TTL_LT:
++			printf("TTL <");
++			break;
++		case IPT_TTL_GT:
++			printf("TTL >");
+ 			break;
+ 	}
+ 	printf(" %u", info->ttl);
+ }
+ 
+-static void TTL_print(const void *ip, const struct xt_entry_target *target,
+-                      int numeric)
++static void ttl_save(const void *ip, const struct xt_entry_match *match)
+ {
+-	const struct ipt_TTL_info *info =
+-		(struct ipt_TTL_info *) target->data;
++	const struct ipt_ttl_info *info =
++		(struct ipt_ttl_info *) match->data;
+ 
+-	printf(" TTL ");
+ 	switch (info->mode) {
+-		case IPT_TTL_SET:
+-			printf("set to");
++		case IPT_TTL_EQ:
++			printf(" --ttl-eq");
++			break;
++		case IPT_TTL_NE:
++			printf(" ! --ttl-eq");
+ 			break;
+-		case IPT_TTL_DEC:
+-			printf("decrement by");
++		case IPT_TTL_LT:
++			printf(" --ttl-lt");
+ 			break;
+-		case IPT_TTL_INC:
+-			printf("increment by");
++		case IPT_TTL_GT:
++			printf(" --ttl-gt");
++			break;
++		default:
++			/* error */
+ 			break;
+ 	}
+ 	printf(" %u", info->ttl);
+ }
+ 
+-static struct xtables_target ttl_tg_reg = {
+-	.name		= "TTL",
++static int ttl_xlate(struct xt_xlate *xl,
++		     const struct xt_xlate_mt_params *params)
++{
++	const struct ipt_ttl_info *info =
++		(struct ipt_ttl_info *) params->match->data;
++
++	switch (info->mode) {
++		case IPT_TTL_EQ:
++			xt_xlate_add(xl, "ip ttl");
++			break;
++		case IPT_TTL_NE:
++			xt_xlate_add(xl, "ip ttl !=");
++			break;
++		case IPT_TTL_LT:
++			xt_xlate_add(xl, "ip ttl lt");
++			break;
++		case IPT_TTL_GT:
++			xt_xlate_add(xl, "ip ttl gt");
++			break;
++		default:
++			/* Should not happen. */
++			return 0;
++	}
++
++	xt_xlate_add(xl, " %u", info->ttl);
++
++	return 1;
++}
++
++#define s struct ipt_ttl_info
++static const struct xt_option_entry ttl_opts[] = {
++	{.name = "ttl-lt", .id = O_TTL_LT, .excl = F_ANY, .type = XTTYPE_UINT8,
++	 .flags = XTOPT_PUT, XTOPT_POINTER(s, ttl)},
++	{.name = "ttl-gt", .id = O_TTL_GT, .excl = F_ANY, .type = XTTYPE_UINT8,
++	 .flags = XTOPT_PUT, XTOPT_POINTER(s, ttl)},
++	{.name = "ttl-eq", .id = O_TTL_EQ, .excl = F_ANY, .type = XTTYPE_UINT8,
++	 .flags = XTOPT_INVERT | XTOPT_PUT, XTOPT_POINTER(s, ttl)},
++	{.name = "ttl", .id = O_TTL_EQ, .excl = F_ANY, .type = XTTYPE_UINT8,
++	 .flags = XTOPT_PUT, XTOPT_POINTER(s, ttl)},
++	XTOPT_TABLEEND,
++};
++#undef s
++
++static struct xtables_match ttl_mt_reg = {
++	.name		= "ttl",
+ 	.version	= XTABLES_VERSION,
+ 	.family		= NFPROTO_IPV4,
+-	.size		= XT_ALIGN(sizeof(struct ipt_TTL_info)),
+-	.userspacesize	= XT_ALIGN(sizeof(struct ipt_TTL_info)),
+-	.help		= TTL_help,
+-	.print		= TTL_print,
+-	.save		= TTL_save,
+-	.x6_parse	= TTL_parse,
+-	.x6_fcheck	= TTL_check,
+-	.x6_options	= TTL_opts,
++	.size		= XT_ALIGN(sizeof(struct ipt_ttl_info)),
++	.userspacesize	= XT_ALIGN(sizeof(struct ipt_ttl_info)),
++	.help		= ttl_help,
++	.print		= ttl_print,
++	.save		= ttl_save,
++	.x6_parse	= ttl_parse,
++	.x6_fcheck	= ttl_check,
++	.x6_options	= ttl_opts,
++	.xlate		= ttl_xlate,
+ };
+ 
+-void _init(void)
++
++void _init(void) 
+ {
+-	xtables_register_target(&ttl_tg_reg);
++	xtables_register_match(&ttl_mt_reg);
+ }
+--- a/extensions/libipt_TTL.man
++++ b/extensions/libipt_TTL.man
+@@ -1,19 +1,10 @@
+-This is used to modify the IPv4 TTL header field.  The TTL field determines
+-how many hops (routers) a packet can traverse until it's time to live is
+-exceeded.
+-.PP
+-Setting or incrementing the TTL field can potentially be very dangerous,
+-so it should be avoided at any cost. This target is only valid in
+-.B mangle
+-table.
+-.PP
+-.B Don't ever set or increment the value on packets that leave your local network!
++This module matches the time to live field in the IP header.
+ .TP
+-\fB\-\-ttl\-set\fP \fIvalue\fP
+-Set the TTL value to `value'.
++[\fB!\fP] \fB\-\-ttl\-eq\fP \fIttl\fP
++Matches the given TTL value.
+ .TP
+-\fB\-\-ttl\-dec\fP \fIvalue\fP
+-Decrement the TTL value `value' times.
++\fB\-\-ttl\-gt\fP \fIttl\fP
++Matches if TTL is greater than the given TTL value.
+ .TP
+-\fB\-\-ttl\-inc\fP \fIvalue\fP
+-Increment the TTL value `value' times.
++\fB\-\-ttl\-lt\fP \fIttl\fP
++Matches if TTL is less than the given TTL value.
+--- a/extensions/libipt_TTL.t
++++ b/extensions/libipt_TTL.t
+@@ -1,10 +1,15 @@
+-:PREROUTING,INPUT,FORWARD,OUTPUT,POSTROUTING
+-*mangle
+--j TTL --ttl-set 42;=;OK
+--j TTL --ttl-inc 1;=;OK
+--j TTL --ttl-dec 1;=;OK
+--j TTL --ttl-set 256;;FAIL
+--j TTL --ttl-inc 0;;FAIL
+--j TTL --ttl-dec 0;;FAIL
+--j TTL --ttl-dec 1 --ttl-inc 1;;FAIL
+--j TTL --ttl-set --ttl-inc 1;;FAIL
++:INPUT,FORWARD,OUTPUT
++-m ttl --ttl-eq 0;=;OK
++-m ttl --ttl-eq 255;=;OK
++-m ttl ! --ttl-eq 0;=;OK
++-m ttl ! --ttl-eq 255;=;OK
++-m ttl --ttl-gt 0;=;OK
++# not possible have anything greater than 255, TTL is 8-bit long
++# ERROR: should fail: iptables -A INPUT -m ttl --ttl-gt 255
++## -m ttl --ttl-gt 255;;FAIL
++# not possible have anything below 0
++# ERROR: should fail: iptables -A INPUT -m ttl --ttl-lt 0
++## -m ttl --ttl-lt 0;;FAIL
++-m ttl --ttl-eq 256;;FAIL
++-m ttl --ttl-eq -1;;FAIL
++-m ttl;;FAIL
+--- a/extensions/libxt_CONNMARK.c
++++ b/extensions/libxt_CONNMARK.c
+@@ -22,6 +22,7 @@
+ #include <stdbool.h>
+ #include <stdint.h>
+ #include <stdio.h>
++#include <strings.h>
+ #include <xtables.h>
+ #include <linux/netfilter/xt_CONNMARK.h>
+ 
+@@ -32,6 +33,11 @@
+ };
+ 
+ enum {
++	D_SHIFT_LEFT = 0,
++	D_SHIFT_RIGHT,
++};
++
++enum {
+ 	O_SET_MARK = 0,
+ 	O_SAVE_MARK,
+ 	O_RESTORE_MARK,
+@@ -44,6 +50,7 @@
+ 	O_CTMASK,
+ 	O_NFMASK,
+ 	O_MASK,
++	O_DSCP_MARK,
+ 	F_SET_MARK         = 1 << O_SET_MARK,
+ 	F_SAVE_MARK        = 1 << O_SAVE_MARK,
+ 	F_RESTORE_MARK     = 1 << O_RESTORE_MARK,
+@@ -56,8 +63,10 @@
+ 	F_CTMASK           = 1 << O_CTMASK,
+ 	F_NFMASK           = 1 << O_NFMASK,
+ 	F_MASK             = 1 << O_MASK,
++	F_DSCP_MARK	   = 1 << O_DSCP_MARK,
+ 	F_OP_ANY           = F_SET_MARK | F_SAVE_MARK | F_RESTORE_MARK |
+-	                     F_AND_MARK | F_OR_MARK | F_XOR_MARK | F_SET_XMARK,
++	                     F_AND_MARK | F_OR_MARK | F_XOR_MARK | F_SET_XMARK |
++			     F_DSCP_MARK,
+ };
+ 
+ static const char *const xt_connmark_shift_ops[] = {
+@@ -109,6 +118,8 @@
+ 	 .excl = F_MASK, .flags = XTOPT_PUT, XTOPT_POINTER(s, nfmask)},
+ 	{.name = "mask", .id = O_MASK, .type = XTTYPE_UINT32,
+ 	 .excl = F_CTMASK | F_NFMASK},
++	{.name = "set-dscpmark", .id = O_DSCP_MARK, .type = XTTYPE_MARKMASK32,
++	 .excl = F_OP_ANY},
+ 	XTOPT_TABLEEND,
+ };
+ #undef s
+@@ -143,6 +154,38 @@
+ };
+ #undef s
+ 
++#define s struct xt_connmark_tginfo3
++static const struct xt_option_entry connmark_tg_opts_v3[] = {
++	{.name = "set-xmark", .id = O_SET_XMARK, .type = XTTYPE_MARKMASK32,
++	 .excl = F_OP_ANY},
++	{.name = "set-mark", .id = O_SET_MARK, .type = XTTYPE_MARKMASK32,
++	 .excl = F_OP_ANY},
++	{.name = "and-mark", .id = O_AND_MARK, .type = XTTYPE_UINT32,
++	 .excl = F_OP_ANY},
++	{.name = "or-mark", .id = O_OR_MARK, .type = XTTYPE_UINT32,
++	 .excl = F_OP_ANY},
++	{.name = "xor-mark", .id = O_XOR_MARK, .type = XTTYPE_UINT32,
++	 .excl = F_OP_ANY},
++	{.name = "save-mark", .id = O_SAVE_MARK, .type = XTTYPE_NONE,
++	 .excl = F_OP_ANY},
++	{.name = "restore-mark", .id = O_RESTORE_MARK, .type = XTTYPE_NONE,
++	 .excl = F_OP_ANY},
++	{.name = "left-shift-mark", .id = O_LEFT_SHIFT_MARK, .type = XTTYPE_UINT8,
++	 .min = 0, .max = 32},
++	{.name = "right-shift-mark", .id = O_RIGHT_SHIFT_MARK, .type = XTTYPE_UINT8,
++	 .min = 0, .max = 32},
++	{.name = "ctmask", .id = O_CTMASK, .type = XTTYPE_UINT32,
++	 .excl = F_MASK, .flags = XTOPT_PUT, XTOPT_POINTER(s, ctmask)},
++	{.name = "nfmask", .id = O_NFMASK, .type = XTTYPE_UINT32,
++	 .excl = F_MASK, .flags = XTOPT_PUT, XTOPT_POINTER(s, nfmask)},
++	{.name = "mask", .id = O_MASK, .type = XTTYPE_UINT32,
++	 .excl = F_CTMASK | F_NFMASK},
++	{.name = "set-dscpmark", .id = O_DSCP_MARK, .type = XTTYPE_MARKMASK32,
++	 .excl = F_OP_ANY},
++	XTOPT_TABLEEND,
++};
++#undef s
++
+ static void connmark_tg_help(void)
+ {
+ 	printf(
+@@ -170,6 +213,15 @@
+ );
+ }
+ 
++static void connmark_tg_help_v3(void)
++{
++	connmark_tg_help_v2();
++	printf(
++"  --set-dscpmark value/mask        Save DSCP to conntrack mark value\n"
++);
++}
++
++
+ static void connmark_tg_init(struct xt_entry_target *target)
+ {
+ 	struct xt_connmark_tginfo1 *info = (void *)target->data;
+@@ -194,6 +246,16 @@
+ 	info->shift_bits = 0;
+ }
+ 
++static void connmark_tg_init_v3(struct xt_entry_target *target)
++{
++	struct xt_connmark_tginfo3 *info;
++
++	connmark_tg_init_v2(target);
++	info = (void *)target->data;
++
++	info->func = 0;
++}
++
+ static void CONNMARK_parse(struct xt_option_call *cb)
+ {
+ 	struct xt_connmark_target_info *markinfo = cb->data;
+@@ -248,6 +310,23 @@
+ 		info->ctmark = cb->val.u32;
+ 		info->ctmask = 0;
+ 		break;
++	case O_DSCP_MARK:
++/* we sneaky sneaky this.  nfmask isn't used by the set mark functionality
++ * and by default is set to uint32max.  We can use the top bit as a flag
++ * that we're in DSCP_MARK submode of SET_MARK, if set then it's normal
++ * if unset then we're in DSCP_MARK
++ */
++		info->mode   = XT_CONNMARK_SET;
++		info->ctmark = cb->val.mark;
++		info->ctmask = cb->val.mask;
++		info->nfmask = info->ctmark ? ffs(info->ctmark) - 1 : 0;
++		/* need 6 contiguous bits */
++		if ((~0 & (info->ctmark >> info->nfmask)) != 0x3f)
++			xtables_error(PARAMETER_PROBLEM,
++				"CONNMARK set-dscpmark: need 6 contiguous dscpmask bits");
++		if (info->ctmark & info->ctmask)
++			xtables_error(PARAMETER_PROBLEM,
++				"CONNMARK set-dscpmark: dscpmask/statemask bits overlap");
+ 	case O_SAVE_MARK:
+ 		info->mode = XT_CONNMARK_SAVE;
+ 		break;
+@@ -315,6 +394,78 @@
+ 	}
+ }
+ 
++static void connmark_tg_parse_v3(struct xt_option_call *cb)
++{
++	struct xt_connmark_tginfo3 *info = cb->data;
++
++	xtables_option_parse(cb);
++	switch (cb->entry->id) {
++	case O_SET_XMARK:
++		info->mode   = XT_CONNMARK_SET;
++		info->func   = XT_CONNMARK_VALUE;
++		info->ctmark = cb->val.mark;
++		info->ctmask = cb->val.mask;
++		break;
++	case O_SET_MARK:
++		info->mode   = XT_CONNMARK_SET;
++		info->func   = XT_CONNMARK_VALUE;
++		info->ctmark = cb->val.mark;
++		info->ctmask = cb->val.mark | cb->val.mask;
++		break;
++	case O_AND_MARK:
++		info->mode   = XT_CONNMARK_SET;
++		info->func   = XT_CONNMARK_VALUE;
++		info->ctmark = 0;
++		info->ctmask = ~cb->val.u32;
++		break;
++	case O_OR_MARK:
++		info->mode   = XT_CONNMARK_SET;
++		info->func   = XT_CONNMARK_VALUE;
++		info->ctmark = cb->val.u32;
++		info->ctmask = cb->val.u32;
++		break;
++	case O_XOR_MARK:
++		info->mode   = XT_CONNMARK_SET;
++		info->func   = XT_CONNMARK_VALUE;
++		info->ctmark = cb->val.u32;
++		info->ctmask = 0;
++		break;
++	case O_DSCP_MARK:
++		info->mode   = XT_CONNMARK_SET;
++		info->func   = XT_CONNMARK_DSCP;
++		info->ctmark = cb->val.mark;
++		info->ctmask = cb->val.mask;
++		info->shift_bits = info->ctmark ? ffs(info->ctmark) - 1 : 0;
++		/* need 6 contiguous bits */
++		if ((~0 & (info->ctmark >> info->shift_bits)) != 0x3f)
++			xtables_error(PARAMETER_PROBLEM,
++				"CONNMARK set-dscpmark: need 6 contiguous dscpmask bits");
++		if (info->ctmark & info->ctmask)
++			xtables_error(PARAMETER_PROBLEM,
++				"CONNMARK set-dscpmark: dscpmask/statemask bits overlap");
++		break;
++	case O_SAVE_MARK:
++		info->mode = XT_CONNMARK_SAVE;
++		break;
++	case O_RESTORE_MARK:
++		info->mode = XT_CONNMARK_RESTORE;
++		break;
++	case O_MASK:
++		info->nfmask = info->ctmask = cb->val.u32;
++		break;
++	case O_LEFT_SHIFT_MARK:
++		info->shift_dir = D_SHIFT_LEFT;
++		info->shift_bits = cb->val.u8;
++		break;
++	case O_RIGHT_SHIFT_MARK:
++		info->shift_dir = D_SHIFT_RIGHT;
++		info->shift_bits = cb->val.u8;
++		break;
++	default:
++		break;
++	}
++}
++
+ static void connmark_tg_check(struct xt_fcheck_call *cb)
+ {
+ 	if (!(cb->xflags & F_OP_ANY))
+@@ -458,6 +609,65 @@
+ 	}
+ }
+ 
++static void
++connmark_tg_print_v3(const void *ip, const struct xt_entry_target *target,
++                  int numeric)
++{
++	const struct xt_connmark_tginfo3 *info = (const void *)target->data;
++	const char *shift_op = xt_connmark_shift_ops[info->shift_dir];
++
++	switch (info->mode) {
++	case XT_CONNMARK_SET:
++		if (info->func & XT_CONNMARK_DSCP) {
++			printf(" CONNMARK DSCP 0x%x/0x%x",
++			       info->ctmark, info->ctmask);
++		}
++		if (info->func & XT_CONNMARK_VALUE) {
++			if (info->ctmark == 0)
++				printf(" CONNMARK and 0x%x",
++				       (unsigned int)(uint32_t)~info->ctmask);
++			else if (info->ctmark == info->ctmask)
++				printf(" CONNMARK or 0x%x", info->ctmark);
++			else if (info->ctmask == 0)
++				printf(" CONNMARK xor 0x%x", info->ctmark);
++			else if (info->ctmask == 0xFFFFFFFFU)
++				printf(" CONNMARK set 0x%x", info->ctmark);
++			else
++				printf(" CONNMARK xset 0x%x/0x%x",
++				       info->ctmark, info->ctmask);
++		}
++		break;
++	case XT_CONNMARK_SAVE:
++		if (info->nfmask == UINT32_MAX && info->ctmask == UINT32_MAX)
++			printf(" CONNMARK save");
++		else if (info->nfmask == info->ctmask)
++			printf(" CONNMARK save mask 0x%x", info->nfmask);
++		else
++			printf(" CONNMARK save nfmask 0x%x ctmask ~0x%x",
++			       info->nfmask, info->ctmask);
++		break;
++	case XT_CONNMARK_RESTORE:
++		if (info->ctmask == UINT32_MAX && info->nfmask == UINT32_MAX)
++			printf(" CONNMARK restore");
++		else if (info->ctmask == info->nfmask)
++			printf(" CONNMARK restore mask 0x%x", info->ctmask);
++		else
++			printf(" CONNMARK restore ctmask 0x%x nfmask ~0x%x",
++			       info->ctmask, info->nfmask);
++		break;
++
++	default:
++		printf(" ERROR: UNKNOWN CONNMARK MODE");
++		break;
++	}
++
++	if (info->mode <= XT_CONNMARK_RESTORE &&
++	    !(info->mode == XT_CONNMARK_SET && info->func == XT_CONNMARK_DSCP) &&
++	    info->shift_bits != 0) {
++		printf(" %s %u", shift_op, info->shift_bits);
++	}
++}
++
+ static void CONNMARK_save(const void *ip, const struct xt_entry_target *target)
+ {
+ 	const struct xt_connmark_target_info *markinfo =
+@@ -543,6 +753,38 @@
+ 	}
+ }
+ 
++static void
++connmark_tg_save_v3(const void *ip, const struct xt_entry_target *target)
++{
++	const struct xt_connmark_tginfo3 *info = (const void *)target->data;
++	const char *shift_op = xt_connmark_shift_ops[info->shift_dir];
++
++	switch (info->mode) {
++	case XT_CONNMARK_SET:
++		if (info->func & XT_CONNMARK_VALUE)
++			printf(" --set-xmark 0x%x/0x%x", info->ctmark, info->ctmask);
++		if (info->func & XT_CONNMARK_DSCP)
++			printf(" --set-dscpmark 0x%x/0x%x", info->ctmark, info->ctmask);
++		break;
++	case XT_CONNMARK_SAVE:
++		printf(" --save-mark --nfmask 0x%x --ctmask 0x%x",
++		       info->nfmask, info->ctmask);
++		break;
++	case XT_CONNMARK_RESTORE:
++		printf(" --restore-mark --nfmask 0x%x --ctmask 0x%x",
++		       info->nfmask, info->ctmask);
++		break;
++	default:
++		printf(" ERROR: UNKNOWN CONNMARK MODE");
++		break;
++	}
++	if (info->mode <= XT_CONNMARK_RESTORE &&
++	    !(info->mode == XT_CONNMARK_SET && info->func == XT_CONNMARK_DSCP) &&
++	    info->shift_bits != 0) {
++		printf(" --%s %u", shift_op, info->shift_bits);
++	}
++}
++
+ static int connmark_tg_xlate(struct xt_xlate *xl,
+ 			     const struct xt_xlate_tg_params *params)
+ {
+@@ -590,11 +832,11 @@
+ {
+ 	const struct xt_connmark_tginfo2 *info =
+ 		(const void *)params->target->data;
+-	const char *braces = info->shift_bits ? "( " : "";
++	const char *shift_op = xt_connmark_shift_ops[info->shift_dir];
+ 
+ 	switch (info->mode) {
+ 	case XT_CONNMARK_SET:
+-		xt_xlate_add(xl, "ct mark set %s", braces);
++		xt_xlate_add(xl, "ct mark set ");
+ 		if (info->ctmask == 0xFFFFFFFFU)
+ 			xt_xlate_add(xl, "0x%x ", info->ctmark);
+ 		else if (info->ctmark == 0)
+@@ -610,35 +852,90 @@
+ 				     info->ctmark, ~info->ctmask);
+ 		break;
+ 	case XT_CONNMARK_SAVE:
+-		xt_xlate_add(xl, "ct mark set %smark", braces);
++		xt_xlate_add(xl, "ct mark set mark");
+ 		if (!(info->nfmask == UINT32_MAX &&
+ 		    info->ctmask == UINT32_MAX)) {
+ 			if (info->nfmask == info->ctmask)
+ 				xt_xlate_add(xl, " and 0x%x", info->nfmask);
+-			else
+-				return 0;
+ 		}
+ 		break;
+ 	case XT_CONNMARK_RESTORE:
+-		xt_xlate_add(xl, "meta mark set %sct mark", braces);
++		xt_xlate_add(xl, "meta mark set ct mark");
+ 		if (!(info->nfmask == UINT32_MAX &&
+ 		    info->ctmask == UINT32_MAX)) {
+ 			if (info->nfmask == info->ctmask)
+ 				xt_xlate_add(xl, " and 0x%x", info->nfmask);
++		}
++		break;
++	}
++
++	if (info->mode <= XT_CONNMARK_RESTORE &&
++	    info->shift_bits != 0) {
++		xt_xlate_add(xl, " %s %u", shift_op, info->shift_bits);
++	}
++
++	return 1;
++}
++
++static int connmark_tg_xlate_v3(struct xt_xlate *xl,
++			     const struct xt_xlate_tg_params *params)
++{
++	const struct xt_connmark_tginfo3 *info =
++		(const void *)params->target->data;
++	const char *shift_op = xt_connmark_shift_ops[info->shift_dir];
++
++	switch (info->mode) {
++	case XT_CONNMARK_SET:
++		xt_xlate_add(xl, "ct mark set ");
++		if (info->func & XT_CONNMARK_VALUE) {
++			if (info->ctmask == 0xFFFFFFFFU)
++				xt_xlate_add(xl, "0x%x ", info->ctmark);
++			else if (info->ctmark == 0)
++				xt_xlate_add(xl, "ct mark and 0x%x", ~info->ctmask);
++			else if (info->ctmark == info->ctmask)
++				xt_xlate_add(xl, "ct mark or 0x%x",
++					     info->ctmark);
++			else if (info->ctmask == 0)
++				xt_xlate_add(xl, "ct mark xor 0x%x",
++					     info->ctmark);
+ 			else
+-				return 0;
++				xt_xlate_add(xl, "ct mark xor 0x%x and 0x%x",
++					     info->ctmark, ~info->ctmask);
++		}
++		if (info->func & XT_CONNMARK_DSCP) {
++/* FIXME the nftables syntax would go here if only we knew what it was */
++			xt_xlate_add(xl, "ct mark set typeof(ct mark) ip dscp "
++					 "<< %u or 0x%x", info->shift_bits,
++					     info->ctmask);
++		}
++		break;
++	case XT_CONNMARK_SAVE:
++		xt_xlate_add(xl, "ct mark set mark");
++		if (!(info->nfmask == UINT32_MAX &&
++		    info->ctmask == UINT32_MAX)) {
++			if (info->nfmask == info->ctmask)
++				xt_xlate_add(xl, " and 0x%x", info->nfmask);
++		}
++		break;
++	case XT_CONNMARK_RESTORE:
++		xt_xlate_add(xl, "meta mark set ct mark");
++		if (!(info->nfmask == UINT32_MAX &&
++		    info->ctmask == UINT32_MAX)) {
++			if (info->nfmask == info->ctmask)
++				xt_xlate_add(xl, " and 0x%x", info->nfmask);
+ 		}
+ 		break;
+ 	}
+ 
+ 	if (info->mode <= XT_CONNMARK_RESTORE &&
++	    !(info->mode == XT_CONNMARK_SET && info->func == XT_CONNMARK_DSCP) &&
+ 	    info->shift_bits != 0) {
+-		xt_xlate_add(xl, " ) %s %u",
+-			     info->shift_dir ? ">>" : "<<", info->shift_bits);
++		xt_xlate_add(xl, " %s %u", shift_op, info->shift_bits);
+ 	}
+ 
+ 	return 1;
+ }
++
+ static struct xtables_target connmark_tg_reg[] = {
+ 	{
+ 		.family        = NFPROTO_UNSPEC,
+@@ -687,6 +984,22 @@
+ 		.x6_options    = connmark_tg_opts_v2,
+ 		.xlate         = connmark_tg_xlate_v2,
+ 	},
++	{
++		.version       = XTABLES_VERSION,
++		.name          = "CONNMARK",
++		.revision      = 3,
++		.family        = NFPROTO_UNSPEC,
++		.size          = XT_ALIGN(sizeof(struct xt_connmark_tginfo3)),
++		.userspacesize = XT_ALIGN(sizeof(struct xt_connmark_tginfo3)),
++		.help          = connmark_tg_help_v3,
++		.init          = connmark_tg_init_v3,
++		.print         = connmark_tg_print_v3,
++		.save          = connmark_tg_save_v3,
++		.x6_parse      = connmark_tg_parse_v3,
++		.x6_fcheck     = connmark_tg_check,
++		.x6_options    = connmark_tg_opts_v3,
++		.xlate         = connmark_tg_xlate_v3,
++	},
+ };
+ 
+ void _init(void)
+--- a/extensions/libxt_CONNMARK.man
++++ b/extensions/libxt_CONNMARK.man
+@@ -1,53 +1,6 @@
+-This module sets the netfilter mark value associated with a connection. The
+-mark is 32 bits wide.
++This module matches the netfilter mark field associated with a connection
++(which can be set using the \fBCONNMARK\fP target below).
+ .TP
+-\fB\-\-set\-xmark\fP \fIvalue\fP[\fB/\fP\fImask\fP]
+-Zero out the bits given by \fImask\fP and XOR \fIvalue\fP into the ctmark.
+-.TP
+-\fB\-\-save\-mark\fP [\fB\-\-nfmask\fP \fInfmask\fP] [\fB\-\-ctmask\fP \fIctmask\fP]
+-Copy the packet mark (nfmark) to the connection mark (ctmark) using the given
+-masks. The new nfmark value is determined as follows:
+-.IP
+-ctmark = (ctmark & \(tictmask) \(ha (nfmark & nfmask)
+-.IP
+-i.e. \fIctmask\fP defines what bits to clear and \fInfmask\fP what bits of the
+-nfmark to XOR into the ctmark. \fIctmask\fP and \fInfmask\fP default to
+-0xFFFFFFFF.
+-.TP
+-\fB\-\-restore\-mark\fP [\fB\-\-nfmask\fP \fInfmask\fP] [\fB\-\-ctmask\fP \fIctmask\fP]
+-Copy the connection mark (ctmark) to the packet mark (nfmark) using the given
+-masks. The new ctmark value is determined as follows:
+-.IP
+-nfmark = (nfmark & \(ti\fInfmask\fP) \(ha (ctmark & \fIctmask\fP);
+-.IP
+-i.e. \fInfmask\fP defines what bits to clear and \fIctmask\fP what bits of the
+-ctmark to XOR into the nfmark. \fIctmask\fP and \fInfmask\fP default to
+-0xFFFFFFFF.
+-.IP
+-\fB\-\-restore\-mark\fP is only valid in the \fBmangle\fP table.
+-.PP
+-The following mnemonics are available for \fB\-\-set\-xmark\fP:
+-.TP
+-\fB\-\-and\-mark\fP \fIbits\fP
+-Binary AND the ctmark with \fIbits\fP. (Mnemonic for \fB\-\-set\-xmark
+-0/\fP\fIinvbits\fP, where \fIinvbits\fP is the binary negation of \fIbits\fP.)
+-.TP
+-\fB\-\-or\-mark\fP \fIbits\fP
+-Binary OR the ctmark with \fIbits\fP. (Mnemonic for \fB\-\-set\-xmark\fP
+-\fIbits\fP\fB/\fP\fIbits\fP.)
+-.TP
+-\fB\-\-xor\-mark\fP \fIbits\fP
+-Binary XOR the ctmark with \fIbits\fP. (Mnemonic for \fB\-\-set\-xmark\fP
+-\fIbits\fP\fB/0\fP.)
+-.TP
+-\fB\-\-set\-mark\fP \fIvalue\fP[\fB/\fP\fImask\fP]
+-Set the connection mark. If a mask is specified then only those bits set in the
+-mask are modified.
+-.TP
+-\fB\-\-save\-mark\fP [\fB\-\-mask\fP \fImask\fP]
+-Copy the nfmark to the ctmark. If a mask is specified, only those bits are
+-copied.
+-.TP
+-\fB\-\-restore\-mark\fP [\fB\-\-mask\fP \fImask\fP]
+-Copy the ctmark to the nfmark. If a mask is specified, only those bits are
+-copied. This is only valid in the \fBmangle\fP table.
++[\fB!\fP] \fB\-\-mark\fP \fIvalue\fP[\fB/\fP\fImask\fP]
++Matches packets in connections with the given mark value (if a mask is
++specified, this is logically ANDed with the mark before the comparison).
+--- a/extensions/libxt_CONNMARK.t
++++ b/extensions/libxt_CONNMARK.t
+@@ -1,7 +1,9 @@
+ :PREROUTING,FORWARD,OUTPUT,POSTROUTING
+ *mangle
+--j CONNMARK --restore-mark;-j CONNMARK --restore-mark --nfmask 0xffffffff --ctmask 0xffffffff;OK
+--j CONNMARK --save-mark;-j CONNMARK --save-mark --nfmask 0xffffffff --ctmask 0xffffffff;OK
+--j CONNMARK --save-mark --nfmask 0xfffffff --ctmask 0xffffffff;=;OK
+--j CONNMARK --restore-mark --nfmask 0xfffffff --ctmask 0xffffffff;=;OK
+--j CONNMARK;;FAIL
++-m connmark --mark 0xffffffff;=;OK
++-m connmark --mark 0xffffffff/0xffffffff;-m connmark --mark 0xffffffff;OK
++-m connmark --mark 0xffffffff/0x0;=;OK
++-m connmark --mark 0/0xffffffff;-m connmark --mark 0x0;OK
++-m connmark --mark -1;;FAIL
++-m connmark --mark 0xfffffffff;;FAIL
++-m connmark;;FAIL
+--- a/extensions/libxt_CONNMARK.txlate
++++ b/extensions/libxt_CONNMARK.txlate
+@@ -1,23 +1,14 @@
+-iptables-translate -t mangle -A PREROUTING -j CONNMARK --set-mark 0
+-nft 'add rule ip mangle PREROUTING counter ct mark set 0x0'
++iptables-translate -A INPUT -m connmark --mark 2 -j ACCEPT
++nft add rule ip filter INPUT ct mark 0x2 counter accept
+ 
+-iptables-translate -t mangle -A PREROUTING -j CONNMARK --set-mark 0x16
+-nft 'add rule ip mangle PREROUTING counter ct mark set 0x16'
++iptables-translate -A INPUT -m connmark ! --mark 2 -j ACCEPT
++nft add rule ip filter INPUT ct mark != 0x2 counter accept
+ 
+-iptables-translate -t mangle -A PREROUTING -j CONNMARK --set-xmark 0x16/0x12
+-nft 'add rule ip mangle PREROUTING counter ct mark set ct mark xor 0x16 and 0xffffffed'
++iptables-translate -A INPUT -m connmark --mark 10/10 -j ACCEPT
++nft add rule ip filter INPUT ct mark and 0xa == 0xa counter accept
+ 
+-iptables-translate -t mangle -A PREROUTING -j CONNMARK --and-mark 0x16
+-nft 'add rule ip mangle PREROUTING counter ct mark set ct mark and 0x16'
++iptables-translate -A INPUT -m connmark ! --mark 10/10 -j ACCEPT
++nft add rule ip filter INPUT ct mark and 0xa != 0xa counter accept
+ 
+-iptables-translate -t mangle -A PREROUTING -j CONNMARK --or-mark 0x16
+-nft 'add rule ip mangle PREROUTING counter ct mark set ct mark or 0x16'
+-
+-iptables-translate -t mangle -A PREROUTING -j CONNMARK --save-mark
+-nft 'add rule ip mangle PREROUTING counter ct mark set mark'
+-
+-iptables-translate -t mangle -A PREROUTING -j CONNMARK --restore-mark
+-nft 'add rule ip mangle PREROUTING counter meta mark set ct mark'
+-
+-iptables-translate -t mangle -A PREROUTING  -j CONNMARK --set-mark 0x23/0x42 --right-shift-mark 5
+-nft 'add rule ip mangle PREROUTING counter ct mark set ( ct mark xor 0x23 and 0xffffff9c ) >> 5'
++iptables-translate -t mangle -A PREROUTING -p tcp --dport 40 -m connmark --mark 0x40
++nft add rule ip mangle PREROUTING tcp dport 40 ct mark 0x40 counter
+--- a/extensions/libxt_DSCP.man
++++ b/extensions/libxt_DSCP.man
+@@ -1,9 +1,10 @@
+-This target alters the value of the DSCP bits within the TOS
+-header of the IPv4 packet.  As this manipulates a packet, it can only
+-be used in the mangle table.
++This module matches the 6 bit DSCP field within the TOS field in the
++IP header.  DSCP has superseded TOS within the IETF.
+ .TP
+-\fB\-\-set\-dscp\fP \fIvalue\fP
+-Set the DSCP field to a numerical value (can be decimal or hex)
++[\fB!\fP] \fB\-\-dscp\fP \fIvalue\fP
++Match against a numeric (decimal or hex) value in the range 0\(en63.
+ .TP
+-\fB\-\-set\-dscp\-class\fP \fIclass\fP
+-Set the DSCP field to a DiffServ class.
++[\fB!\fP] \fB\-\-dscp\-class\fP \fIclass\fP
++Match the DiffServ class. This value may be any of the
++BE, EF, AFxx or CSx classes.  It will then be converted
++into its according numeric value.
+--- a/extensions/libxt_DSCP.t
++++ b/extensions/libxt_DSCP.t
+@@ -1,11 +1,10 @@
+-:PREROUTING,INPUT,FORWARD,OUTPUT,POSTROUTING
+-*mangle
+--j DSCP --set-dscp 0x00;=;OK
+--j DSCP --set-dscp 0x3f;=;OK
+--j DSCP --set-dscp -1;;FAIL
+--j DSCP --set-dscp 0x40;;FAIL
+--j DSCP --set-dscp 0x3f --set-dscp-class CS0;;FAIL
+--j DSCP --set-dscp-class CS0;-j DSCP --set-dscp 0x00;OK
+--j DSCP --set-dscp-class BE;-j DSCP --set-dscp 0x00;OK
+--j DSCP --set-dscp-class EF;-j DSCP --set-dscp 0x2e;OK
+--j DSCP;;FAIL
++:INPUT,FORWARD,OUTPUT
++-m dscp --dscp 0;=;OK
++-m dscp --dscp 0x3f;=;OK
++-m dscp --dscp -1;;FAIL
++-m dscp --dscp 0x40;;FAIL
++-m dscp --dscp 0x3f --dscp-class CS0;;FAIL
++-m dscp --dscp-class CS0;-m dscp --dscp 0x00;OK
++-m dscp --dscp-class BE;-m dscp --dscp 0x00;OK
++-m dscp --dscp-class EF;-m dscp --dscp 0x2e;OK
++-m dscp;;FAIL
+--- a/extensions/libxt_DSCP.txlate
++++ b/extensions/libxt_DSCP.txlate
+@@ -1,5 +1,5 @@
+-iptables-translate -A OUTPUT -j DSCP --set-dscp 1
+-nft 'add rule ip filter OUTPUT counter ip dscp set 0x01'
++iptables-translate -t filter -A INPUT -m dscp --dscp 0x32 -j ACCEPT
++nft add rule ip filter INPUT ip dscp 0x32 counter accept
+ 
+-ip6tables-translate -A OUTPUT -j DSCP --set-dscp 6
+-nft 'add rule ip6 filter OUTPUT counter ip6 dscp set 0x06'
++ip6tables-translate -t filter -A INPUT -m dscp ! --dscp 0x32 -j ACCEPT
++nft add rule ip6 filter INPUT ip6 dscp != 0x32 counter accept
+--- a/extensions/libxt_MARK.c
++++ b/extensions/libxt_MARK.c
+@@ -1,3 +1,4 @@
++#include <getopt.h>
+ #include <stdbool.h>
+ #include <stdio.h>
+ #include <xtables.h>
+@@ -68,16 +69,6 @@
+ 	XTOPT_TABLEEND,
+ };
+ 
+-static const struct xt_option_entry mark_tg_arp_opts[] = {
+-	{.name = "set-mark", .id = O_SET_MARK, .type = XTTYPE_UINT32,
+-	 .base = 16, .excl = F_ANY},
+-	{.name = "and-mark", .id = O_AND_MARK, .type = XTTYPE_UINT32,
+-	 .base = 16, .excl = F_ANY},
+-	{.name = "or-mark", .id = O_OR_MARK, .type = XTTYPE_UINT32,
+-	 .base = 16, .excl = F_ANY},
+-	XTOPT_TABLEEND,
+-};
+-
+ static void mark_tg_help(void)
+ {
+ 	printf(
+@@ -86,7 +77,8 @@
+ "  --set-mark value[/mask]   Clear bits in mask and OR value into nfmark\n"
+ "  --and-mark bits           Binary AND the nfmark with bits\n"
+ "  --or-mark bits            Binary OR the nfmark with bits\n"
+-"  --xor-mark bits           Binary XOR the nfmark with bits\n");
++"  --xor-mark bits           Binary XOR the nfmark with bits\n"
++"\n");
+ }
+ 
+ static void MARK_parse_v0(struct xt_option_call *cb)
+@@ -145,8 +137,6 @@
+ 	case O_SET_MARK:
+ 		info->mark = cb->val.mark;
+ 		info->mask = cb->val.mark | cb->val.mask;
+-		if (cb->entry->type == XTTYPE_UINT32)
+-			info->mask = UINT32_MAX;
+ 		break;
+ 	case O_AND_MARK:
+ 		info->mark = 0;
+@@ -274,6 +264,69 @@
+ 	mark_tg_arp_save(ip, target);
+ }
+ 
++#define MARK_OPT 1
++#define AND_MARK_OPT 2
++#define OR_MARK_OPT 3
++
++static struct option mark_tg_arp_opts[] = {
++	{ .name = "set-mark", .has_arg = required_argument, .flag = 0, .val = MARK_OPT },
++	{ .name = "and-mark", .has_arg = required_argument, .flag = 0, .val = AND_MARK_OPT },
++	{ .name = "or-mark", .has_arg = required_argument, .flag = 0, .val =  OR_MARK_OPT },
++	{ .name = NULL}
++};
++
++static int
++mark_tg_arp_parse(int c, char **argv, int invert, unsigned int *flags,
++		  const void *entry, struct xt_entry_target **target)
++{
++	struct xt_mark_tginfo2 *info =
++		(struct xt_mark_tginfo2 *)(*target)->data;
++	int i;
++
++	switch (c) {
++	case MARK_OPT:
++		if (sscanf(argv[optind-1], "%x", &i) != 1) {
++			xtables_error(PARAMETER_PROBLEM,
++				"Bad mark value `%s'", optarg);
++			return 0;
++		}
++		info->mark = i;
++		if (*flags)
++			xtables_error(PARAMETER_PROBLEM,
++				"MARK: Can't specify --set-mark twice");
++		*flags = 1;
++		break;
++	case AND_MARK_OPT:
++		if (sscanf(argv[optind-1], "%x", &i) != 1) {
++			xtables_error(PARAMETER_PROBLEM,
++				"Bad mark value `%s'", optarg);
++			return 0;
++		}
++		info->mark = 0;
++		info->mask = ~i;
++		if (*flags)
++			xtables_error(PARAMETER_PROBLEM,
++				"MARK: Can't specify --and-mark twice");
++		*flags = 1;
++		break;
++	case OR_MARK_OPT:
++		if (sscanf(argv[optind-1], "%x", &i) != 1) {
++			xtables_error(PARAMETER_PROBLEM,
++				"Bad mark value `%s'", optarg);
++			return 0;
++		}
++		info->mark = info->mask = i;
++		if (*flags)
++			xtables_error(PARAMETER_PROBLEM,
++				"MARK: Can't specify --or-mark twice");
++		*flags = 1;
++		break;
++	default:
++		return 0;
++	}
++	return 1;
++}
++
+ static int mark_tg_xlate(struct xt_xlate *xl,
+ 			 const struct xt_xlate_tg_params *params)
+ {
+@@ -314,8 +367,6 @@
+ 	case XT_MARK_OR:
+ 		xt_xlate_add(xl, "mark or 0x%x ", (uint32_t)markinfo->mark);
+ 		break;
+-	default:
+-		return 0;
+ 	}
+ 
+ 	return 1;
+@@ -376,10 +427,8 @@
+ 		.help          = mark_tg_help,
+ 		.print         = mark_tg_arp_print,
+ 		.save          = mark_tg_arp_save,
+-		.x6_parse      = mark_tg_parse,
+-		.x6_fcheck     = mark_tg_check,
+-		.x6_options    = mark_tg_arp_opts,
+-		.xlate	       = mark_tg_xlate,
++		.parse         = mark_tg_arp_parse,
++		.extra_opts    = mark_tg_arp_opts,
+ 	},
+ };
+ 
+--- a/extensions/libxt_MARK.man
++++ b/extensions/libxt_MARK.man
+@@ -1,27 +1,9 @@
+-This target is used to set the Netfilter mark value associated with the packet.
+-It can, for example, be used in conjunction with routing based on fwmark (needs
+-iproute2). If you plan on doing so, note that the mark needs to be set in
+-either the PREROUTING or the OUTPUT chain of the mangle table to affect routing.
+-The mark field is 32 bits wide.
++This module matches the netfilter mark field associated with a packet
++(which can be set using the
++.B MARK
++target below).
+ .TP
+-\fB\-\-set\-xmark\fP \fIvalue\fP[\fB/\fP\fImask\fP]
+-Zeroes out the bits given by \fImask\fP and XORs \fIvalue\fP into the packet
+-mark ("nfmark"). If \fImask\fP is omitted, 0xFFFFFFFF is assumed.
+-.TP
+-\fB\-\-set\-mark\fP \fIvalue\fP[\fB/\fP\fImask\fP]
+-Zeroes out the bits given by \fImask\fP and ORs \fIvalue\fP into the packet
+-mark. If \fImask\fP is omitted, 0xFFFFFFFF is assumed.
+-.PP
+-The following mnemonics are available:
+-.TP
+-\fB\-\-and\-mark\fP \fIbits\fP
+-Binary AND the nfmark with \fIbits\fP. (Mnemonic for \fB\-\-set\-xmark
+-0/\fP\fIinvbits\fP, where \fIinvbits\fP is the binary negation of \fIbits\fP.)
+-.TP
+-\fB\-\-or\-mark\fP \fIbits\fP
+-Binary OR the nfmark with \fIbits\fP. (Mnemonic for \fB\-\-set\-xmark\fP
+-\fIbits\fP\fB/\fP\fIbits\fP.)
+-.TP
+-\fB\-\-xor\-mark\fP \fIbits\fP
+-Binary XOR the nfmark with \fIbits\fP. (Mnemonic for \fB\-\-set\-xmark\fP
+-\fIbits\fP\fB/0\fP.)
++[\fB!\fP] \fB\-\-mark\fP \fIvalue\fP[\fB/\fP\fImask\fP]
++Matches packets with the given unsigned mark value (if a \fImask\fP is
++specified, this is logically ANDed with the \fImask\fP before the
++comparison).
+--- a/extensions/libxt_MARK.t
++++ b/extensions/libxt_MARK.t
+@@ -1,7 +1,7 @@
+ :INPUT,FORWARD,OUTPUT
+--j MARK --set-xmark 0xfeedcafe/0xfeedcafe;=;OK
+--j MARK --set-xmark 0x0;-j MARK --set-xmark 0x0/0xffffffff;OK
+--j MARK --set-xmark 4294967295;-j MARK --set-xmark 0xffffffff/0xffffffff;OK
+--j MARK --set-xmark 4294967296;;FAIL
+--j MARK --set-xmark -1;;FAIL
+--j MARK;;FAIL
++-m mark --mark 0xfeedcafe/0xfeedcafe;=;OK
++-m mark --mark 0;=;OK
++-m mark --mark 4294967295;-m mark --mark 0xffffffff;OK
++-m mark --mark 4294967296;;FAIL
++-m mark --mark -1;;FAIL
++-m mark;;FAIL
+--- a/extensions/libxt_MARK.txlate
++++ b/extensions/libxt_MARK.txlate
+@@ -1,35 +1,5 @@
+-iptables-translate -t mangle -A OUTPUT -j MARK --set-mark 0
+-nft 'add rule ip mangle OUTPUT counter meta mark set 0x0'
++iptables-translate -I INPUT -p tcp -m mark ! --mark 0xa/0xa
++nft 'insert rule ip filter INPUT ip protocol tcp mark and 0xa != 0xa counter'
+ 
+-iptables-translate -t mangle -A OUTPUT -j MARK --set-mark 64
+-nft 'add rule ip mangle OUTPUT counter meta mark set 0x40'
+-
+-iptables-translate -t mangle -A OUTPUT -j MARK --set-xmark 0x40/0x32
+-nft 'add rule ip mangle OUTPUT counter meta mark set mark and 0xffffffcd xor 0x40'
+-
+-iptables-translate -t mangle -A OUTPUT -j MARK --or-mark 64
+-nft 'add rule ip mangle OUTPUT counter meta mark set mark or 0x40'
+-
+-iptables-translate -t mangle -A OUTPUT -j MARK --and-mark 64
+-nft 'add rule ip mangle OUTPUT counter meta mark set mark and 0x40'
+-
+-iptables-translate -t mangle -A OUTPUT -j MARK --xor-mark 64
+-nft 'add rule ip mangle OUTPUT counter meta mark set mark xor 0x40'
+-
+-iptables-translate -t mangle -A PREROUTING -j MARK --set-mark 0x64
+-nft 'add rule ip mangle PREROUTING counter meta mark set 0x64'
+-
+-iptables-translate -t mangle -A PREROUTING -j MARK --and-mark 0x64
+-nft 'add rule ip mangle PREROUTING counter meta mark set mark and 0x64'
+-
+-iptables-translate -t mangle -A PREROUTING -j MARK --or-mark 0x64
+-nft 'add rule ip mangle PREROUTING counter meta mark set mark or 0x64'
+-
+-arptables-translate -A OUTPUT -j MARK --set-mark 0x4
+-nft 'add rule arp filter OUTPUT arp htype 1 arp hlen 6 arp plen 4 counter meta mark set 0x4'
+-
+-arptables-translate -I OUTPUT -o odev -j MARK --and-mark 0x8
+-nft 'insert rule arp filter OUTPUT oifname "odev" arp htype 1 arp hlen 6 arp plen 4 counter meta mark set mark and 0x8'
+-
+-arptables-translate -t mangle -A OUTPUT -o odev -j MARK --or-mark 16
+-nft 'add rule arp mangle OUTPUT oifname "odev" arp htype 1 arp hlen 6 arp plen 4 counter meta mark set mark or 0x16'
++iptables-translate -I INPUT -p tcp -m mark ! --mark 0x1
++nft 'insert rule ip filter INPUT ip protocol tcp mark != 0x1 counter'
+--- a/extensions/libxt_osf.t
++++ b/extensions/libxt_osf.t
+@@ -0,0 +1,4 @@
++:INPUT,FORWARD
++-m osf --genre linux --ttl 0 --log 0;;FAIL
++-p tcp -m osf --genre linux --ttl 0 --log 0;=;OK
++-p tcp -m osf --genre linux --ttl 3 --log 0;;FAIL
+--- a/extensions/libxt_RATEEST.man
++++ b/extensions/libxt_RATEEST.man
+@@ -1,12 +1,100 @@
+-The RATEEST target collects statistics, performs rate estimation calculation
+-and saves the results for later evaluation using the \fBrateest\fP match.
++The rate estimator can match on estimated rates as collected by the RATEEST
++target. It supports matching on absolute bps/pps values, comparing two rate
++estimators and matching on the difference between two rate estimators.
++.PP
++For a better understanding of the available options, these are all possible
++combinations:
+ .TP
+-\fB\-\-rateest\-name\fP \fIname\fP
+-Count matched packets into the pool referred to by \fIname\fP, which is freely
+-choosable.
++Absolute:
++.IP \(bu 4
++\fBrateest\fP \fIoperator\fP \fBrateest-bps\fP
++.IP \(bu 4
++\fBrateest\fP \fIoperator\fP \fBrateest-pps\fP
+ .TP
+-\fB\-\-rateest\-interval\fP \fIamount\fP{\fBs\fP|\fBms\fP|\fBus\fP}
+-Rate measurement interval, in seconds, milliseconds or microseconds.
++Absolute + Delta:
++.IP \(bu 4
++(\fBrateest\fP minus \fBrateest-bps1\fP) \fIoperator\fP \fBrateest-bps2\fP
++.IP \(bu 4
++(\fBrateest\fP minus \fBrateest-pps1\fP) \fIoperator\fP \fBrateest-pps2\fP
+ .TP
+-\fB\-\-rateest\-ewmalog\fP \fIvalue\fP
+-Rate measurement averaging time constant.
++Relative:
++.IP \(bu 4
++\fBrateest1\fP \fIoperator\fP \fBrateest2\fP \fBrateest-bps\fP(without rate!)
++.IP \(bu 4
++\fBrateest1\fP \fIoperator\fP \fBrateest2\fP \fBrateest-pps\fP(without rate!)
++.TP
++Relative + Delta:
++.IP \(bu 4
++(\fBrateest1\fP minus \fBrateest-bps1\fP) \fIoperator\fP
++(\fBrateest2\fP minus \fBrateest-bps2\fP)
++.IP \(bu 4
++(\fBrateest1\fP minus \fBrateest-pps1\fP) \fIoperator\fP
++(\fBrateest2\fP minus \fBrateest-pps2\fP)
++.TP
++\fB\-\-rateest\-delta\fP
++For each estimator (either absolute or relative mode), calculate the difference
++between the estimator-determined flow rate and the static value chosen with the
++BPS/PPS options. If the flow rate is higher than the specified BPS/PPS, 0 will
++be used instead of a negative value. In other words, "max(0, rateest#_rate \-
++rateest#_bps)" is used.
++.TP
++[\fB!\fP] \fB\-\-rateest\-lt\fP
++Match if rate is less than given rate/estimator.
++.TP
++[\fB!\fP] \fB\-\-rateest\-gt\fP
++Match if rate is greater than given rate/estimator.
++.TP
++[\fB!\fP] \fB\-\-rateest\-eq\fP
++Match if rate is equal to given rate/estimator.
++.PP
++In the so-called "absolute mode", only one rate estimator is used and compared
++against a static value, while in "relative mode", two rate estimators are
++compared against another.
++.TP
++\fB\-\-rateest\fP \fIname\fP
++Name of the one rate estimator for absolute mode.
++.TP
++\fB\-\-rateest1\fP \fIname\fP
++.TP
++\fB\-\-rateest2\fP \fIname\fP
++The names of the two rate estimators for relative mode.
++.TP
++\fB\-\-rateest\-bps\fP [\fIvalue\fP]
++.TP
++\fB\-\-rateest\-pps\fP [\fIvalue\fP]
++.TP
++\fB\-\-rateest\-bps1\fP [\fIvalue\fP]
++.TP
++\fB\-\-rateest\-bps2\fP [\fIvalue\fP]
++.TP
++\fB\-\-rateest\-pps1\fP [\fIvalue\fP]
++.TP
++\fB\-\-rateest\-pps2\fP [\fIvalue\fP]
++Compare the estimator(s) by bytes or packets per second, and compare against
++the chosen value. See the above bullet list for which option is to be used in
++which case. A unit suffix may be used \(em available ones are: bit, [kmgt]bit,
++[KMGT]ibit, Bps, [KMGT]Bps, [KMGT]iBps.
++.PP
++Example: This is what can be used to route outgoing data connections from an
++FTP server over two lines based on the available bandwidth at the time the data
++connection was started:
++.PP
++# Estimate outgoing rates
++.PP
++iptables \-t mangle \-A POSTROUTING \-o eth0 \-j RATEEST \-\-rateest\-name eth0
++\-\-rateest\-interval 250ms \-\-rateest\-ewma 0.5s
++.PP
++iptables \-t mangle \-A POSTROUTING \-o ppp0 \-j RATEEST \-\-rateest\-name ppp0
++\-\-rateest\-interval 250ms \-\-rateest\-ewma 0.5s
++.PP
++# Mark based on available bandwidth
++.PP
++iptables \-t mangle \-A balance \-m conntrack \-\-ctstate NEW \-m helper \-\-helper ftp
++\-m rateest \-\-rateest\-delta \-\-rateest1 eth0 \-\-rateest\-bps1 2.5mbit \-\-rateest\-gt
++\-\-rateest2 ppp0 \-\-rateest\-bps2 2mbit \-j CONNMARK \-\-set\-mark 1
++.PP
++iptables \-t mangle \-A balance \-m conntrack \-\-ctstate NEW \-m helper \-\-helper ftp
++\-m rateest \-\-rateest\-delta \-\-rateest1 ppp0 \-\-rateest\-bps1 2mbit \-\-rateest\-gt
++\-\-rateest2 eth0 \-\-rateest\-bps2 2.5mbit \-j CONNMARK \-\-set\-mark 2
++.PP
++iptables \-t mangle \-A balance \-j CONNMARK \-\-restore\-mark
+--- a/extensions/libxt_RATEEST.t
++++ b/extensions/libxt_RATEEST.t
+@@ -1,2 +1,16 @@
+ :INPUT,FORWARD,OUTPUT
+--j RATEEST --rateest-name RE1 --rateest-interval 250.0ms --rateest-ewmalog 500.0ms;=;OK
++%iptables -I INPUT -j RATEEST --rateest-name RE1 --rateest-interval 250.0ms --rateest-ewmalog 500.0ms
++-m rateest --rateest RE1 --rateest-lt --rateest-bps 8bit;=;OK
++-m rateest --rateest RE1 --rateest-eq --rateest-pps 5;=;OK
++-m rateest --rateest RE1 --rateest-gt --rateest-bps 5kbit;-m rateest --rateest RE1 --rateest-gt --rateest-bps 5000bit;OK
++-m rateest --rateest-delta --rateest RE1 --rateest-bps1 8bit --rateest-lt --rateest-bps2 16bit;=;OK
++%iptables -I INPUT -j RATEEST --rateest-name RE2 --rateest-interval 250.0ms --rateest-ewmalog 500.0ms
++-m rateest --rateest1 RE1 --rateest-lt --rateest-bps --rateest2 RE2;=;OK
++-m rateest --rateest-delta --rateest1 RE1 --rateest-pps1 0 --rateest-lt --rateest-pps2 42 --rateest2 RE2;=;OK
++-m rateest --rateest-delta --rateest RE1 --rateest-bps1 8bit --rateest-eq --rateest-bps2 16bit;=;OK
++-m rateest --rateest-delta --rateest RE1 --rateest-bps1 8bit --rateest-gt --rateest-bps2 16bit;=;OK
++-m rateest --rateest-delta --rateest RE1 --rateest-pps1 8 --rateest-lt --rateest-pps2 9;=;OK
++-m rateest --rateest-delta --rateest RE1 --rateest-pps1 8 --rateest-eq --rateest-pps2 9;=;OK
++-m rateest --rateest-delta --rateest RE1 --rateest-pps1 8 --rateest-gt --rateest-pps2 9;=;OK
++%iptables -D INPUT -j RATEEST --rateest-name RE1 --rateest-interval 250.0ms --rateest-ewmalog 500.0ms
++%iptables -D INPUT -j RATEEST --rateest-name RE2 --rateest-interval 250.0ms --rateest-ewmalog 500.0ms
+--- a/extensions/libxt_SET.man
++++ b/extensions/libxt_SET.man
+@@ -1,46 +1,65 @@
+-This module adds and/or deletes entries from IP sets which can be defined
+-by ipset(8).
++This module matches IP sets which can be defined by ipset(8).
+ .TP
+-\fB\-\-add\-set\fP \fIsetname\fP \fIflag\fP[\fB,\fP\fIflag\fP...]
+-add the address(es)/port(s) of the packet to the set
+-.TP
+-\fB\-\-del\-set\fP \fIsetname\fP \fIflag\fP[\fB,\fP\fIflag\fP...]
+-delete the address(es)/port(s) of the packet from the set
+-.TP
+-\fB\-\-map\-set\fP \fIsetname\fP \fIflag\fP[\fB,\fP\fIflag\fP...] 
+-[\-\-map\-mark] [\-\-map\-prio] [\-\-map\-queue]
+-map packet properties (firewall mark, tc priority, hardware queue)
+-.IP
+-where \fIflag\fP(s) are
++[\fB!\fP] \fB\-\-match\-set\fP \fIsetname\fP \fIflag\fP[\fB,\fP\fIflag\fP]...
++where flags are the comma separated list of
+ .BR "src"
+ and/or
+-.BR "dst"
+-specifications and there can be no more than six of them.
+-.TP
+-\fB\-\-timeout\fP \fIvalue\fP
+-when adding an entry, the timeout value to use instead of the default
+-one from the set definition
+-.TP
+-\fB\-\-exist\fP
+-when adding an entry if it already exists, reset the timeout value
+-to the specified one or to the default from the set definition
+-.TP
+-\fB\-\-map\-set\fP \fIset-name\fP
+-the set-name should be created with \-\-skbinfo option
+-\fB\-\-map\-mark\fP
+-map firewall mark to packet by lookup of value in the set
+-\fB\-\-map\-prio\fP
+-map traffic control priority to packet by lookup of value in the set
+-\fB\-\-map\-queue\fP
+-map hardware NIC queue to packet by lookup of value in the set
++.BR "dst" 
++specifications and there can be no more than six of them. Hence the command
+ .IP
+-The
+-\fB\-\-map\-set\fP
+-option can be used from the mangle table only. The
+-\fB\-\-map\-prio\fP
+-and
+-\fB\-\-map\-queue\fP
+-flags can be used in the OUTPUT, FORWARD and POSTROUTING chains.
++ iptables \-A FORWARD \-m set \-\-match\-set test src,dst
++.IP
++will match packets, for which (if the set type is ipportmap) the source
++address and destination port pair can be found in the specified set. If
++the set type of the specified set is single dimension (for example ipmap),
++then the command will match packets for which the source address can be
++found in the specified set. 
++.TP
++\fB\-\-return\-nomatch\fP
++If the \fB\-\-return\-nomatch\fP option is specified and the set type
++supports the \fBnomatch\fP flag, then the matching is reversed: a match
++with an element flagged with \fBnomatch\fP returns \fBtrue\fP, while a
++match with a plain element returns \fBfalse\fP.
++.TP
++\fB!\fP \fB\-\-update\-counters\fP
++If the \fB\-\-update\-counters\fP flag is negated, then the packet and
++byte counters of the matching element in the set won't be updated. Default
++the packet and byte counters are updated.
++.TP
++\fB!\fP \fB\-\-update\-subcounters\fP
++If the \fB\-\-update\-subcounters\fP flag is negated, then the packet and
++byte counters of the matching element in the member set of a list type of
++set won't be updated. Default the packet and byte counters are updated.
++.TP
++[\fB!\fP] \fB\-\-packets\-eq\fP \fIvalue\fP
++If the packet is matched an element in the set, match only if the
++packet counter of the element matches the given value too.
++.TP
++\fB\-\-packets\-lt\fP \fIvalue\fP
++If the packet is matched an element in the set, match only if the
++packet counter of the element is less than the given value as well.
++.TP
++\fB\-\-packets\-gt\fP \fIvalue\fP
++If the packet is matched an element in the set, match only if the
++packet counter of the element is greater than the given value as well.
++.TP
++[\fB!\fP] \fB\-\-bytes\-eq\fP \fIvalue\fP
++If the packet is matched an element in the set, match only if the
++byte counter of the element matches the given value too.
++.TP
++\fB\-\-bytes\-lt\fP \fIvalue\fP
++If the packet is matched an element in the set, match only if the
++byte counter of the element is less than the given value as well.
++.TP
++\fB\-\-bytes\-gt\fP \fIvalue\fP
++If the packet is matched an element in the set, match only if the
++byte counter of the element is greater than the given value as well.
++.PP
++The packet and byte counters related options and flags are ignored
++when the set was defined without counter support.
++.PP
++The option \fB\-\-match\-set\fP can be replaced by \fB\-\-set\fP if that does 
++not clash with an option of other extensions.
+ .PP
+-Use of \-j SET requires that ipset kernel support is provided, which, for
++Use of \-m set requires that ipset kernel support is provided, which, for
+ standard kernels, is the case since Linux 2.6.39.
+--- a/extensions/libxt_SET.t
++++ b/extensions/libxt_SET.t
+@@ -1,3 +1,4 @@
+ :INPUT,FORWARD,OUTPUT
++-m set --match-set foo;;FAIL
+ # fails: foo does not exist
+--j SET --add-set foo src,dst;;FAIL
++-m set --match-set foo src,dst;;FAIL
+--- a/extensions/libxt_tcpmss.c
++++ b/extensions/libxt_tcpmss.c
+@@ -60,21 +60,6 @@
+ 		printf("%u:%u", info->mss_min, info->mss_max);
+ }
+ 
+-static int tcpmss_xlate(struct xt_xlate *xl,
+-			const struct xt_xlate_mt_params *params)
+-{
+-	const struct xt_tcpmss_match_info *info = (void *)params->match->data;
+-
+-	xt_xlate_add(xl, "tcp option maxseg size %s", info->invert ? "!= " : "");
+-
+-	if (info->mss_min == info->mss_max)
+-		xt_xlate_add(xl, "%u", info->mss_min);
+-	else
+-		xt_xlate_add(xl, "%u-%u", info->mss_min, info->mss_max);
+-
+-	return 1;
+-}
+-
+ static struct xtables_match tcpmss_match = {
+ 	.family		= NFPROTO_UNSPEC,
+ 	.name		= "tcpmss",
+@@ -86,7 +71,6 @@
+ 	.save		= tcpmss_save,
+ 	.x6_parse	= tcpmss_parse,
+ 	.x6_options	= tcpmss_opts,
+-	.xlate		= tcpmss_xlate,
+ };
+ 
+ void _init(void)
+--- a/extensions/libxt_TCPMSS.c
++++ b/extensions/libxt_TCPMSS.c
+@@ -131,7 +131,6 @@
+ 		.x6_parse      = TCPMSS_parse,
+ 		.x6_fcheck     = TCPMSS_check,
+ 		.x6_options    = TCPMSS6_opts,
+-		.xlate         = TCPMSS_xlate,
+ 	},
+ };
+ 
+--- a/extensions/libxt_TCPMSS.man
++++ b/extensions/libxt_TCPMSS.man
+@@ -1,41 +1,4 @@
+-This target alters the MSS value of TCP SYN packets, to control
+-the maximum size for that connection (usually limiting it to your
+-outgoing interface's MTU minus 40 for IPv4 or 60 for IPv6, respectively).
+-Of course, it can only be used
+-in conjunction with
+-\fB\-p tcp\fP.
+-.PP
+-This target is used to overcome criminally braindead ISPs or servers
+-which block "ICMP Fragmentation Needed" or "ICMPv6 Packet Too Big"
+-packets.  The symptoms of this
+-problem are that everything works fine from your Linux
+-firewall/router, but machines behind it can never exchange large
+-packets:
+-.IP 1. 4
+-Web browsers connect, then hang with no data received.
+-.IP 2. 4
+-Small mail works fine, but large emails hang.
+-.IP 3. 4
+-ssh works fine, but scp hangs after initial handshaking.
+-.PP
+-Workaround: activate this option and add a rule to your firewall
+-configuration like:
+-.IP
+- iptables \-t mangle \-A FORWARD \-p tcp \-\-tcp\-flags SYN,RST SYN
+-             \-j TCPMSS \-\-clamp\-mss\-to\-pmtu
++This matches the TCP MSS (maximum segment size) field of the TCP header.  You can only use this on TCP SYN or SYN/ACK packets, since the MSS is only negotiated during the TCP handshake at connection startup time.
+ .TP
+-\fB\-\-set\-mss\fP \fIvalue\fP
+-Explicitly sets MSS option to specified value. If the MSS of the packet is
+-already lower than \fIvalue\fP, it will \fBnot\fP be increased (from Linux
+-2.6.25 onwards) to avoid more problems with hosts relying on a proper MSS.
+-.TP
+-\fB\-\-clamp\-mss\-to\-pmtu\fP
+-Automatically clamp MSS value to (path_MTU \- 40 for IPv4; \-60 for IPv6).
+-This may not function as desired where asymmetric routes with differing
+-path MTU exist \(em the kernel uses the path MTU which it would use to send
+-packets from itself to the source and destination IP addresses. Prior to
+-Linux 2.6.25, only the path MTU to the destination IP address was
+-considered by this option; subsequent kernels also consider the path MTU
+-to the source IP address.
+-.PP
+-These options are mutually exclusive.
++[\fB!\fP] \fB\-\-mss\fP \fIvalue\fP[\fB:\fP\fIvalue\fP]
++Match a given TCP MSS value or range. If a range is given, the second \fIvalue\fP must be greater than or equal to the first \fIvalue\fP.
+--- a/extensions/libxt_TCPMSS.t
++++ b/extensions/libxt_TCPMSS.t
+@@ -1,6 +1,6 @@
+-:FORWARD,OUTPUT,POSTROUTING
+-*mangle
+--j TCPMSS;;FAIL
+--p tcp -j TCPMSS --set-mss 42;=;FAIL;LEGACY
+--p tcp -m tcp --tcp-flags FIN,SYN,RST,ACK SYN -j TCPMSS --set-mss 42;=;OK
+--p tcp -m tcp --tcp-flags FIN,SYN,RST,ACK SYN -j TCPMSS --clamp-mss-to-pmtu;=;OK
++:INPUT,FORWARD,OUTPUT
++-m tcpmss --mss 42;;FAIL
++-p tcp -m tcpmss --mss 42;=;OK
++-p tcp -m tcpmss --mss 42:12345;=;OK
++-p tcp -m tcpmss --mss 42:65536;;FAIL
++-p tcp -m tcpmss --mss 65535:1000;;FAIL
+--- a/extensions/libxt_TOS.c
++++ b/extensions/libxt_TOS.c
+@@ -183,41 +183,28 @@
+ 	printf(" --set-tos 0x%02x/0x%02x", info->tos_value, info->tos_mask);
+ }
+ 
+-static int __tos_xlate(struct xt_xlate *xl, const char *ip,
+-		       uint8_t tos, uint8_t tosmask)
+-{
+-	xt_xlate_add(xl, "%s dscp set ", ip);
+-	if ((tosmask & 0x3f) == 0x3f)
+-		xt_xlate_add(xl, "0x%02x", tos >> 2);
+-	else if (!tos)
+-		xt_xlate_add(xl, "%s dscp and 0x%02x",
+-			     ip, (uint8_t)~tosmask >> 2);
+-	else if (tos == tosmask)
+-		xt_xlate_add(xl, "%s dscp or 0x%02x", ip, tos >> 2);
+-	else if (!tosmask)
+-		xt_xlate_add(xl, "%s dscp xor 0x%02x", ip, tos >> 2);
+-	else
+-		xt_xlate_add(xl, "%s dscp and 0x%02x xor 0x%02x",
+-			     ip, (uint8_t)~tosmask >> 2, tos >> 2);
+-	return 1;
+-}
+-
+ static int tos_xlate(struct xt_xlate *xl,
+ 		     const struct xt_xlate_tg_params *params)
+ {
+ 	const struct ipt_tos_target_info *info =
+ 			(struct ipt_tos_target_info *) params->target->data;
++	uint8_t dscp = info->tos >> 2;
++
++	xt_xlate_add(xl, "ip dscp set 0x%02x", dscp);
+ 
+-	return __tos_xlate(xl, "ip", info->tos, UINT8_MAX);
++	return 1;
+ }
+ 
+ static int tos_xlate6(struct xt_xlate *xl,
+ 		     const struct xt_xlate_tg_params *params)
+ {
+-	const struct xt_tos_target_info *info =
+-			(struct xt_tos_target_info *)params->target->data;
++	const struct ipt_tos_target_info *info =
++			(struct ipt_tos_target_info *) params->target->data;
++	uint8_t dscp = info->tos >> 2;
+ 
+-	return __tos_xlate(xl, "ip6", info->tos_value, info->tos_mask);
++	xt_xlate_add(xl, "ip6 dscp set 0x%02x", dscp);
++
++	return 1;
+ }
+ 
+ static struct xtables_target tos_tg_reg[] = {
+--- a/extensions/libxt_TOS.man
++++ b/extensions/libxt_TOS.man
+@@ -1,36 +1,12 @@
+-This module sets the Type of Service field in the IPv4 header (including the
+-"precedence" bits) or the Priority field in the IPv6 header. Note that TOS
+-shares the same bits as DSCP and ECN. The TOS target is only valid in the
+-\fBmangle\fP table.
++This module matches the 8-bit Type of Service field in the IPv4 header (i.e.
++including the "Precedence" bits) or the (also 8-bit) Priority field in the IPv6
++header.
+ .TP
+-\fB\-\-set\-tos\fP \fIvalue\fP[\fB/\fP\fImask\fP]
+-Zeroes out the bits given by \fImask\fP (see NOTE below) and XORs \fIvalue\fP
+-into the TOS/Priority field. If \fImask\fP is omitted, 0xFF is assumed.
++[\fB!\fP] \fB\-\-tos\fP \fIvalue\fP[\fB/\fP\fImask\fP]
++Matches packets with the given TOS mark value. If a mask is specified, it is
++logically ANDed with the TOS mark before the comparison.
+ .TP
+-\fB\-\-set\-tos\fP \fIsymbol\fP
+-You can specify a symbolic name when using the TOS target for IPv4. It implies
+-a mask of 0xFF (see NOTE below). The list of recognized TOS names can be
+-obtained by calling iptables with \fB\-j TOS \-h\fP.
+-.PP
+-The following mnemonics are available:
+-.TP
+-\fB\-\-and\-tos\fP \fIbits\fP
+-Binary AND the TOS value with \fIbits\fP. (Mnemonic for \fB\-\-set\-tos
+-0/\fP\fIinvbits\fP, where \fIinvbits\fP is the binary negation of \fIbits\fP.
+-See NOTE below.)
+-.TP
+-\fB\-\-or\-tos\fP \fIbits\fP
+-Binary OR the TOS value with \fIbits\fP. (Mnemonic for \fB\-\-set\-tos\fP
+-\fIbits\fP\fB/\fP\fIbits\fP. See NOTE below.)
+-.TP
+-\fB\-\-xor\-tos\fP \fIbits\fP
+-Binary XOR the TOS value with \fIbits\fP. (Mnemonic for \fB\-\-set\-tos\fP
+-\fIbits\fP\fB/0\fP. See NOTE below.)
+-.PP
+-NOTE: In Linux kernels up to and including 2.6.38, with the exception of
+-longterm releases 2.6.32 (>=.42), 2.6.33 (>=.15), and 2.6.35 (>=.14), there is
+-a bug whereby IPv6 TOS mangling does not behave as documented and differs from
+-the IPv4 version. The TOS mask indicates the bits one wants to zero out, so it
+-needs to be inverted before applying it to the original TOS field. However, the
+-aforementioned kernels forgo the inversion which breaks \-\-set\-tos and its
+-mnemonics.
++[\fB!\fP] \fB\-\-tos\fP \fIsymbol\fP
++You can specify a symbolic name when using the tos match for IPv4. The list of
++recognized TOS names can be obtained by calling iptables with \fB\-m tos \-h\fP.
++Note that this implies a mask of 0x3F, i.e. all but the ECN bits.
+--- a/extensions/libxt_TOS.t
++++ b/extensions/libxt_TOS.t
+@@ -1,16 +1,13 @@
+-:PREROUTING,INPUT,FORWARD,OUTPUT,POSTROUTING
+-*mangle
+--j TOS --set-tos 0x1f;-j TOS --set-tos 0x1f/0xff;OK
+--j TOS --set-tos 0x1f/0x1f;=;OK
+-# maximum TOS is 0x1f (5 bits)
+-# ERROR: should fail: iptables -A PREROUTING -t mangle -j TOS --set-tos 0xff
+-# -j TOS --set-tos 0xff;;FAIL
+--j TOS --set-tos Minimize-Delay;-j TOS --set-tos 0x10/0x3f;OK
+--j TOS --set-tos Maximize-Throughput;-j TOS --set-tos 0x08/0x3f;OK
+--j TOS --set-tos Maximize-Reliability;-j TOS --set-tos 0x04/0x3f;OK
+--j TOS --set-tos Minimize-Cost;-j TOS --set-tos 0x02/0x3f;OK
+--j TOS --set-tos Normal-Service;-j TOS --set-tos 0x00/0x3f;OK
+--j TOS --and-tos 0x12;-j TOS --set-tos 0x00/0xed;OK
+--j TOS --or-tos 0x12;-j TOS --set-tos 0x12/0x12;OK
+--j TOS --xor-tos 0x12;-j TOS --set-tos 0x12/0x00;OK
+--j TOS;;FAIL
++:INPUT,FORWARD,OUTPUT
++-m tos --tos Minimize-Delay;-m tos --tos 0x10/0x3f;OK
++-m tos --tos Maximize-Throughput;-m tos --tos 0x08/0x3f;OK
++-m tos --tos Maximize-Reliability;-m tos --tos 0x04/0x3f;OK
++-m tos --tos Minimize-Cost;-m tos --tos 0x02/0x3f;OK
++-m tos --tos Normal-Service;-m tos --tos 0x00/0x3f;OK
++-m tos --tos 0xff;-m tos --tos 0xff/0xff;OK
++-m tos ! --tos 0xff;-m tos ! --tos 0xff/0xff;OK
++-m tos --tos 0x00;-m tos --tos 0x00/0xff;OK
++-m tos --tos 0x0f;-m tos --tos 0x0f/0xff;OK
++-m tos --tos 0x0f/0x0f;=;OK
++-m tos --tos wrong;;FAIL
++-m tos;;FAIL
+--- a/extensions/libxt_TPROXY.t
++++ b/extensions/libxt_TPROXY.t
+@@ -0,0 +1,5 @@
++:PREROUTING
++*mangle
++-j TPROXY --on-port 12345 --on-ip 10.0.0.1 --tproxy-mark 0x23/0xff;;FAIL
++-p udp -j TPROXY --on-port 12345 --on-ip 10.0.0.1 --tproxy-mark 0x23/0xff;=;OK
++-p tcp -m tcp --dport 2342 -j TPROXY --on-port 12345 --on-ip 10.0.0.1 --tproxy-mark 0x23/0xff;=;OK
+--- a/extensions/libxt_webstr.c
++++ b/extensions/libxt_webstr.c
+@@ -0,0 +1,198 @@
++/* Shared library add-on to iptables to add string matching support..
++ *.
++ * Copyright (C) 2000 Emmanuel Roger  <winfield@freegates.be>
++ *
++ * ChangeLog
++ *     27.01.2001: Gianni Tedesco <gianni@ecsc.co.uk>
++ *             Changed --tos to --string in save(). Also
++ *             updated to work with slightly modified
++ *             xt_string_info.
++ */
++
++/* Shared library add-on to iptables to add webstr matching support. 
++ *
++ * Copyright (C) 2003, CyberTAN Corporation
++ * All Rights Reserved.
++ *
++ * Description:
++ *   This is shared library, added to iptables, for web content inspection. 
++ *   It was derived from 'string' matching support, declared as above.
++ *
++ * ChangeLog
++ *	2009-09-26: Leonid Lisovskiy <lly.dev@gmail.com>
++ *			Fix save() method, minor parse() optimization.
++ */
++
++
++#include <stdio.h>
++#include <netdb.h>
++#include <string.h>
++#include <stdlib.h>
++#include <getopt.h>
++#include <xtables.h>
++
++#define BM_MAX_NLEN 256
++
++#define BLK_JAVA		0x01
++#define BLK_ACTIVE		0x02
++#define BLK_COOKIE		0x04
++#define BLK_PROXY		0x08
++
++struct xt_webstr_info {
++    char string[BM_MAX_NLEN];
++    u_int16_t invert;
++    u_int16_t len;
++    u_int8_t type;
++};
++
++enum xt_webstr_type
++{
++    XT_WEBSTR_HOST,
++    XT_WEBSTR_URL,
++    XT_WEBSTR_CONTENT
++};
++
++
++/* Function which prints out usage message. */
++static void
++webstr_help(void)
++{
++	printf(
++"WEBSTR match v%s options:\n"
++"--host [!] host               Match a http string in a packet\n"
++"--url [!] url                 Match a http string in a packet\n"
++"--content [!] content         Match a http string in a packet\n"
++"\n",
++XTABLES_VERSION);
++}
++
++static struct option webstr_opts[] = {
++	{ "host",    1, 0, '1' },
++	{ "url",     1, 0, '2' },
++	{ "content", 1, 0, '3' },
++	XT_GETOPT_TABLEEND,
++};
++
++/* Initialize the match. */
++static void
++webstr_init(struct xt_entry_match *m)
++{
++}
++
++static void
++parse_string(const unsigned char *s, struct xt_webstr_info *info)
++{
++	if (strlen(s) <= BM_MAX_NLEN) strcpy(info->string, s);
++	else xtables_error(PARAMETER_PROBLEM, "WEBSTR too long `%s'", s);
++}
++
++static int
++webstr_parse(int c, char **argv, int invert, unsigned int *flags,
++             const void *entry, struct xt_entry_match **match)
++{
++	struct xt_webstr_info *stringinfo = (struct xt_webstr_info *)(*match)->data;
++
++	switch (c) {
++	case '1':
++		stringinfo->type = XT_WEBSTR_HOST;
++		break;
++	case '2':
++		stringinfo->type = XT_WEBSTR_URL;
++		break;
++	case '3':
++		stringinfo->type = XT_WEBSTR_CONTENT;
++		break;
++	default:
++		return 0;
++	}
++
++	if (invert)
++		stringinfo->invert = 1;
++	parse_string(argv[optind-1], stringinfo);
++	stringinfo->len=strlen((char *)&stringinfo->string);
++
++	*flags = 1;
++	return 1;
++}
++
++static void
++print_string(char string[], int invert, int numeric)
++{
++	if (invert)
++		fputc('!', stdout);
++	printf("%s ",string);
++}
++
++/* Final check; must have specified --string. */
++static void
++webstr_check(unsigned int flags)
++{
++	if (!flags)
++		xtables_error(PARAMETER_PROBLEM,
++			   "WEBSTR match: You must specify `--webstr'");
++}
++
++static void
++print_type(unsigned type)
++{
++	switch (type) {
++	case XT_WEBSTR_HOST:
++		printf("%s ", webstr_opts[0].name);
++		break;
++
++	case XT_WEBSTR_URL:
++		printf("%s ", webstr_opts[1].name);
++		break;
++
++	case XT_WEBSTR_CONTENT:
++		printf("%s ", webstr_opts[2].name);
++		break;
++
++	default:
++		printf("ERROR ");
++		break;
++	}
++}
++
++/* Prints out the matchinfo. */
++static void
++webstr_print(const void *ip,
++      const struct xt_entry_match *match,
++      int numeric)
++{
++	struct xt_webstr_info *stringinfo = (struct xt_webstr_info *)match->data;
++
++	printf("webstr: ");
++	print_type(stringinfo->type);
++	print_string(stringinfo->string, stringinfo->invert, numeric);
++}
++
++/* Saves the union xt_matchinfo in parsable form to stdout. */
++static void
++webstr_save(const void *ip, const struct xt_entry_match *match)
++{
++	struct xt_webstr_info *stringinfo = (struct xt_webstr_info *)match->data;
++
++	printf(" --"); print_type(stringinfo->type);
++	print_string(stringinfo->string, stringinfo->invert, 0);
++}
++
++static struct xtables_match webstr = { 
++	.family		= NFPROTO_UNSPEC,
++	.name		= "webstr",
++	.version	= XTABLES_VERSION,
++	.size		= XT_ALIGN(sizeof(struct xt_webstr_info)),
++	.userspacesize	= XT_ALIGN(sizeof(struct xt_webstr_info)),
++	.help		= webstr_help,
++	.init		= webstr_init,
++	.print		= webstr_print,
++	.save		= webstr_save,
++	.parse		= webstr_parse,
++	.final_check	= webstr_check,
++	.extra_opts	= webstr_opts
++};
++
++void _init(void)
++{
++	xtables_register_match(&webstr);
++}
+--- a/include/libipulog/libipulog.h
++++ b/include/libipulog/libipulog.h
+@@ -0,0 +1,39 @@
++#ifndef _LIBIPULOG_H
++#define _LIBIPULOG_H
++
++/* libipulog.h,v 1.3 2001/05/21 19:15:16 laforge Exp */
++
++#include <errno.h>
++#include <unistd.h>
++#include <fcntl.h>
++#include <sys/types.h>
++#include <sys/socket.h>
++#include <sys/uio.h>
++#include <asm/types.h>
++#include <linux/netlink.h>
++#include <net/if.h>
++#include <linux/netfilter_ipv4/ipt_ULOG.h>
++
++/* FIXME: glibc sucks */
++#ifndef MSG_TRUNC 
++#define MSG_TRUNC	0x20
++#endif
++
++struct ipulog_handle;
++
++u_int32_t ipulog_group2gmask(u_int32_t group);
++
++struct ipulog_handle *ipulog_create_handle(u_int32_t gmask);
++
++void ipulog_destroy_handle(struct ipulog_handle *h);
++
++ssize_t ipulog_read(struct ipulog_handle *h,
++		    unsigned char *buf, size_t len, int timeout);
++
++ulog_packet_msg_t *ipulog_get_packet(struct ipulog_handle *h,
++				     const unsigned char *buf,
++				     size_t len);
++
++void ipulog_perror(const char *s);
++
++#endif /* _LIBULOG_H */
+--- a/include/linux/netfilter/xt_CONNMARK.h
++++ b/include/linux/netfilter/xt_CONNMARK.h
+@@ -1,7 +1,46 @@
+-/* SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note */
+-#ifndef _XT_CONNMARK_H_target
+-#define _XT_CONNMARK_H_target
++#ifndef _XT_CONNMARK_H
++#define _XT_CONNMARK_H
+ 
+-#include <linux/netfilter/xt_connmark.h>
++#include <linux/types.h>
+ 
+-#endif /*_XT_CONNMARK_H_target*/
++/* Copyright (C) 2002,2004 MARA Systems AB <http://www.marasystems.com>
++ * by Henrik Nordstrom <hno@marasystems.com>
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * (at your option) any later version.
++ */
++
++enum {
++	XT_CONNMARK_SET = 0,
++	XT_CONNMARK_SAVE,
++	XT_CONNMARK_RESTORE
++};
++
++enum {
++	XT_CONNMARK_VALUE	= (1 << 0),
++	XT_CONNMARK_DSCP	= (1 << 1)
++};
++
++struct xt_connmark_tginfo1 {
++	__u32 ctmark, ctmask, nfmask;
++	__u8 mode;
++};
++
++struct xt_connmark_tginfo2 {
++	__u32 ctmark, ctmask, nfmask;
++	__u8 shift_dir, shift_bits, mode;
++};
++
++struct xt_connmark_tginfo3 {
++	__u32 ctmark, ctmask, nfmask;
++	__u8 shift_dir, shift_bits, mode, func;
++};
++
++struct xt_connmark_mtinfo1 {
++	__u32 mark, mask;
++	__u8 invert;
++};
++
++#endif /*_XT_CONNMARK_H*/
+--- a/include/linux/netfilter/xt_DSCP.h
++++ b/include/linux/netfilter/xt_DSCP.h
+@@ -1,18 +1,30 @@
+-/* x_tables module for setting the IPv4/IPv6 DSCP field
++/* x_tables module for setting/matching the IPv4/IPv6 DSCP field
+  *
+  * (C) 2002 Harald Welte <laforge@gnumonks.org>
+  * based on ipt_FTOS.c (C) 2000 by Matthew G. Marsh <mgm@paktronix.com>
+  * This software is distributed under GNU GPL v2, 1991
+- *
+- * See RFC2474 for a description of the DSCP field within the IP Header.
+- *
+- * xt_DSCP.h,v 1.7 2002/03/14 12:03:13 laforge Exp
+ */
+-#ifndef _XT_DSCP_TARGET_H
+-#define _XT_DSCP_TARGET_H
+-#include <linux/netfilter/xt_dscp.h>
++#ifndef _XT_DSCP_H
++#define _XT_DSCP_H
++
+ #include <linux/types.h>
+ 
++#define XT_DSCP_MASK	0xfc	/* 11111100 */
++#define XT_DSCP_SHIFT	2
++#define XT_DSCP_MAX	0x3f	/* 00111111 */
++
++/* match info */
++struct xt_dscp_info {
++	__u8 dscp;
++	__u8 invert;
++};
++
++struct xt_tos_match_info {
++	__u8 tos_mask;
++	__u8 tos_value;
++	__u8 invert;
++};
++
+ /* target info */
+ struct xt_DSCP_info {
+ 	__u8 dscp;
+@@ -23,4 +35,4 @@
+ 	__u8 tos_mask;
+ };
+ 
+-#endif /* _XT_DSCP_TARGET_H */
++#endif /* _XT_DSCP_H */
+--- a/include/linux/netfilter/xt_MARK.h
++++ b/include/linux/netfilter/xt_MARK.h
+@@ -1,6 +1,15 @@
+-#ifndef _XT_MARK_H_target
+-#define _XT_MARK_H_target
++#ifndef _XT_MARK_H
++#define _XT_MARK_H
+ 
+-#include <linux/netfilter/xt_mark.h>
++#include <linux/types.h>
+ 
+-#endif /*_XT_MARK_H_target */
++struct xt_mark_tginfo2 {
++	__u32 mark, mask;
++};
++
++struct xt_mark_mtinfo1 {
++	__u32 mark, mask;
++	__u8 invert;
++};
++
++#endif /*_XT_MARK_H*/
+--- a/include/linux/netfilter/xt_RATEEST.h
++++ b/include/linux/netfilter/xt_RATEEST.h
+@@ -1,8 +1,9 @@
+-#ifndef _XT_RATEEST_TARGET_H
+-#define _XT_RATEEST_TARGET_H
++#ifndef _XT_RATEEST_H
++#define _XT_RATEEST_H
+ 
+ #include <linux/types.h>
+ 
++/* target info */
+ struct xt_rateest_target_info {
+ 	char			name[IFNAMSIZ];
+ 	__s8			interval;
+@@ -12,4 +13,36 @@
+ 	struct xt_rateest	*est __attribute__((aligned(8)));
+ };
+ 
+-#endif /* _XT_RATEEST_TARGET_H */
++/* match info */
++enum xt_rateest_match_flags {
++	XT_RATEEST_MATCH_INVERT	= 1<<0,
++	XT_RATEEST_MATCH_ABS	= 1<<1,
++	XT_RATEEST_MATCH_REL	= 1<<2,
++	XT_RATEEST_MATCH_DELTA	= 1<<3,
++	XT_RATEEST_MATCH_BPS	= 1<<4,
++	XT_RATEEST_MATCH_PPS	= 1<<5,
++};
++
++enum xt_rateest_match_mode {
++	XT_RATEEST_MATCH_NONE,
++	XT_RATEEST_MATCH_EQ,
++	XT_RATEEST_MATCH_LT,
++	XT_RATEEST_MATCH_GT,
++};
++
++struct xt_rateest_match_info {
++	char			name1[IFNAMSIZ];
++	char			name2[IFNAMSIZ];
++	__u16		flags;
++	__u16		mode;
++	__u32		bps1;
++	__u32		pps1;
++	__u32		bps2;
++	__u32		pps2;
++
++	/* Used internally by the kernel */
++	struct xt_rateest	*est1 __attribute__((aligned(8)));
++	struct xt_rateest	*est2 __attribute__((aligned(8)));
++};
++
++#endif /* _XT_RATEEST_H */
+--- a/include/linux/netfilter/xt_TCPMSS.h
++++ b/include/linux/netfilter/xt_TCPMSS.h
+@@ -4,9 +4,14 @@
+ #include <linux/types.h>
+ 
+ struct xt_tcpmss_info {
+-	__u16 mss;
++    __u16 mss;
+ };
+ 
+ #define XT_TCPMSS_CLAMP_PMTU 0xffff
+ 
+-#endif /* _XT_TCPMSS_H */
++struct xt_tcpmss_match_info {
++    __u16 mss_min, mss_max;
++    __u8 invert;
++};
++
++#endif /*_XT_TCPMSS_H*/
+--- a/include/linux/netfilter_ipv4/ipt_LOG.h
++++ b/include/linux/netfilter_ipv4/ipt_LOG.h
+@@ -0,0 +1,19 @@
++#ifndef _IPT_LOG_H
++#define _IPT_LOG_H
++
++/* make sure not to change this without changing netfilter.h:NF_LOG_* (!) */
++#define IPT_LOG_TCPSEQ		0x01	/* Log TCP sequence numbers */
++#define IPT_LOG_TCPOPT		0x02	/* Log TCP options */
++#define IPT_LOG_IPOPT		0x04	/* Log IP options */
++#define IPT_LOG_UID		0x08	/* Log UID owning local socket */
++#define IPT_LOG_NFLOG		0x10	/* Unsupported, don't reuse */
++#define IPT_LOG_MACDECODE	0x20	/* Decode MAC header */
++#define IPT_LOG_MASK		0x2f
++
++struct ipt_log_info {
++	unsigned char level;
++	unsigned char logflags;
++	char prefix[30];
++};
++
++#endif /*_IPT_LOG_H*/
+--- a/include/linux/netfilter_ipv4/ipt_TTL.h
++++ b/include/linux/netfilter_ipv4/ipt_TTL.h
+@@ -1,5 +1,5 @@
+-/* TTL modification module for IP tables
+- * (C) 2000 by Harald Welte <laforge@netfilter.org> */
++/* IP tables module for matching the value of the TTL
++ * (C) 2000 by Harald Welte <laforge@gnumonks.org> */
+ 
+ #ifndef _IPT_TTL_H
+ #define _IPT_TTL_H
+@@ -7,14 +7,14 @@
+ #include <linux/types.h>
+ 
+ enum {
+-	IPT_TTL_SET = 0,
+-	IPT_TTL_INC,
+-	IPT_TTL_DEC
++	IPT_TTL_EQ = 0,		/* equals */
++	IPT_TTL_NE,		/* not equals */
++	IPT_TTL_LT,		/* less than */
++	IPT_TTL_GT,		/* greater than */
+ };
+ 
+-#define IPT_TTL_MAXMODE	IPT_TTL_DEC
+ 
+-struct ipt_TTL_info {
++struct ipt_ttl_info {
+ 	__u8	mode;
+ 	__u8	ttl;
+ };
+--- a/include/linux/netfilter_ipv6/ip6t_HL.h
++++ b/include/linux/netfilter_ipv6/ip6t_HL.h
+@@ -1,6 +1,6 @@
+-/* Hop Limit modification module for ip6tables
++/* ip6tables module for matching the Hop Limit value
+  * Maciej Soltysiak <solt@dns.toxicfilms.tv>
+- * Based on HW's TTL module */
++ * Based on HW's ttl module */
+ 
+ #ifndef _IP6T_HL_H
+ #define _IP6T_HL_H
+@@ -8,14 +8,14 @@
+ #include <linux/types.h>
+ 
+ enum {
+-	IP6T_HL_SET = 0,
+-	IP6T_HL_INC,
+-	IP6T_HL_DEC
++	IP6T_HL_EQ = 0,		/* equals */
++	IP6T_HL_NE,		/* not equals */
++	IP6T_HL_LT,		/* less than */
++	IP6T_HL_GT,		/* greater than */
+ };
+ 
+-#define IP6T_HL_MAXMODE	IP6T_HL_DEC
+ 
+-struct ip6t_HL_info {
++struct ip6t_hl_info {
+ 	__u8	mode;
+ 	__u8	hop_limit;
+ };
+--- a/include/linux/netfilter_ipv6/ip6t_LOG.h
++++ b/include/linux/netfilter_ipv6/ip6t_LOG.h
+@@ -0,0 +1,19 @@
++#ifndef _IP6T_LOG_H
++#define _IP6T_LOG_H
++
++/* make sure not to change this without changing netfilter.h:NF_LOG_* (!) */
++#define IP6T_LOG_TCPSEQ		0x01	/* Log TCP sequence numbers */
++#define IP6T_LOG_TCPOPT		0x02	/* Log TCP options */
++#define IP6T_LOG_IPOPT		0x04	/* Log IP options */
++#define IP6T_LOG_UID		0x08	/* Log UID owning local socket */
++#define IP6T_LOG_NFLOG		0x10	/* Unsupported, don't use */
++#define IP6T_LOG_MACDECODE	0x20	/* Decode MAC header */
++#define IP6T_LOG_MASK		0x2f
++
++struct ip6t_log_info {
++	unsigned char level;
++	unsigned char logflags;
++	char prefix[30];
++};
++
++#endif /*_IPT_LOG_H*/
+--- a/include/xtables.h
++++ b/include/xtables.h
+@@ -12,13 +12,16 @@
+ #include <stdbool.h>
+ #include <stddef.h>
+ #include <stdint.h>
+-#include <netinet/ether.h>
+ #include <netinet/in.h>
+ #include <net/if.h>
+ #include <linux/types.h>
+ #include <linux/netfilter.h>
+ #include <linux/netfilter/x_tables.h>
+ 
++#ifndef ETH_ALEN
++#define ETH_ALEN 6
++#endif
++
+ #ifndef IPPROTO_SCTP
+ #define IPPROTO_SCTP 132
+ #endif
+--- a/libiptc/linux_stddef.h
++++ b/libiptc/linux_stddef.h
+@@ -0,0 +1,39 @@
++#ifndef _LINUX_STDDEF_H
++#define _LINUX_STDDEF_H
++
++#undef NULL
++#if defined(__cplusplus)
++#define NULL 0
++#else
++#define NULL ((void *)0)
++#endif
++
++#undef offsetof
++#define offsetof(TYPE, MEMBER) ((size_t) &((TYPE *)0)->MEMBER)
++
++
++/**
++ * container_of - cast a member of a structure out to the containing structure
++ *
++ * @ptr:	the pointer to the member.
++ * @type:	the type of the container struct this is embedded in.
++ * @member:	the name of the member within the struct.
++ *
++ */
++#define container_of(ptr, type, member) ({			\
++        const typeof( ((type *)0)->member ) *__mptr = (ptr);	\
++        (type *)( (char *)__mptr - offsetof(type,member) );})
++
++/*
++ * Check at compile time that something is of a particular type.
++ * Always evaluates to 1 so you may use it easily in comparisons.
++ */
++#define typecheck(type,x) \
++({	type __dummy; \
++	typeof(x) __dummy2; \
++	(void)(&__dummy == &__dummy2); \
++	1; \
++})
++
++
++#endif

@@ -1,0 +1,18 @@
+--- a/lib/route/nh_encap_ila.c
++++ b/lib/route/nh_encap_ila.c
+@@ -11,6 +11,15 @@
+ #include "nl-aux-route/nl-route.h"
+ #include "nl-route.h"
+ 
++/* Older kernel headers lack these ILA netlink attributes */
++#ifndef ILA_ATTR_CSUM_MODE
++#define ILA_ATTR_CSUM_MODE	2
++#define ILA_ATTR_IDENT_TYPE	3
++#define ILA_ATTR_HOOK_TYPE	4
++#undef ILA_ATTR_MAX
++#define ILA_ATTR_MAX		4
++#endif
++
+ struct ila_tunnel_encap {
+ 	uint64_t locator;
+ 	uint8_t csum_mode;

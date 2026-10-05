@@ -1,0 +1,82 @@
+--- a/lib/getprogname.c	2026-03-18 06:01:45.000000000 +0800
++++ b/lib/getprogname.c	2026-10-10 13:04:51.546973611 +0800
+@@ -21,6 +21,12 @@
+ 
+ #include <errno.h> /* get program_invocation_name declaration */
+ 
++#ifdef __linux__
++# include <fcntl.h>
++# include <unistd.h>
++# include <string.h>
++#endif
++
+ #ifdef _AIX
+ # include <unistd.h>
+ # include <procinfo.h>
+@@ -251,6 +257,26 @@
+       close (fd);
+     }
+   return "?";
++# elif defined __linux__
++  static char *p;
++  static int first = 1;
++  if (first)
++    {
++      first = 0;
++      int fd = open ("/proc/self/cmdline", O_RDONLY);
++      if (fd >= 0)
++        {
++          char buf[4096];
++          ssize_t n = read (fd, buf, sizeof (buf) - 1);
++          if (n > 0)
++            {
++              buf[n] = '\0';
++              p = strdup (buf);
++            }
++          close (fd);
++        }
++    }
++  return p ? last_component (p) : "?";
+ # else
+ #  error "getprogname module not ported to this OS"
+ # endif
+--- a/libparted/labels/atari.c	2026-03-25 07:30:48.000000000 +0800
++++ b/libparted/labels/atari.c	2026-10-10 13:04:51.637047598 +0800
+@@ -187,7 +187,7 @@
+ typedef struct _AtariPart AtariPart;
+ 
+ /* set by initialisation code to C locale */
+-static locale_t atr_c_locale;
++/* uClibc lacks newlocale/freelocale/isalnum_l; use plain isalnum (C locale) */
+ 
+ static PedDiskType atari_disk_type;
+ 
+@@ -223,9 +223,9 @@
+ 	start = PED_BE32_TO_CPU (part->start);
+ 	size = PED_BE32_TO_CPU (part->size);
+ 
+-	return isalnum_l(part->id[0], atr_c_locale)
+-		&& isalnum_l(part->id[1], atr_c_locale)
+-		&& isalnum_l(part->id[2], atr_c_locale)
++	return isalnum(part->id[0])
++		&& isalnum(part->id[1])
++		&& isalnum(part->id[2])
+ 		&& atr_start_size_correct (start, size, hd_size);
+ }
+ 
+@@ -1961,9 +1961,6 @@
+ {
+ 	PED_ASSERT (sizeof (AtariRawPartition) == 12);
+ 	PED_ASSERT (sizeof (AtariRawTable) == 512);
+-	/* GNU Libc doesn't support NULL instead of the locale name */
+-        atr_c_locale = newlocale(LC_ALL_MASK, "C", NULL);
+-	PED_ASSERT (atr_c_locale != NULL);
+ 
+ 	ped_disk_type_register (&atari_disk_type);
+ }
+@@ -1972,5 +1969,4 @@
+ ped_disk_atari_done ()
+ {
+ 	ped_disk_type_unregister (&atari_disk_type);
+-	freelocale(atr_c_locale);
+ }

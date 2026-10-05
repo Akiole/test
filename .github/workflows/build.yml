@@ -1,0 +1,119 @@
+name: Padavan Firmware Build
+
+on:
+  push:
+    branches:
+      - main
+      - release/*
+    paths-ignore:
+      - '**.md'
+      - '**.txt'
+      - 'LICENSE'
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }} (${{ matrix.toolchain }}) @ ${{ matrix.host }}
+    runs-on: ${{ matrix.host }}
+    timeout-minutes: 180
+    permissions:
+      contents: write
+      actions: write
+    strategy:
+      fail-fast: false
+      matrix:
+        host: [ubuntu-latest, macos-14]
+        target: [PHICOMM-K2P-USB]
+        toolchain: [mipsel-linux-musl, mipsel-linux-uclibc]
+
+    steps:
+      - name: Setup case-sensitive workspace (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          REPO="${GITHUB_REPOSITORY##*/}"
+          WORK_PARENT="$(dirname "$GITHUB_WORKSPACE")"
+          cd "$WORK_PARENT"
+          rmdir "$REPO"
+          hdiutil create "${HOME}/padavan.sparseimage" -volname "$REPO" -type SPARSE -size 30g -fs HFSX
+          hdiutil mount "${HOME}/padavan.sparseimage" -mountroot "$WORK_PARENT"
+
+      - uses: actions/checkout@main
+        with:
+          fetch-depth: 1
+
+      - uses: hendrikmuhs/ccache-action@main
+        with:
+          key: ${{ matrix.target }}-${{ matrix.toolchain }}-${{ matrix.host }}
+
+      - uses: actions/setup-go@main
+        with:
+          go-version: '1.27.x'
+          cache: false
+
+      # Single source of truth: delegates to the Makefile `deps` target so
+      # CI and local installs stay in sync.
+      - name: Install dependencies
+        run: make deps
+
+      # Prepend Homebrew GNU paths so build scripts see GNU sed/tar/grep/find/etc.
+      # The PATH list comes from trunk/host-tools.mk (DARWIN_GNU_PATH) — no duplicate maintenance.
+      - name: Setup GNU PATH (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          GNU_PATH=$(make -f trunk/host-tools.mk -p 2>/dev/null | sed -n 's/^DARWIN_GNU_PATH := //p' | head -1)
+          echo "PATH=${GNU_PATH}:$PATH" >> "$GITHUB_ENV"
+
+      - name: Set build date
+        run: echo "BUILD_DATE=$(TZ='Asia/Shanghai' date +%Y%m%d)" >> "$GITHUB_ENV"
+
+      - name: Build Firmware
+        run: |
+          make ${{ matrix.target }} TOOLCHAIN=${{ matrix.toolchain }}
+
+          # Extract toolchain versions for release body
+          TC_BIN="toolchain/${{ matrix.toolchain }}/bin/${{ matrix.toolchain }}"
+          GCC_VER=$("${TC_BIN}-gcc" -dumpversion 2>/dev/null | head -1)
+          BINUTILS_VER=$("${TC_BIN}-ld" --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -1)
+          GO_VER=$(go version 2>/dev/null | grep -oE 'go[0-9.]+' | head -1)
+          if [ "${{ matrix.toolchain }}" = "mipsel-linux-musl" ]; then
+            LIBC="musl"
+          else
+            LIBC="uClibc-ng"
+          fi
+          echo "GCC_VER=${GCC_VER:-N/A}" >> "$GITHUB_ENV"
+          echo "BINUTILS_VER=${BINUTILS_VER:-N/A}" >> "$GITHUB_ENV"
+          echo "LIBC=$LIBC" >> "$GITHUB_ENV"
+          echo "GO_VER=${GO_VER:-N/A}" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@main
+        with:
+          name: ${{ matrix.target }}-${{ matrix.toolchain }}-${{ matrix.host }}-${{ env.BUILD_DATE }}
+          path: trunk/images/*.trx
+
+      - uses: ncipollo/release-action@main
+        with:
+          commit: ${{ github.sha }}
+          tag: ${{ env.BUILD_DATE }}
+          name: "Build ${{ env.BUILD_DATE }}"
+          body: |
+            ## Build Information
+            - **Host**: ${{ matrix.host }}
+            - **Target**: ${{ matrix.target }}
+            - **Toolchain**: ${{ matrix.toolchain }}
+            - **GCC**: ${{ env.GCC_VER }}
+            - **Binutils**: ${{ env.BINUTILS_VER }}
+            - **C Library**: ${{ env.LIBC }}
+            - **Go**: ${{ env.GO_VER }}
+            - **Commit**: ${{ github.sha }}
+          artifacts: trunk/images/*.trx
+          allowUpdates: true
+          replacesArtifacts: true
+          omitNameDuringUpdate: true
+          makeLatest: false
+          prerelease: true
+
+      - uses: Mattraks/delete-workflow-runs@main
+        with:
+          retain_days: 0
+          keep_minimum_runs: 3
+          delete_run_by_conclusion_pattern: "failure,cancelled"

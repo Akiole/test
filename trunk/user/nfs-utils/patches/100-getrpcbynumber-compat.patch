@@ -1,0 +1,26 @@
+--- a/support/nfs/svc_socket.c	2026-08-24 16:13:23.424062663 +0800
++++ b/support/nfs/svc_socket.c	2026-08-24 16:13:23.427397472 +0800
+@@ -30,6 +30,23 @@
+ 
+ #include "config.h"
+ 
++/* uClibc/musl lacks getrpcbynumber() and getrpcbynumber_r(). */
++struct rpcent *getrpcbynumber(int number)
++{
++	(void)number;
++	return NULL;
++}
++int getrpcbynumber_r(int number, struct rpcent *result_buf,
++		      char *buf, size_t buflen, struct rpcent **result)
++{
++	(void)number;
++	(void)result_buf;
++	(void)buf;
++	(void)buflen;
++	*result = NULL;
++	return 0;
++}
++
+ #ifdef _LIBC
+ # include <libintl.h>
+ #else

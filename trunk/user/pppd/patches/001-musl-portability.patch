@@ -1,0 +1,126 @@
+--- a/include/linux/ppp_defs.h
++++ b/include/linux/ppp_defs.h
+@@ -27,6 +27,9 @@
+ #ifndef _PPP_DEFS_H_
+ #define _PPP_DEFS_H_
+ 
++#include <linux/types.h>
++#include <time.h>
++
+ /*
+  * The basic PPP frame.
+  */
+--- a/pppd/auth.c
++++ b/pppd/auth.c
+@@ -81,7 +81,6 @@
+ #include <sys/types.h>
+ #include <sys/stat.h>
+ #include <sys/socket.h>
+-#include <utmp.h>
+ #include <fcntl.h>
+ #if defined(_PATH_LASTLOG) && defined(__linux__)
+ #include <lastlog.h>
+--- a/pppd/main.c
++++ b/pppd/main.c
+@@ -76,7 +76,6 @@
+ #include <fcntl.h>
+ #include <syslog.h>
+ #include <netdb.h>
+-#include <utmp.h>
+ #include <pwd.h>
+ #include <sys/param.h>
+ #include <sys/types.h>
+--- a/pppd/session.c
++++ b/pppd/session.c
+@@ -86,7 +86,9 @@
+ #endif
+ 
+ #include <time.h>
++#ifdef HAVE_UTMP_H
+ #include <utmp.h>
++#endif
+ #include <fcntl.h>
+ #include <unistd.h>
+ #include "pppd-private.h"
+@@ -368,10 +370,12 @@
+     if (SESS_ACCT & flags) {
+ 	if (strncmp(ttyName, "/dev/", 5) == 0)
+ 	    ttyName += 5;
++#if defined(HAVE_LOGWTMP) || defined(HAVE_UTMP_H)
+ 	logwtmp(ttyName, user, ifname); /* Add wtmp login entry */
++#endif
+ 	logged_in = 1;
+ 
+-#if defined(_PATH_LASTLOG) && !defined(PPP_WITH_PAM)
++#if defined(_PATH_LASTLOG) && defined(HAVE_UTMP_H) && !defined(PPP_WITH_PAM)
+ 	/*
+ 	 * Enter the user in lastlog only if he has been authenticated using
+ 	 * local system services.  If he has not, then we don't know what his
+@@ -393,7 +397,7 @@
+                 (void)close(fd);
+             }
+ 	}
+-#endif /* _PATH_LASTLOG and not PPP_WITH_PAM */
++#endif /* _PATH_LASTLOG and HAVE_UTMP_H and not PPP_WITH_PAM */
+ 	info("user %s logged in on tty %s intf %s", user, ttyName, ifname);
+     }
+ 
+@@ -421,7 +425,9 @@
+     if (logged_in) {
+ 	if (strncmp(ttyName, "/dev/", 5) == 0)
+ 	    ttyName += 5;
++#if defined(HAVE_LOGWTMP) || defined(HAVE_UTMP_H)
+ 	logwtmp(ttyName, "", ""); /* Wipe out utmp logout entry */
++#endif
+ 	logged_in = 0;
+     }
+ }
+--- a/pppd/sys-linux.c
++++ b/pppd/sys-linux.c
+@@ -2997,7 +2997,7 @@
+     return ok;
+ }
+ 
+-#ifndef HAVE_LOGWTMP
++#if !defined(HAVE_LOGWTMP) && defined(HAVE_UTMP_H)
+ /********************************************************************
+  *
+  * Update the wtmp file with the appropriate user name and tty device.
+@@ -3071,7 +3071,7 @@
+     }
+ #endif
+ }
+-#endif /* HAVE_LOGWTMP */
++#endif /* !HAVE_LOGWTMP && HAVE_UTMP_H */
+ 
+ /********************************************************************
+  *
+--- a/pppd/tty.c
++++ b/pppd/tty.c
+@@ -79,7 +79,6 @@
+ #include <fcntl.h>
+ #include <syslog.h>
+ #include <netdb.h>
+-#include <utmp.h>
+ #include <pwd.h>
+ #include <sys/param.h>
+ #include <sys/types.h>
+--- a/pppd/utils.c
++++ b/pppd/utils.c
+@@ -40,7 +40,6 @@
+ #include <syslog.h>
+ #include <netdb.h>
+ #include <time.h>
+-#include <utmp.h>
+ #include <pwd.h>
+ #include <sys/param.h>
+ #include <sys/types.h>
+@@ -277,6 +276,8 @@
+ 	    break;
+ 	case 's':
+ 	    str = va_arg(args, char *);
++	    if (str == NULL)
++		str = "(null)";
+ 	    break;
+ 	case 'c':
+ 	    num[0] = va_arg(args, int);

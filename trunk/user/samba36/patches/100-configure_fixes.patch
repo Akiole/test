@@ -1,0 +1,11 @@
+--- a/source3/configure
++++ b/source3/configure
+@@ -5424,7 +5424,7 @@
+ CFLAGS=$savedCFLAGS
+ 
+ if test x"$GCC" != x"yes" ; then
+-
++	:
+ fi
+ 
+ if test x"$GCC" = x"yes" ; then

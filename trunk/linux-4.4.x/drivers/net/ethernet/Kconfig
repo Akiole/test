@@ -1,0 +1,22 @@
+#
+# Ethernet LAN device configuration
+#
+
+menuconfig ETHERNET
+	bool "Ethernet driver support"
+	depends on NET
+	default y
+	---help---
+	  This section contains all the Ethernet device drivers.
+
+if ETHERNET
+
+config MDIO
+	tristate
+
+config SUNGEM_PHY
+	tristate
+
+source "drivers/net/ethernet/raeth/Kconfig"
+
+endif # ETHERNET

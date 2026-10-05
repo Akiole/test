@@ -1,0 +1,129 @@
+# Common definitions for all architectures
+# Included from the various <arch>/config.arch files
+
+# Host architecture identification (IS_DARWIN from host-tools.mk)
+ifeq ($(IS_DARWIN),Darwin)
+HOST_BUILD := $(subst arm64,aarch64,$(shell uname -m 2>/dev/null || echo x86_64))-apple-darwin
+else
+HOST_BUILD := $(shell uname -m 2>/dev/null || echo x86_64)-pc-linux-gnu
+endif
+
+# Macro: test if gcc accepts a specific flag
+# Used by vendors/config/mips/config.arch to conditionally enable
+# compiler warning/optimization flags without breaking older toolchains.
+check-gcc-flag = $(shell \
+	if $(CC) $(strip $(1)) -S -o /dev/null -xc /dev/null > /dev/null 2>&1; then echo $(strip $(1)); else echo $(strip $(2)); fi)
+
+# Macro: test if gcc accepts a warning flag and how to disable it
+# Used by vendors/config/mips/config.arch for conditional warning suppression.
+check-gcc-nowarn = $(shell \
+	if $(CC) -W$(strip $(1)) -S -o /dev/null -xc /dev/null > /dev/null 2>&1; then echo -Wno-$(strip $(1)); else echo $(strip $(2)); fi)
+
+# UCLINUX common library flag defaults to disabled
+UCLINUX_COMMON_LIB := 0
+
+# Enable common library flag if either build library or user build is defined
+ifeq ($(or $(UCLINUX_BUILD_LIB),$(UCLINUX_BUILD_USER)),1)
+	UCLINUX_COMMON_LIB := 1
+endif
+
+ifeq ($(UCLINUX_COMMON_LIB),1)
+	# --- Static library flags ---
+	# Core system libraries
+	SLIBFLEX       := -lfl
+	SLIBICONV      := -liconv
+	SLIBC          := -lc
+	SLIBM          := -lm
+	SLIBINTL       := -lintl
+
+	# Legacy crypto (prefer OpenSSL SSL/CRYPTO for new code)
+	SLIBAES        := -laes
+	SLIBDES        := -ldes
+
+	# Networking
+	SLIBNETOLD     := -lnetold
+	SLIBPCAP       := -lpcap
+	SLIBNET        := -lnet
+
+	ifdef DISABLE_SHARED_SSL
+		SLIBSSL    := -Wl,-Bstatic -lssl -Wl,-Bdynamic
+		SLIBCRYPTO := -Wl,-Bstatic -lcrypto -Wl,-Bdynamic
+	else
+		SLIBSSL    := -lssl
+		SLIBCRYPTO := -lcrypto
+	endif
+
+	SLIBATM        := -latm
+
+	ifdef CONFIG_LIB_LIBCRYPT_OLD
+		SLIBCRYPT  := -Wl,-Bstatic -lcrypt_old -lcrypt -Wl,-Bdynamic
+	else
+		SLIBCRYPT  := -Wl,-Bstatic -lcrypt -Wl,-Bdynamic
+	endif
+
+	# Data formats, graphics, compression
+	SLIBEXPAT      := -lexpat
+	SLIBIXML       := -lixml
+	SLIBJPEG       := -ljpeg
+	SLIBPNG        := -lpng
+	SLIBZ          := -lz
+
+	# C++ runtime / threading
+	SLIBSTDCPP     := -Wl,-Bstatic -lstdc++ -Wl,-Bdynamic
+	SLIBTHREADUTIL := -lthreadutil
+	SLIBPTHREAD    := -lpthread
+
+	# Network utilities
+	SLIBCURL       := -lcurl
+	SLIBEVENT      := -levent
+	SLIBUSB        := -lusb
+	SLIBUPNP       := -lupnp
+
+	# --- Dynamic library flags ---
+	LIBDL       := -ldl
+	LIBEXPAT    := -lexpat
+	LIBGCC      := -lgcc
+
+	# Reference static libs as dynamic libs for convenience
+	LIBFLEX       := $(SLIBFLEX)
+	LIBICONV      := $(SLIBICONV)
+	LIBC          := $(SLIBC)
+	LIBM          := $(SLIBM)
+	LIBINTL       := $(SLIBINTL)
+	LIBAES        := $(SLIBAES)
+	LIBDES        := $(SLIBDES)
+	LIBNETOLD     := $(SLIBNETOLD)
+	LIBPCAP       := $(SLIBPCAP)
+	LIBNET        := $(SLIBNET)
+	LIBSSL        := $(SLIBSSL)
+	LIBCRYPTO     := $(SLIBCRYPTO)
+	LIBATM        := $(SLIBATM)
+
+	ifdef CONFIG_LIB_LIBCRYPT_OLD
+		LIBCRYPT := -lcrypt_old -lcrypt
+	else
+		LIBCRYPT := -lcrypt
+	endif
+
+	LIBIXML       := $(SLIBIXML)
+	LIBJPEG       := $(SLIBJPEG)
+	LIBPNG        := $(SLIBPNG)
+	LIBSTDCPP     := $(SLIBSTDCPP)
+	LIBTHREADUTIL := $(SLIBTHREADUTIL)
+	LIBPTHREAD    := $(SLIBPTHREAD)
+	LIBEVENT      := $(SLIBEVENT)
+	LIBUSB        := $(SLIBUSB)
+	LIBCURL       := $(SLIBCURL)
+	LIBUPNP       := $(SLIBUPNP)
+	LIBZ          := $(SLIBZ)
+
+	# Additional libraries for glibc or non-libc environments
+	ifneq ($(findstring glibc,$(LIBCDIR)),)
+		LIBRESOLV := -lresolv
+	endif
+
+	ifneq ($(LIBCDIR),libc)
+		LIBUTIL := -lutil
+	endif
+endif
+

@@ -1,0 +1,48 @@
+--- a/lib/getprogname.c	2026-08-24 13:29:44.420003117 +0800
++++ b/lib/getprogname.c	2026-08-24 13:29:24.156765386 +0800
+@@ -47,6 +47,12 @@
+ # include <string.h>
+ #endif
+ 
++#ifdef __linux__
++# include <fcntl.h>
++# include <unistd.h>
++# include <string.h>
++#endif
++
+ #include "basename-lgpl.h"
+ 
+ #ifndef HAVE_GETPROGNAME  /* not Mac OS X, FreeBSD, NetBSD, OpenBSD >= 5.4, Solaris >= 11, Cygwin, Android API level >= 21 */
+@@ -226,6 +232,32 @@
+       free (buf.ps_pathptr);
+     }
+   return p;
++# elif defined __linux__                                            /* Linux with /proc */
++  /* /proc/self/cmdline is NUL-separated; the first token is argv[0]. */
++  char buf[256];
++  int fd = open ("/proc/self/cmdline", O_RDONLY);
++  if (0 <= fd)
++    {
++      ssize_t n = read (fd, buf, sizeof (buf) - 1);
++      close (fd);
++      if (n > 0)
++        {
++          buf[n] = '\0';
++          /* argv[0] ends at the first NUL (already the case from read). */
++          char *progname = strrchr (buf, '/');
++          if (progname)
++            progname = progname + 1;
++          else
++            progname = buf;
++          if (progname[0])
++            {
++              char *ret = strdup (progname);
++              if (ret)
++                return ret;
++            }
++        }
++    }
++  return "?";
+ # elif defined __SCO_VERSION__ || defined __sysv5__                /* SCO OpenServer6/UnixWare */
+   char buf[80];
+   sprintf (buf, "/proc/%d/cmdline", getpid());

@@ -1,0 +1,574 @@
+diff -ruN e2fsprogs-1.47.4.orig/e2fsprogs.spec e2fsprogs-1.47.4/e2fsprogs.spec
+--- e2fsprogs-1.47.4.orig/e2fsprogs.spec	2026-03-07 01:17:36.000000000 +0800
++++ e2fsprogs-1.47.4/e2fsprogs.spec	1970-01-01 08:00:00.000000000 +0800
+@@ -1,244 +0,0 @@
+-%define	_root_sbindir	/sbin
+-%define	_root_libdir	/%{_lib}
+-%define	_root_localedir	/usr/share/locale
+-%define	_root_etcdir	/etc
+-
+-Summary: Utilities for managing ext2/ext3/ext4 filesystems
+-Name: e2fsprogs
+-Version: 1.47.4
+-Release: 0
+-License: GPLv2
+-Group: System Environment/Base
+-Source:  ftp://download.sourceforge.net/pub/sourceforge/e2fsprogs/e2fsprogs-%{version}.tar.gz
+-Url: http://e2fsprogs.sourceforge.net/
+-Prereq: /sbin/ldconfig
+-BuildRoot: %{_tmppath}/%{name}-root
+-
+-%description
+-The e2fsprogs package contains a number of utilities for creating,
+-checking, modifying, and correcting any inconsistencies in ext2, ext3,
+-and ext4 filesystems.  E2fsprogs contains e2fsck (used to repair
+-filesystem inconsistencies after an unclean shutdown), mke2fs (used to
+-initialize a partition to contain an empty ext2 filesystem), debugfs
+-(used to examine the internal structure of a filesystem, to manually
+-repair a corrupted filesystem or to create test cases for e2fsck),
+-tune2fs (used to modify filesystem parameters), resize2fs to grow and
+-shrink unmounted ext2 filesystems, and most of the other core ext2fs
+-filesystem utilities.
+-
+-You should install the e2fsprogs package if you are using any ext2,
+-ext3, or ext4 filesystems (if you're not sure, you probably should
+-install this package).  You may also need to install it (even if you
+-don't use ext2/ext3/ext4) for the libuuid and libblkid libraries and
+-fsck tool that are included here.
+-
+-%package devel
+-Summary: Ext2 filesystem-specific static libraries and headers.
+-Group: Development/Libraries
+-Requires: e2fsprogs = %{version}
+-Prereq: /sbin/install-info
+-
+-%description devel
+-E2fsprogs-devel contains the libraries and header files needed to
+-develop ext2, ext3, or ext4 filesystem-specific programs.
+-
+-You should install e2fsprogs-devel if you want to develop
+-ext2. ext3. or ext4 filesystem-specific programs.  If you install
+-e2fsprogs-devel, you'll also want to install e2fsprogs.
+-
+-%package -n uuidd
+-Summary: helper daemon to guarantee uniqueness of time-based UUIDs
+-Group: System Environment/Daemons
+-License: GPLv2
+-Requires: e2fsprogs = %{version}
+-Requires(pre): shadow-utils
+-
+-%description -n uuidd
+-The uuidd package contains a userspace daemon (uuidd) which guarantees
+-uniqueness of time-based UUID generation even at very high rates on
+-SMP systems.
+-
+-%prep
+-%setup
+-
+-%build
+-%configure --enable-elf-shlibs --enable-nls \
+-	%{?extra_config_flags:%extra_config_flags}
+-make
+-make check
+-
+-%install
+-rm -rf $RPM_BUILD_ROOT
+-export PATH=/sbin:$PATH
+-make install install-libs DESTDIR="$RPM_BUILD_ROOT" \
+-	root_sbindir=%{_root_sbindir} root_libdir=%{_root_libdir}
+-/sbin/ldconfig -n ${RPM_BUILD_ROOT}%{_libdir}
+-
+-# Add a dir that uuidd needs that the Makefiles don't create
+-install -d $RPM_BUILD_ROOT/var/lib/libuuid
+-
+-%find_lang %{name}
+-
+-%clean
+-rm -rf $RPM_BUILD_ROOT
+-
+-%post -p /sbin/ldconfig
+-
+-%postun -p /sbin/ldconfig
+-
+-%post devel
+-if [ -x /sbin/install-info -a -f %{_infodir}/libext2fs.info.gz ]; then
+-    /sbin/install-info %{_infodir}/libext2fs.info.gz %{_infodir}/dir
+-fi
+-exit 0
+-
+-%postun devel
+-if [ $1 = 0 -a -x /sbin/install-info -a -f %{_infodir}/libext2fs.info.gz ]; then
+-   /sbin/install-info --delete %{_infodir}/libext2fs.info.gz %{_infodir}/dir
+-fi
+-exit 0
+-
+-%pre -n uuidd
+-getent group uuidd >/dev/null || groupadd -r uuidd
+-getent passwd uuidd >/dev/null || \
+-useradd -r -g uuidd -d /var/lib/libuuid -s /sbin/nologin \
+-    -c "UUID generator helper daemon" uuidd
+-exit 0
+-
+-%files -f %{name}.lang
+-%defattr(-,root,root)
+-%doc README RELEASE-NOTES
+-
+-%{_root_sbindir}/badblocks
+-%{_root_sbindir}/blkid
+-%{_root_sbindir}/debugfs
+-%{_root_sbindir}/dumpe2fs
+-%{_root_sbindir}/e2fsck
+-%{_root_sbindir}/e2image
+-%{_root_sbindir}/e2label
+-%{_root_sbindir}/e2mmpstatus
+-%{_root_sbindir}/e2undo
+-%{_root_sbindir}/findfs
+-%{_root_sbindir}/fsck
+-%{_root_sbindir}/fsck.ext2
+-%{_root_sbindir}/fsck.ext3
+-%{_root_sbindir}/fsck.ext4
+-%{_root_sbindir}/fsck.ext4dev
+-%{_root_sbindir}/logsave
+-%{_root_sbindir}/mke2fs
+-%{_root_etcdir}/mke2fs.conf
+-%{_root_sbindir}/mkfs.ext2
+-%{_root_sbindir}/mkfs.ext3
+-%{_root_sbindir}/mkfs.ext4
+-%{_root_sbindir}/mkfs.ext4dev
+-%{_root_sbindir}/resize2fs
+-%{_root_sbindir}/tune2fs
+-%{_sbindir}/filefrag
+-%{_sbindir}/mklost+found
+-%{_sbindir}/e2freefrag
+-
+-%{_root_libdir}/libblkid.so.*
+-%{_root_libdir}/libcom_err.so.*
+-%{_root_libdir}/libe2p.so.*
+-%{_root_libdir}/libext2fs.so.*
+-%{_root_libdir}/libss.so.*
+-%{_root_libdir}/libuuid.so.*
+-
+-%{_libdir}/e2initrd_helper
+-
+-%{_bindir}/chattr
+-%{_bindir}/lsattr
+-%{_bindir}/uuidgen
+-%{_mandir}/man1/chattr.1*
+-%{_mandir}/man1/lsattr.1*
+-%{_mandir}/man1/uuidgen.1*
+-
+-%{_mandir}/man5/e2fsck.conf.5*
+-%{_mandir}/man5/mke2fs.conf.5*
+-
+-%{_mandir}/man8/badblocks.8*
+-%{_mandir}/man8/blkid.8*
+-%{_mandir}/man8/debugfs.8*
+-%{_mandir}/man8/dumpe2fs.8*
+-%{_mandir}/man8/e2fsck.8*
+-%{_mandir}/man8/findfs.8*
+-%{_mandir}/man8/fsck.ext2.8*
+-%{_mandir}/man8/fsck.ext3.8*
+-%{_mandir}/man8/fsck.ext4.8*
+-%{_mandir}/man8/fsck.ext4dev.8*
+-%{_mandir}/man8/e2image.8*
+-%{_mandir}/man8/e2label.8*
+-%{_mandir}/man8/e2mmpstatus.8*
+-%{_mandir}/man8/e2undo.8*
+-%{_mandir}/man8/fsck.8*
+-%{_mandir}/man8/logsave.8*
+-%{_mandir}/man8/mke2fs.8*
+-%{_mandir}/man8/mkfs.ext2.8*
+-%{_mandir}/man8/mkfs.ext3.8*
+-%{_mandir}/man8/mkfs.ext4.8*
+-%{_mandir}/man8/mkfs.ext4dev.8*
+-%{_mandir}/man8/mklost+found.8*
+-%{_mandir}/man8/resize2fs.8*
+-%{_mandir}/man8/tune2fs.8*
+-%{_mandir}/man8/filefrag.8*
+-%{_mandir}/man8/e2freefrag.8*
+-
+-%files devel
+-%defattr(-,root,root)
+-%{_infodir}/libext2fs.info*
+-%{_bindir}/compile_et
+-%{_bindir}/mk_cmds
+-
+-%{_libdir}/libblkid.a
+-%{_libdir}/libblkid.so
+-%{_libdir}/libcom_err.a
+-%{_libdir}/libcom_err.so
+-%{_libdir}/libe2p.a
+-%{_libdir}/libe2p.so
+-%{_libdir}/libext2fs.a
+-%{_libdir}/libext2fs.so
+-%{_libdir}/libss.a
+-%{_libdir}/libss.so
+-%{_libdir}/libuuid.a
+-%{_libdir}/libuuid.so
+-
+-%{_libdir}/pkgconfig/blkid.pc
+-%{_libdir}/pkgconfig/com_err.pc
+-%{_libdir}/pkgconfig/e2p.pc
+-%{_libdir}/pkgconfig/ext2fs.pc
+-%{_libdir}/pkgconfig/ss.pc
+-%{_libdir}/pkgconfig/uuid.pc
+-
+-%{_datadir}/et
+-%{_datadir}/ss
+-%{_includedir}/blkid
+-%{_includedir}/e2p
+-%{_includedir}/et
+-%{_includedir}/com_err.h
+-%{_includedir}/ext2fs
+-%{_includedir}/ss
+-%{_includedir}/uuid
+-%{_mandir}/man1/compile_et.1*
+-%{_mandir}/man1/mk_cmds.1*
+-%{_mandir}/man3/com_err.3*
+-%{_mandir}/man3/libblkid.3*
+-%{_mandir}/man3/uuid.3*
+-%{_mandir}/man3/uuid_clear.3*
+-%{_mandir}/man3/uuid_compare.3*
+-%{_mandir}/man3/uuid_copy.3*
+-%{_mandir}/man3/uuid_generate.3*
+-%{_mandir}/man3/uuid_generate_random.3*
+-%{_mandir}/man3/uuid_generate_time.3*
+-%{_mandir}/man3/uuid_is_null.3*
+-%{_mandir}/man3/uuid_parse.3*
+-%{_mandir}/man3/uuid_time.3*
+-%{_mandir}/man3/uuid_unparse.3*
+-
+-%files -n uuidd
+-%defattr(-,root,root)
+-# if you want to run via init
+-# /etc/init.d/uuidd
+-%{_mandir}/man8/uuidd.8*
+-%attr(6755, uuidd, uuidd) %{_sbindir}/uuidd
+-%dir %attr(2775, uuidd, uuidd) /var/lib/libuuid
+-
+diff -ruN e2fsprogs-1.47.4.orig/lib/ext2fs/tdb/patches/copyright e2fsprogs-1.47.4/lib/ext2fs/tdb/patches/copyright
+--- e2fsprogs-1.47.4.orig/lib/ext2fs/tdb/patches/copyright	2026-03-07 01:17:36.000000000 +0800
++++ e2fsprogs-1.47.4/lib/ext2fs/tdb/patches/copyright	1970-01-01 08:00:00.000000000 +0800
+@@ -1,20 +0,0 @@
+-Index: tdbsa/tdb.c
+-===================================================================
+---- tdbsa.orig/tdb.c
+-+++ tdbsa/tdb.c
+-@@ -4,11 +4,11 @@ Rev: 23371
+- Last Changed Date: 2007-06-06 20:14:06 -0400 (Wed, 06 Jun 2007)
+- */
+-  /* 
+--   Unix SMB/CIFS implementation.
+-+   trivial database library - standalone version
+- 
+--   trivial database library - private includes
+--
+--   Copyright (C) Andrew Tridgell              2005
+-+   Copyright (C) Andrew Tridgell              1999-2005
+-+   Copyright (C) Jeremy Allison               2000-2006
+-+   Copyright (C) Paul `Rusty' Russell         2000
+-    
+-      ** NOTE! The following LGPL license applies to the tdb
+-      ** library. This does NOT imply that all of Samba is released
+diff -ruN e2fsprogs-1.47.4.orig/lib/ext2fs/tdb/patches/ext2tdb-rename e2fsprogs-1.47.4/lib/ext2fs/tdb/patches/ext2tdb-rename
+--- e2fsprogs-1.47.4.orig/lib/ext2fs/tdb/patches/ext2tdb-rename	2026-03-07 01:17:36.000000000 +0800
++++ e2fsprogs-1.47.4/lib/ext2fs/tdb/patches/ext2tdb-rename	1970-01-01 08:00:00.000000000 +0800
+@@ -1,65 +0,0 @@
+-Index: tdb/tdb.h
+-===================================================================
+---- tdb.orig/tdb.h
+-+++ tdb/tdb.h
+-@@ -76,6 +76,60 @@ typedef struct TDB_DATA {
+- #endif
+- #endif
+- 
+-+/* ext2fs tdb renames */
+-+#define tdb_open ext2fs_tdb_open
+-+#define tdb_open_ex ext2fs_tdb_open_ex
+-+#define tdb_set_max_dead ext2fs_tdb_set_max_dead
+-+#define tdb_reopen ext2fs_tdb_reopen
+-+#define tdb_reopen_all ext2fs_tdb_reopen_all
+-+#define tdb_set_logging_function ext2fs_tdb_set_logging_function
+-+#define tdb_error ext2fs_tdb_error
+-+#define tdb_errorstr ext2fs_tdb_errorstr
+-+#define tdb_fetch ext2fs_tdb_fetch
+-+#define tdb_parse_record ext2fs_tdb_parse_record
+-+#define tdb_delete ext2fs_tdb_delete
+-+#define tdb_store ext2fs_tdb_store
+-+#define tdb_append ext2fs_tdb_append
+-+#define tdb_close ext2fs_tdb_close
+-+#define tdb_firstkey ext2fs_tdb_firstkey
+-+#define tdb_nextkey ext2fs_tdb_nextkey
+-+#define tdb_traverse ext2fs_tdb_traverse
+-+#define tdb_traverse_read ext2fs_tdb_traverse_read
+-+#define tdb_exists ext2fs_tdb_exists
+-+#define tdb_lockall ext2fs_tdb_lockall
+-+#define tdb_unlockall ext2fs_tdb_unlockall
+-+#define tdb_lockall_read ext2fs_tdb_lockall_read
+-+#define tdb_unlockall_read ext2fs_tdb_unlockall_read
+-+#define tdb_name ext2fs_tdb_name
+-+#define tdb_fd ext2fs_tdb_fd
+-+#define tdb_log_fn ext2fs_tdb_log_fn
+-+#define tdb_get_logging_private ext2fs_tdb_get_logging_private
+-+#define tdb_transaction_start ext2fs_tdb_transaction_start
+-+#define tdb_transaction_commit ext2fs_tdb_transaction_commit
+-+#define tdb_transaction_cancel ext2fs_tdb_transaction_cancel
+-+#define tdb_transaction_recover ext2fs_tdb_transaction_recover
+-+#define tdb_get_seqnum ext2fs_tdb_get_seqnum
+-+#define tdb_hash_size ext2fs_tdb_hash_size
+-+#define tdb_map_size ext2fs_tdb_map_size
+-+#define tdb_get_flags ext2fs_tdb_get_flags
+-+#define tdb_chainlock ext2fs_tdb_chainlock
+-+#define tdb_chainunlock ext2fs_tdb_chainunlock
+-+#define tdb_chainlock_read ext2fs_tdb_chainlock_read
+-+#define tdb_chainunlock_read ext2fs_tdb_chainunlock_read
+-+#define tdb_dump_all ext2fs_tdb_dump_all
+-+#define tdb_printfreelist ext2fs_tdb_printfreelist
+-+#define tdb_validate_freelist ext2fs_tdb_validate_freelist
+-+#define tdb_chainlock_mark ext2fs_tdb_chainlock_mark
+-+#define tdb_chainlock_nonblock ext2fs_tdb_chainlock_nonblock
+-+#define tdb_chainlock_unmark ext2fs_tdb_chainlock_unmark
+-+#define tdb_enable_seqnum ext2fs_tdb_enable_seqnum
+-+#define tdb_increment_seqnum_nonblock ext2fs_tdb_increment_seqnum_nonblock
+-+#define tdb_lock_nonblock ext2fs_tdb_lock_nonblock
+-+#define tdb_lockall_mark ext2fs_tdb_lockall_mark
+-+#define tdb_lockall_nonblock ext2fs_tdb_lockall_nonblock
+-+#define tdb_lockall_read_nonblock ext2fs_tdb_lockall_read_nonblock
+-+#define tdb_lockall_unmark ext2fs_tdb_lockall_unmark
+-+
+- /* this is the context structure that is returned from a db open */
+- typedef struct tdb_context TDB_CONTEXT;
+- 
+diff -ruN e2fsprogs-1.47.4.orig/lib/ext2fs/tdb/patches/replace-includes e2fsprogs-1.47.4/lib/ext2fs/tdb/patches/replace-includes
+--- e2fsprogs-1.47.4.orig/lib/ext2fs/tdb/patches/replace-includes	2026-03-07 01:17:36.000000000 +0800
++++ e2fsprogs-1.47.4/lib/ext2fs/tdb/patches/replace-includes	1970-01-01 08:00:00.000000000 +0800
+@@ -1,92 +0,0 @@
+-Index: tdb/tdb.c
+-===================================================================
+---- tdb.orig/tdb.c
+-+++ tdb/tdb.c
+-@@ -29,11 +29,82 @@ Last Changed Date: 2007-06-22 13:36:10 -
+-    Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA
+- */
+- 
+--#include "replace.h"
+--#include "system/filesys.h"
+--#include "system/time.h"
+--#include "system/shmem.h"
+--#include "system/select.h"
+-+#ifdef CONFIG_STAND_ALONE
+-+#define HAVE_MMAP
+-+#define HAVE_STRDUP
+-+#define HAVE_SYS_MMAN_H
+-+#define HAVE_UTIME_H
+-+#define HAVE_UTIME
+-+#endif
+-+#define _XOPEN_SOURCE 500
+-+
+-+#include <unistd.h>
+-+#include <stdio.h>
+-+#include <stdlib.h>
+-+#include <stdarg.h>
+-+#include <stddef.h>
+-+#include <errno.h>
+-+#include <string.h>
+-+#ifdef HAVE_SYS_SELECT_H
+-+#include <sys/select.h>
+-+#endif
+-+#include <sys/time.h>
+-+#include <sys/types.h>
+-+#include <time.h>
+-+#ifdef HAVE_UTIME_H
+-+#include <utime.h>
+-+#endif
+-+#include <sys/stat.h>
+-+#include <sys/file.h>
+-+#include <fcntl.h>
+-+
+-+#ifdef HAVE_SYS_MMAN_H
+-+#include <sys/mman.h>
+-+#endif
+-+
+-+#ifndef MAP_FILE
+-+#define MAP_FILE 0
+-+#endif
+-+
+-+#ifndef MAP_FAILED
+-+#define MAP_FAILED ((void *)-1)
+-+#endif
+-+
+-+#ifndef HAVE_STRDUP
+-+#define strdup rep_strdup
+-+static char *rep_strdup(const char *s)
+-+{
+-+	char *ret;
+-+	int length;
+-+	if (!s)
+-+		return NULL;
+-+
+-+	if (!length)
+-+		length = strlen(s);
+-+
+-+	ret = malloc(length + 1);
+-+	if (ret) {
+-+		strncpy(ret, s, length);
+-+		ret[length] = '\0';
+-+	}
+-+	return ret;
+-+}
+-+#endif
+-+
+-+#ifndef PRINTF_ATTRIBUTE
+-+#if (__GNUC__ >= 3) && (__GNUC_MINOR__ >= 1 )
+-+/** Use gcc attribute to check printf fns.  a1 is the 1-based index of
+-+ * the parameter containing the format, and a2 the index of the first
+-+ * argument. Note that some gcc 2.x versions don't handle this
+-+ * properly **/
+-+#define PRINTF_ATTRIBUTE(a1, a2) __attribute__ ((format (__printf__, a1, a2)))
+-+#else
+-+#define PRINTF_ATTRIBUTE(a1, a2)
+-+#endif
+-+#endif
+-+
+-+typedef int bool;
+-+
+- #include "tdb.h"
+- 
+- #ifndef u32
+diff -ruN e2fsprogs-1.47.4.orig/lib/ext2fs/tdb/patches/series e2fsprogs-1.47.4/lib/ext2fs/tdb/patches/series
+--- e2fsprogs-1.47.4.orig/lib/ext2fs/tdb/patches/series	2026-03-07 01:17:36.000000000 +0800
++++ e2fsprogs-1.47.4/lib/ext2fs/tdb/patches/series	1970-01-01 08:00:00.000000000 +0800
+@@ -1,6 +0,0 @@
+-copyright
+-replace-includes
+-static-prototypes
+-static-functions
+-tdbtool-includes
+-ext2tdb-rename
+diff -ruN e2fsprogs-1.47.4.orig/lib/ext2fs/tdb/patches/static-functions e2fsprogs-1.47.4/lib/ext2fs/tdb/patches/static-functions
+--- e2fsprogs-1.47.4.orig/lib/ext2fs/tdb/patches/static-functions	2026-03-07 01:17:36.000000000 +0800
++++ e2fsprogs-1.47.4/lib/ext2fs/tdb/patches/static-functions	1970-01-01 08:00:00.000000000 +0800
+@@ -1,13 +0,0 @@
+-Index: tdbsa/tdb.c
+-===================================================================
+---- tdbsa.orig/tdb.c
+-+++ tdbsa/tdb.c
+-@@ -2254,7 +2254,7 @@ int tdb_transaction_recover(struct tdb_c
+- /* file: freelist.c */
+- 
+- /* read a freelist record and check for simple errors */
+--int tdb_rec_free_read(struct tdb_context *tdb, tdb_off_t off, struct list_struct *rec)
+-+static int tdb_rec_free_read(struct tdb_context *tdb, tdb_off_t off, struct list_struct *rec)
+- {
+- 	if (tdb->methods->tdb_read(tdb, off, rec, sizeof(*rec),DOCONV()) == -1)
+- 		return -1;
+diff -ruN e2fsprogs-1.47.4.orig/lib/ext2fs/tdb/patches/static-prototypes e2fsprogs-1.47.4/lib/ext2fs/tdb/patches/static-prototypes
+--- e2fsprogs-1.47.4.orig/lib/ext2fs/tdb/patches/static-prototypes	2026-03-07 01:17:36.000000000 +0800
++++ e2fsprogs-1.47.4/lib/ext2fs/tdb/patches/static-prototypes	1970-01-01 08:00:00.000000000 +0800
+@@ -1,72 +0,0 @@
+-Index: tdbsa/tdb.c
+-===================================================================
+---- tdbsa.orig/tdb.c
+-+++ tdbsa/tdb.c
+-@@ -251,39 +251,39 @@ struct tdb_context {
+- /*
+-   internal prototypes
+- */
+--int tdb_munmap(struct tdb_context *tdb);
+--void tdb_mmap(struct tdb_context *tdb);
+--int tdb_lock(struct tdb_context *tdb, int list, int ltype);
+--int tdb_unlock(struct tdb_context *tdb, int list, int ltype);
+--int tdb_brlock(struct tdb_context *tdb, tdb_off_t offset, int rw_type, int lck_type, int probe, size_t len);
+--int tdb_transaction_lock(struct tdb_context *tdb, int ltype);
+--int tdb_transaction_unlock(struct tdb_context *tdb);
+--int tdb_brlock_upgrade(struct tdb_context *tdb, tdb_off_t offset, size_t len);
+--int tdb_write_lock_record(struct tdb_context *tdb, tdb_off_t off);
+--int tdb_write_unlock_record(struct tdb_context *tdb, tdb_off_t off);
+--int tdb_ofs_read(struct tdb_context *tdb, tdb_off_t offset, tdb_off_t *d);
+--int tdb_ofs_write(struct tdb_context *tdb, tdb_off_t offset, tdb_off_t *d);
+--void *tdb_convert(void *buf, u32 size);
+--int tdb_free(struct tdb_context *tdb, tdb_off_t offset, struct list_struct *rec);
+--tdb_off_t tdb_allocate(struct tdb_context *tdb, tdb_len_t length, struct list_struct *rec);
+--int tdb_ofs_read(struct tdb_context *tdb, tdb_off_t offset, tdb_off_t *d);
+--int tdb_ofs_write(struct tdb_context *tdb, tdb_off_t offset, tdb_off_t *d);
+--int tdb_lock_record(struct tdb_context *tdb, tdb_off_t off);
+--int tdb_unlock_record(struct tdb_context *tdb, tdb_off_t off);
+--int tdb_rec_read(struct tdb_context *tdb, tdb_off_t offset, struct list_struct *rec);
+--int tdb_rec_write(struct tdb_context *tdb, tdb_off_t offset, struct list_struct *rec);
+--int tdb_do_delete(struct tdb_context *tdb, tdb_off_t rec_ptr, struct list_struct *rec);
+--unsigned char *tdb_alloc_read(struct tdb_context *tdb, tdb_off_t offset, tdb_len_t len);
+--int tdb_parse_data(struct tdb_context *tdb, TDB_DATA key,
+-+static int tdb_munmap(struct tdb_context *tdb);
+-+static void tdb_mmap(struct tdb_context *tdb);
+-+static int tdb_lock(struct tdb_context *tdb, int list, int ltype);
+-+static int tdb_unlock(struct tdb_context *tdb, int list, int ltype);
+-+static int tdb_brlock(struct tdb_context *tdb, tdb_off_t offset, int rw_type, int lck_type, int probe, size_t len);
+-+static int tdb_transaction_lock(struct tdb_context *tdb, int ltype);
+-+static int tdb_transaction_unlock(struct tdb_context *tdb);
+-+static int tdb_brlock_upgrade(struct tdb_context *tdb, tdb_off_t offset, size_t len);
+-+static int tdb_write_lock_record(struct tdb_context *tdb, tdb_off_t off);
+-+static int tdb_write_unlock_record(struct tdb_context *tdb, tdb_off_t off);
+-+static int tdb_ofs_read(struct tdb_context *tdb, tdb_off_t offset, tdb_off_t *d);
+-+static int tdb_ofs_write(struct tdb_context *tdb, tdb_off_t offset, tdb_off_t *d);
+-+static void *tdb_convert(void *buf, u32 size);
+-+static int tdb_free(struct tdb_context *tdb, tdb_off_t offset, struct list_struct *rec);
+-+static tdb_off_t tdb_allocate(struct tdb_context *tdb, tdb_len_t length, struct list_struct *rec);
+-+static int tdb_ofs_read(struct tdb_context *tdb, tdb_off_t offset, tdb_off_t *d);
+-+static int tdb_ofs_write(struct tdb_context *tdb, tdb_off_t offset, tdb_off_t *d);
+-+static int tdb_lock_record(struct tdb_context *tdb, tdb_off_t off);
+-+static int tdb_unlock_record(struct tdb_context *tdb, tdb_off_t off);
+-+static int tdb_rec_read(struct tdb_context *tdb, tdb_off_t offset, struct list_struct *rec);
+-+static int tdb_rec_write(struct tdb_context *tdb, tdb_off_t offset, struct list_struct *rec);
+-+static int tdb_do_delete(struct tdb_context *tdb, tdb_off_t rec_ptr, struct list_struct *rec);
+-+static unsigned char *tdb_alloc_read(struct tdb_context *tdb, tdb_off_t offset, tdb_len_t len);
+-+static int tdb_parse_data(struct tdb_context *tdb, TDB_DATA key,
+- 		   tdb_off_t offset, tdb_len_t len,
+- 		   int (*parser)(TDB_DATA key, TDB_DATA data,
+- 				 void *private_data),
+- 		   void *private_data);
+--tdb_off_t tdb_find_lock_hash(struct tdb_context *tdb, TDB_DATA key, u32 hash, int locktype,
+-+static tdb_off_t tdb_find_lock_hash(struct tdb_context *tdb, TDB_DATA key, u32 hash, int locktype,
+- 			   struct list_struct *rec);
+--void tdb_io_init(struct tdb_context *tdb);
+--int tdb_expand(struct tdb_context *tdb, tdb_off_t size);
+--int tdb_rec_free_read(struct tdb_context *tdb, tdb_off_t off,
+-+static void tdb_io_init(struct tdb_context *tdb);
+-+static int tdb_expand(struct tdb_context *tdb, tdb_off_t size);
+-+static int tdb_rec_free_read(struct tdb_context *tdb, tdb_off_t off,
+- 		      struct list_struct *rec);
+- 
+- 
+diff -ruN e2fsprogs-1.47.4.orig/lib/ext2fs/tdb/patches/tdbtool-includes e2fsprogs-1.47.4/lib/ext2fs/tdb/patches/tdbtool-includes
+--- e2fsprogs-1.47.4.orig/lib/ext2fs/tdb/patches/tdbtool-includes	2026-03-07 01:17:36.000000000 +0800
++++ e2fsprogs-1.47.4/lib/ext2fs/tdb/patches/tdbtool-includes	1970-01-01 08:00:00.000000000 +0800
+@@ -1,30 +0,0 @@
+-Index: tdbsa/tdbtool.c
+-===================================================================
+---- tdbsa.orig/tdbtool.c
+-+++ tdbsa/tdbtool.c
+-@@ -21,10 +21,21 @@
+-    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+- */
+- 
+--#include "replace.h"
+--#include "system/locale.h"
+--#include "system/time.h"
+--#include "system/filesys.h"
+-+#include <errno.h>
+-+#include <stdlib.h>
+-+#include <stdio.h>
+-+#include <fcntl.h>
+-+#include <unistd.h>
+-+#include <string.h>
+-+#include <fcntl.h>
+-+#include <time.h>
+-+#include <sys/mman.h>
+-+#include <sys/stat.h>
+-+#include <sys/time.h>
+-+#include <ctype.h>
+-+#include <signal.h>
+-+#include <stdarg.h>
+-+
+- #include "tdb.h"
+- 
+- static int do_command(void);

@@ -1,0 +1,690 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title></title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="-1">
+
+<link rel="shortcut icon" href="images/favicon.ico">
+<link rel="icon" href="images/favicon.png">
+<link rel="stylesheet" type="text/css" href="/bootstrap/css/bootstrap.min.css">
+<link rel="stylesheet" type="text/css" href="/bootstrap/css/main.css">
+
+<script type="text/javascript" src="/jquery.js"></script>
+<script type="text/javascript" src="/bootstrap/js/bootstrap.min.js"></script>
+<script type="text/javascript" src="/state.js"></script>
+<script type="text/javascript" src="/client_function.js"></script>
+<script>
+var $j = jQuery.noConflict();
+
+var ipmonitor = [<% get_static_client(); %>];
+var wireless = {<% wl_auth_list(); %>};
+var wireless_band_raw = {<% wl_band_list(); %>};
+var ap_names = {};
+
+// Preprocess band table: convert MAC keys with colons to format without colons for matching
+var wireless_band = {};
+for (var mac in wireless_band_raw) {
+    wireless_band[simplyMAC(mac)] = wireless_band_raw[mac];
+}
+
+var list_type = '<% nvram_get_x("", "macfilter_enable_x"); %>';
+var list_of_BlockedClient = [<% get_nvram_list("FirewallConfig", "MFList"); %>];
+var m_dhcp = [<% get_nvram_list("LANHostConfig", "ManualDHCPList"); %>];
+
+var nmap_fullscan = '<% nvram_get_x("", "networkmap_fullscan"); %>';
+
+var ipv6_neigh_map = [<% ipv6_neigh_list(); %>];
+var ipv6_by_mac = {};
+function copyIPv6(addr, el){
+	var ta = document.createElement("textarea");
+	ta.value = addr;
+	ta.style.position = "fixed";
+	ta.style.opacity = "0";
+	document.body.appendChild(ta);
+	ta.select();
+	var ok = false;
+	try { ok = document.execCommand("copy"); } catch(e) {}
+	document.body.removeChild(ta);
+	var old = el.innerHTML;
+	el.innerHTML = ok ? "<#copied#>" : addr;
+	setTimeout(function(){ el.innerHTML = old; }, 1200);
+}
+function build_ipv6_map(){
+	var i, mac, v6;
+	for(i = 0; i < ipv6_neigh_map.length; i++){
+		if(ipv6_neigh_map[i] && ipv6_neigh_map[i][0]){
+			mac = ipv6_neigh_map[i][0].replace(/:/g, "").toUpperCase();
+			v6 = ipv6_neigh_map[i][1];
+			/* prefer stable address (EUI-64 contains ff:fe), keep first otherwise */
+			if (!ipv6_by_mac[mac] || v6.indexOf("ff:fe") != -1)
+				ipv6_by_mac[mac] = v6;
+		}
+	}
+}
+
+var DEVICE_TYPE = ["", "<#Device_type_01_PC#>", "<#Device_type_02_RT#>", "<#Device_type_03_AP#>", "<#Device_type_04_NAS#>", "<#Device_type_05_IC#>", "<#Device_type_06_OD#>"];
+
+var clients = getclients(1,0);
+var unblocked_clients = new Array();
+var blocked_clients = new Array();
+var page_modified = 0;
+
+function initial(){
+	if (sw_mode == "3") {
+		list_type = '0';
+	}
+	build_ipv6_map();
+	flash_button();
+	prepare_clients();
+	show_clients();
+	check_full_scan_done();
+	load_ap_wireless();
+}
+
+function prepare_clients(){
+	var i, j, k;
+
+	if(typeof parent.show_client_status === 'function')
+		parent.show_client_status(clients.length);
+
+	if(list_type == '0'){
+		for(i = 0; i < clients.length; ++i){
+			clients[i][7] = "u";
+			unblocked_clients[i] = i;
+		}
+		$("alert_block").style.display = "none";
+	}
+	else if(list_type == '1'){
+		for(i = 0; i < clients.length; ++i){
+			if(checkDuplicateName(clients[i][2], list_of_BlockedClient)){
+				clients[i][7] = "u";
+				unblocked_clients[i] = i;
+			}
+			else{
+				clients[i][7] = "b";
+				blocked_clients[i] = i;
+			}
+		}
+		$("alert_block").style.display = "block";
+	}
+	else{
+		for(i = 0; i < list_of_BlockedClient.length; ++i){
+			if(!checkDuplicateName(list_of_BlockedClient[i][0], clients)){
+				k = clients.length;
+				clients[k] = new Array(8);
+
+				clients[k][0] = "*";
+				clients[k][1] = "*";
+				clients[k][2] = list_of_BlockedClient[i][0];
+				clients[k][3] = null;
+				clients[k][4] = null;
+				clients[k][5] = "6";
+				clients[k][6] = "0";
+				clients[k][7] = "b";
+
+				var mac_up = list_of_BlockedClient[i][0].toUpperCase();
+
+				for(j = 0; j < m_dhcp.length; ++j){
+					if (mac_up == m_dhcp[j][0].toUpperCase()){
+						if (m_dhcp[j][2] != null && m_dhcp[j][2].length > 0)
+							clients[k][0] = m_dhcp[j][2];
+						clients[k][1] = m_dhcp[j][1];
+						break;
+					}
+				}
+			}
+		}
+
+		for(i = 0; i < clients.length; ++i){
+			if(!checkDuplicateName(clients[i][2], list_of_BlockedClient)){
+				clients[i][7] = "u";
+				unblocked_clients[i] = i;
+			}
+			else{
+				clients[i][7] = "b";
+				blocked_clients[i] = i;
+			}
+		}
+		$("alert_block").style.display = "none";
+	}
+}
+
+function check_full_scan_done(){
+	if(nmap_fullscan != "1"){
+		$("LoadingBar").style.display = "none";
+		$("refresh_list").disabled = false;
+		if (sw_mode == "3") {
+			$j(document).ready(function() {
+				$j('.popover_top').popover({placement: 'top'});
+				$j('.popover_bottom').popover({placement: 'bottom'});
+			});
+		}else {
+			$j(document).ready(function() {
+				$j('.popover_top').popover({placement: 'right'});
+				$j('.popover_bottom').popover({placement: 'right'});
+			});
+		}
+	}else{
+		$("LoadingBar").style.display = "block";
+		$("refresh_list").disabled = true;
+		setTimeout("update_clients();", 2000);
+	}
+}
+
+function update_clients(e) {
+	$j.ajax({
+		url: '/lan_clients.asp',
+		dataType: 'text',
+		cache: false,
+		error: function(xhr) {
+			;
+		},
+		success: function(response) {
+			try {
+				window.execScript ? window.execScript(response) : window.eval(response);
+			} catch (err) {
+				return;
+			}
+			if (typeof window.ipmonitor_last != 'undefined' && window.ipmonitor_last != null) {
+				ipmonitor = window.ipmonitor_last;
+				nmap_fullscan = window.nmap_fullscan_last;
+				ipv6_neigh_map = (typeof window.ipv6_neigh_map != 'undefined') ? window.ipv6_neigh_map : [];
+				// Update band data
+				if (typeof window.wireless_band_last != 'undefined') {
+					wireless_band = {};
+					for (var mac in window.wireless_band_last) {
+						wireless_band[simplyMAC(mac)] = window.wireless_band_last[mac];
+					}
+				}
+				try {
+					clients = [];
+					clients = getclients(1,0);
+					build_ipv6_map();
+					prepare_clients();
+					merge_ap_wireless();
+					show_clients();
+					check_full_scan_done();
+				} catch(err) {
+					;
+				}
+			}
+		}
+	});
+}
+
+// RSSI (dBm) to signal quality percentage (0-100)
+// Industry standard: -90 dBm = 0%, -30 dBm = 100%
+function rssi_to_quality(rssi){
+	if (rssi == null || isNaN(rssi))
+		return 0;
+	var quality = (rssi + 90) * 100 / 60;
+	return Math.max(0, Math.min(100, Math.round(quality)));
+}
+
+// Generate signal bar HTML
+function rssi_to_bars(rssi){
+	var quality = rssi_to_quality(rssi);
+	var bars = Math.ceil(quality / 25); // 1-4 bars
+	var color = '#d9534f'; // red (poor)
+	if (quality >= 75) color = '#5cb85c'; // green (good)
+	else if (quality >= 25) color = '#f0ad4e'; // yellow/orange (fair)
+	
+	var html = '<span style="display:inline-flex;align-items:flex-end;gap:2px;height:16px;vertical-align:middle;">';
+	for (var i = 1; i <= 4; i++){
+		var h = 3 + i * 2.5;
+		var c = (i <= bars) ? color : '#ddd';
+		html += '<span style="width:4px;height:' + h + 'px;background:' + c + ';border-radius:1px;"></span>';
+	}
+	html += '</span>';
+	html += ' <span style="color:' + color + ';font-size:12px;margin-left:6px;font-weight:500;">' + quality + '%</span>';
+	return html;
+}
+
+function add_client_row(table, atIndex, client, blocked, j){
+	var row = table.insertRow(atIndex);
+	var typeCell = row.insertCell(0);
+	var nameCell = row.insertCell(1);
+	var ipCell = row.insertCell(2);
+	var macCell = row.insertCell(3);
+	var rssiCell = row.insertCell(4);
+	var blockCell = row.insertCell(5);
+
+	var arpon = <% nvram_get_x("","dhcp_static_arp"); %>;
+	var mdhcp = <% nvram_get_x("","dhcp_static_x"); %>;
+	if (arpon == 1 && mdhcp == 1){
+	   var j;
+	   for(j = 0; j < m_dhcp.length; ++j){
+	      if (client[2] == m_dhcp[j][0]){
+	         client[0] = m_dhcp[j][2];
+	         if (client[1] == m_dhcp[j][1]){
+	            client[1] = m_dhcp[j][1];
+	         }
+	      }
+	   }    
+	}
+
+	typeCell.style.textAlign = "center";
+	var deviceType = (client[5] == null || client[5] == "" || isNaN(client[5])) ? 0 : client[5];
+	var typeTitle = DEVICE_TYPE[deviceType] ? DEVICE_TYPE[deviceType] : "";
+	typeCell.innerHTML = "<img title='" + typeTitle + "' src='/bootstrap/img/wl_device/" + deviceType + ".gif'>";
+	var rawName = (client[0] == null || client[0] == "*" || client[0].length < 1) ? null : client[0];
+	// If no local name, try to get name from cross-AP collected data
+	if (!rawName && ap_names[client[2]]) {
+		rawName = ap_names[client[2]];
+	}
+	var clientName = rawName ? rawName.replace(/\.lan$/i, "") : null;
+	var displayName = clientName ? clientName : "<span style='color:#999;'>-</span>";
+	nameCell.innerHTML = (client[6] == "1" && clientName) ? "<a href=http://" + clientName + " target='blank'>" + clientName + "</a>" : displayName;
+	var displayIP = (client[1] == null || client[1] == "*" || client[1].length < 1) ? "<span style='color:#999;'>-</span>" : client[1];
+	ipCell.innerHTML = (client[6] == "1" && client[1] != null && client[1] != "*") ? "<a href=http://" + client[1] + " target='blank'>" + client[1] + "</a>" : displayIP;
+	var v6 = ipv6_by_mac[client[2].replace(/:/g, "").toUpperCase()];
+	if (v6) {
+		var v6short = v6;
+		var v6parts = v6.split(":");
+		if (v6parts.length > 4)
+			v6short = v6parts[0] + ":" + v6parts[1] + ":…:" + v6parts.slice(v6parts.length - 2).join(":");
+		ipCell.innerHTML += "<br><span title='" + v6 + "' onclick='copyIPv6(\"" + v6 + "\",this)' style='font-size:11px;color:#8a87a0;cursor:pointer;'>" + v6short + "</span>";
+	}
+	macCell.innerHTML = "<a target='_blank' href='https://services13.ieee.org/RST/standards-ra-web/rest/assignments/?registry=MAC&text=" + client[2].substr(0,6) + "'>" + mac_add_delimiters(client[2]) + "</a>";
+	if (client[3] == 10 || client[3] === "10"){
+		var bandLabel = '';
+		var band = wireless_band[client[2]];
+		if (band) {
+			var bandColor = band === '5G' ? '#e67e22' : '#3498db';
+			bandLabel = '<span style="font-size:10px;font-weight:bold;color:' + bandColor + ';background:' + bandColor + '1a;padding:1px 4px;border-radius:3px;margin-right:6px;vertical-align:middle;">' + band + '</span>';
+		}
+		rssiCell.innerHTML = bandLabel + rssi_to_bars(Number(client[4]));
+		rssiCell.title = 'RSSI: ' + client[4] + ' dBm' + (band ? ' (' + band + ')' : '');
+	} else {
+		rssiCell.innerHTML = '<svg class="wired-icon" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#5cb85c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;transition:transform 0.2s,opacity 0.2s;cursor:default;"><rect x="3" y="8" width="18" height="12" rx="1"/><path d="M7 8V5h10v3"/><path d="M7 12h.01M11 12h.01M15 12h.01"/><path d="M7 16h.01M11 16h.01M15 16h.01"/></svg>';
+		rssiCell.title = '<#wired_conn#>';
+	}
+	if(list_type != "1" && sw_mode != "3"){
+		blockCell.style.textAlign = "center";
+		blockCell.innerHTML = "<div class='icon icon-" + (blocked ? "plus" : "remove") + "' onClick='" + (blocked ? "unBlock" : "block") + "Client("+j+")'></div>\n";
+	}
+}
+
+function show_clients(){
+	var i, j, k;
+	var table1, table2;
+	var addClient, clientType, clientName, clientIP, clientMAC, clientBlock;
+
+	table1 = $('Clients_table');
+	table2 = $('xClients_table');
+
+	while (table1.rows.length > 2)
+		table1.deleteRow(-1);
+	while (table2.rows.length > 2)
+		table2.deleteRow(-1);
+
+	var hasBlocked = false;
+	for(j=0, i=0, k=0; j < clients.length; j++){
+		for(j2=0; j2 < m_dhcp.length && clients[j][0] == "*"; j2++){
+			if (clients[j][2].toUpperCase() == m_dhcp[j2][0].toUpperCase()){
+				if (m_dhcp[j2][2] != "" && m_dhcp[j2][2] != null && m_dhcp[j2][2].length > 0){
+					clients[j][0] = m_dhcp[j2][2];
+					break;
+				}
+			}
+		}
+		for(j3=0; j3 < clients.length && clients[j][0] == "*"; j3++){
+			if (clients[j][2].toUpperCase() == clients[j3][2].toUpperCase()){
+				if (clients[j3][0] != "*" && clients[j3][0] != null && clients[j3][0].length > 0){
+					clients[j][0] = clients[j3][0];
+					break;
+				}
+			}
+		}
+		if(clients[j][7] == "u" || sw_mode == "3"){
+			add_client_row(table1, k+2, clients[j], false, j);
+			k++;
+		}
+		else if(clients[j][7] == "b"){
+			add_client_row(table2, i+2, clients[j], true, j);
+			hasBlocked = true;
+			i++;
+		}
+	}
+
+	table2.style.display = hasBlocked ? "table" : "none";
+
+	var NDRow = "<tr><td colspan='6'><div class='alert alert-info'><#Nodata#></div></td></tr>";
+
+	if (table1.rows.length < 3)
+		$j("#Clients_table tbody").append(NDRow);
+
+	if (table2.rows.length < 3 && sw_mode != "3")
+		$j("#xClients_table tbody").append(NDRow);
+}
+
+function sort(mode) {
+	sort_mode = (sort_mode > 0) ? (mode * -1) : mode;
+	localStorage.setItem('sortMode', sort_mode);
+	clients = getclients(1,0);
+	prepare_clients();
+	show_clients();
+}
+
+function blockClient(unBlockedClient_order){
+	var str = "";
+
+	if(list_type == "1"){
+		alert("<#macfilter_alert_str1#>");
+		return;
+	}
+	this.selectedClientOrder = unBlockedClient_order;
+
+	str += '<#block_Comfirm1#> "';
+	str += (clients[unBlockedClient_order][0] == null)?clients[unBlockedClient_order][2]:clients[unBlockedClient_order][0];
+	str += '" ?\n';
+	str += '<#block_Comfirm2#>';
+
+	if(confirm(str)){
+		set_filter_rule("add");
+		do_block_client();
+	}
+}
+
+function unBlockClient(blockedClient_order){
+	var str = "";
+
+	if(list_type == "1"){
+		alert("<#macfilter_alert_str1#>");
+		return;
+	}
+
+	this.selectedClientOrder = blockedClient_order;
+
+	str += '<#unblock_Comfirm1#> "';
+	str += (clients[blockedClient_order][0] == null)?clients[blockedClient_order][2]:clients[blockedClient_order][0];
+	str += '" "<#unblock_Comfirm2#>';
+
+	if(confirm(str)){
+		set_filter_rule("del");
+		do_unblock_client();
+	}
+}
+
+function do_block_client(){
+	if(!checkDuplicateName(clients[this.selectedClientOrder][2], list_of_BlockedClient)){
+		document.macfilterForm.action_mode.value = " Add ";
+		document.macfilterForm.macfilter_list_x_0.value = clients[this.selectedClientOrder][2];
+	}
+	else{
+		document.macfilterForm.target = "";
+		document.macfilterForm.action_mode.value = " Restart ";
+		document.macfilterForm.macfilter_list_x_0.disabled = true;
+	}
+	document.macfilterForm.submit();
+}
+
+function do_unblock_client(){
+	document.macfilterForm.action_mode.value = " Del ";
+	document.macfilterForm.submit();
+}
+
+function set_filter_rule(action){
+	if(action == "add")
+		;
+	else if(action == "del"){
+		for(var i = 0; i < list_of_BlockedClient.length; ++i){
+			if(list_of_BlockedClient[i][0] == clients[this.selectedClientOrder][2]){
+				free_options($("MFList_s"));
+				add_option($("MFList_s"), null, i, 1);
+			}
+		}
+	}
+}
+
+function done_validating(action, group_id){
+	$("applyFrame").src = "";
+	page_modified = 1;
+	if(group_id == "MFList"){
+		if(action == " Add ")
+			refreshpage();
+		else if(action == " Del ")
+			refreshpage();
+	}
+}
+
+function submit_macfilter(){
+	document.macfilterForm.target = "";
+	document.macfilterForm.action_mode.value = " Restart ";
+	document.macfilterForm.next_page.value = location.pathname;
+	document.macfilterForm.submit();
+}
+
+function build_submitrule(){
+	if(document.macfilterForm.modified.value == "1"){
+		if(list_type != "1")
+			submit_macfilter();
+		else
+			refreshpage();
+	}
+	else
+		refreshpage();
+}
+
+function applyRule(){
+	parent.showLoading();
+	build_submitrule();
+}
+
+function showLoading(restart_time2){
+	parent.showLoading(restart_time2);
+}
+
+function networkmap_update(s){
+	document.form.action_mode.value = "";
+	document.form.action_script.value = s;
+	document.form.flag.value = "nodetect";
+	document.form.submit();
+}
+
+// Merge wireless client RSSI data from other APs
+function merge_ap_wireless(){
+	if (typeof ap_wireless !== 'object' || ap_wireless === null) return;
+	var changed = 0;
+	for (var mac in ap_wireless) {
+		if (!ap_wireless.hasOwnProperty(mac)) continue;
+		var data = ap_wireless[mac];
+		// Support both formats: new format {"rssi":-57,"name":"xxx","band":"5G"}, old format -57
+		var rssi = (typeof data === 'object') ? data.rssi : data;
+		var name = (typeof data === 'object' && data.name) ? data.name : '';
+		var band = (typeof data === 'object' && data.band) ? data.band : '';
+		if (!(mac in wireless)) {
+			// Merge to same object format as main router for unified frontend parsing
+			wireless[mac] = (band) ? {rssi: rssi, band: band} : rssi;
+			changed = 1;
+		}
+		// Merge band info into wireless_band
+		if (band) {
+			var smac = simplyMAC(mac);
+			if (!(smac in wireless_band)) {
+				wireless_band[smac] = band;
+				changed = 1;
+			}
+		}
+		if (name) {
+			ap_names[simplyMAC(mac)] = name;
+		}
+	}
+	if (changed) {
+		clients = getclients(1, 0);
+		prepare_clients();
+	}
+}
+
+// Load wireless data cache from other APs (collected by backend script and mounted to /www/ap_rssi.js)
+function load_ap_wireless(){
+	var script = document.createElement('script');
+	script.src = '/ap_rssi.js?ts=' + (new Date().getTime());
+	script.onload = function() {
+		merge_ap_wireless();
+		show_clients();
+	};
+	script.onerror = function() {};
+	document.head.appendChild(script);
+}
+
+// Refresh cross-AP data every 30 seconds
+setInterval(load_ap_wireless, 30000);
+
+// Auto-refresh client list every 60 seconds (disconnected devices removed, new devices added)
+setInterval(update_clients, 60000);
+
+</script>
+
+<style>
+    /* Center align device status table */
+    #Clients_table th, #Clients_table td, #xClients_table th, #xClients_table td { text-align: center; }
+    /* Name column: left align + ellipsis */
+    #Clients_table td:nth-child(2), #xClients_table td:nth-child(2) { text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    /* IP/MAC column: monospace font */
+    #Clients_table td:nth-child(3), #xClients_table td:nth-child(3),
+    #Clients_table td:nth-child(4), #xClients_table td:nth-child(4) { font-family: monospace; }
+    /* RSSI column: no wrap */
+    #Clients_table td:nth-child(5), #xClients_table td:nth-child(5) { white-space: nowrap; line-height: 14px; }
+    /* Block column: line height */
+    #Clients_table td:nth-child(6), #xClients_table td:nth-child(6) { line-height: 14px; }
+    /* Block icon: scale up + hover effect */
+    #Clients_table td:nth-child(6) .icon, #xClients_table td:nth-child(6) .icon { transform: scale(1.8); cursor: pointer; transition: transform 0.2s, opacity 0.2s; display: inline-block; vertical-align: middle; }
+    #Clients_table td:nth-child(6) .icon:hover, #xClients_table td:nth-child(6) .icon:hover { opacity: 0.7; transform: scale(2.5); }
+    /* Wired icon: hover scale effect */
+    #Clients_table .wired-icon, #xClients_table .wired-icon { transition: transform 0.2s, opacity 0.2s; }
+    #Clients_table .wired-icon:hover, #xClients_table .wired-icon:hover { opacity: 0.7; transform: scale(1.5); }
+    /* Mobile: fine-tune specific column font */
+    @media (max-width: 768px) {
+        #Clients_table td:nth-child(3), #xClients_table td:nth-child(3),
+        #Clients_table td:nth-child(4), #xClients_table td:nth-child(4) { font-size: 11px; }
+        #Clients_table td:nth-child(5), #xClients_table td:nth-child(5) { font-size: 11px; }
+    }
+    @media (max-width: 480px) {
+        #Clients_table td:nth-child(3), #xClients_table td:nth-child(3),
+        #Clients_table td:nth-child(4), #xClients_table td:nth-child(4) { font-size: 10px; }
+    }
+</style>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+
+</head>
+
+<body class="body_iframe" >
+
+<iframe name="applyFrame" id="applyFrame" src="" width="0" height="0" frameborder="0" scrolling="no" style="position: absolute;"></iframe>
+
+<div id="LoadingBar" style="display: none; "><span class="label label-info"><#Device_Searching#></span>
+<!--[if lte IE 6.5]><iframe class="hackiframe"></iframe><![endif]-->
+</div>
+<div id="loadingBarBlock" class="loadingBarBlock" align="center" style="display: none;">
+</div>
+
+<form method="post" name="macfilterForm" id="macfilterForm" action="/start_apply.htm" target="applyFrame" style="position: absolute; margin-left: -10000px;">
+<input type="hidden" name="action_mode" value="">
+<input type="hidden" name="sid_list" value="FirewallConfig;General;">
+<input type="hidden" name="group_id" value="MFList">
+<input type="hidden" name="current_page" value="/device-map/clients.asp">
+<input type="hidden" name="next_page" value="/device-map/clients.asp">
+<input type="hidden" name="modified" value="<% nvram_get_x("", "MFList"); %>">
+<input type="hidden" name="macfilter_enable_x" value="2">
+<input type="hidden" name="macfilter_list_x_0" value="">
+<input type="hidden" name="macfilter_time_x_0" value="00002359">
+<input type="hidden" name="macfilter_date_x_0" value="1111111">
+<select name="MFList_s" id="MFList_s" multiple="true" style="visibility:hidden; width:0px; height:0px;"></select>
+</form>
+
+<div id="unBlockedClients_table"></div>
+
+<table id="Clients_table" width="100%" align="center" cellpadding="1" class="table">
+    <thead>
+        <tr>
+            <th colspan="6" style="text-align: center;"><#ConnectedClient#></th>
+        </tr>
+        <tr>
+            <th width="10%"><a href="javascript:sort(0)"><#Type#></a></th>
+            <th id="col_hname" width="30%"><a href="javascript:sort(1)"><#Computer_Name#></a></th>
+            <th width="20%"><a href="javascript:sort(2)"><#IP_Address#></a></th>
+            <th width="20%"><a href="javascript:sort(3)"><#MAC_Address#></a></th>
+            <th id="col_rssi" width="10%"><a href="javascript:sort(4)"><#Rssi#></a></th>
+            <th id="col_block"></th>
+        </tr>
+    </thead>
+    <tbody>
+    </tbody>
+</table>
+
+<div id="blockedClients_table"></div>
+<table id="xClients_table" width="100%" align="center" class="table">
+    <thead>
+        <tr>
+            <th colspan="6" style="text-align: center;"><#BlockedClient#></th>
+        </tr>
+        <tr>
+            <th width="10%"><#Type#></th>
+            <th id="col_unhname" width="30%"><#Computer_Name#></th>
+            <th width="20%"><#IP_Address#></th>
+            <th width="20%"><#MAC_Address#></th>
+            <th id="col_unrssi" width="10%"><#Rssi#></th>
+            <th id="col_unblock"></th>
+        </tr>
+    </thead>
+    <tbody>
+    </tbody>
+</table>
+
+<center>
+    <input type="button" id="applyClient" class="btn btn-primary span2" onclick="applyRule();" value="<#CTL_apply#>" />
+    <input type="button" id="refresh_list" class="btn btn-info span2" onclick="networkmap_update('networkmap_refresh');" value="<#CTL_refresh#>" />
+</center>
+
+<div id="alert_block" class="alert alert-danger" style="margin-top:40px; display: none;">
+    <p><a href="/Advanced_MACFilter_Content.asp" target="_parent"><#menu5_5_3#></a> <#macfilter_alert_str1#></p>
+</div>
+
+<form method="post" name="form" id="refreshForm" action="/start_apply.htm" target="">
+<input type="hidden" name="sid_list" value="LANHostConfig;">
+<input type="hidden" name="group_id" value="">
+<input type="hidden" name="action_mode" value="">
+<input type="hidden" name="action_script" value="">
+<input type="hidden" name="current_page" value="/device-map/clients.asp">
+<input type="hidden" name="next_page" value="/device-map/clients.asp">
+<input type="hidden" name="flag" value="">
+</form>
+
+<script>
+	if (!support_2g_radio() && !support_5g_radio()) {
+		$("col_rssi").width = "10%";
+		$("col_rssi").innerHTML = "<#Rssi#>";
+		$("col_unrssi").width = "10%";
+		$("col_unrssi").innerHTML = "<#unRssi#>";
+	}
+	if (sw_mode != "3") {
+		if (list_type != "1") {
+			$("col_hname").width = "30%";
+			$("col_unhname").width = "30%";
+			$("col_block").width = "10%";
+			$("col_block").innerHTML = "<#Block#>";
+			$("col_unblock").width = "10%";
+			$("col_unblock").innerHTML = "<#unBlock#>";
+		}
+	} else {
+		$("applyClient").style.display = "none";
+		$("xClients_table").style.display = "none";
+	}
+</script>
+
+<script>
+	initial();
+	function loading() {
+		$("loadingBarBlock").style.display = "none";
+	}
+	if (window.attachEvent) {
+		window.attachEvent('onload', loading);
+	} else {
+		window.addEventListener('load', loading, false);
+	}
+</script>
+</body>
+</html>

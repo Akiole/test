@@ -1,0 +1,10 @@
+--- a/src/server.c	2024-03-30 11:04:51.000000000 +0800
++++ b/src/server.c	2026-10-10 13:05:02.830873640 +0800
+@@ -578,6 +578,7 @@
+   void *foreign_loops[1];
+   foreign_loops[0] = server->loop;
+   info.foreign_loops = foreign_loops;
++  info.options |= LWS_SERVER_OPTION_LIBUV;
+   info.options |= LWS_SERVER_OPTION_EXPLICIT_VHOSTS;
+ 
+   context = lws_create_context(&info);

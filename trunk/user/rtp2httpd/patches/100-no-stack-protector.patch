@@ -1,0 +1,16 @@
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -133,11 +133,10 @@
+ endif()
+ 
+ # ── Security hardening ──────────────────────────────────────────────
++# Disabled for uClibc: no __stack_chk_* / *_chk symbols in libc
+ if(PLATFORM_LINUX OR PLATFORM_FREEBSD)
+-  target_compile_options(rtp2httpd PRIVATE -fstack-protector-strong)
+-  # _FORTIFY_SOURCE requires optimization >= -O1
+   if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
+-    target_compile_definitions(rtp2httpd PRIVATE _FORTIFY_SOURCE=2)
++    # _FORTIFY_SOURCE requires *_chk functions which uClibc lacks
+   endif()
+ endif()
+ 

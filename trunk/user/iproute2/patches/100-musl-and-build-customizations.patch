@@ -1,0 +1,139 @@
+diff -ruN iproute2-7.2.0.orig/include/namespace.h iproute2-7.2.0/include/namespace.h
+--- iproute2-7.2.0.orig/include/namespace.h	2026-10-11 12:45:15.087765890 +0800
++++ iproute2-7.2.0/include/namespace.h	2026-10-11 12:48:44.256853214 +0800
+@@ -39,7 +39,15 @@
+ #endif
+ 
+ #ifndef HAVE_SETNS
+-static inline int setns(int fd, int nstype)
++
++/*
++ * setns compatibility: musl declares setns() in sched.h.
++ * Only provide fallback when libc does not expose it.
++ */
++
++#if defined(__GLIBC__)
++
++static inline int iproute2_setns(int fd, int nstype)
+ {
+ #ifdef __NR_setns
+ 	return syscall(__NR_setns, fd, nstype);
+@@ -48,6 +56,25 @@
+ 	return -1;
+ #endif
+ }
++
++#define setns iproute2_setns
++
++#elif !defined(__linux__)
++
++static inline int iproute2_setns(int fd, int nstype)
++{
++	errno = ENOSYS;
++	return -1;
++}
++
++#define setns iproute2_setns
++
++#else
++
++/* Linux + musl: use libc setns() from sched.h */
++
++#endif /* libc detection */
++
+ #endif /* HAVE_SETNS */
+ 
+ int netns_switch(char *netns);
+diff -ruN iproute2-7.2.0.orig/include/uapi/linux/if.h iproute2-7.2.0/include/uapi/linux/if.h
+--- iproute2-7.2.0.orig/include/uapi/linux/if.h	2026-10-11 12:45:15.083359815 +0800
++++ iproute2-7.2.0/include/uapi/linux/if.h	2026-10-11 12:48:44.256962173 +0800
+@@ -131,8 +131,10 @@
+ #define IFF_ECHO			IFF_ECHO
+ #endif /* __UAPI_DEF_IF_NET_DEVICE_FLAGS_LOWER_UP_DORMANT_ECHO */
+ 
++#ifndef IFF_VOLATILE
+ #define IFF_VOLATILE	(IFF_LOOPBACK|IFF_POINTOPOINT|IFF_BROADCAST|IFF_ECHO|\
+ 		IFF_MASTER|IFF_SLAVE|IFF_RUNNING|IFF_LOWER_UP|IFF_DORMANT)
++#endif
+ 
+ #define IF_GET_IFACE	0x0001		/* for querying only */
+ #define IF_GET_PROTO	0x0002
+diff -ruN iproute2-7.2.0.orig/include/uapi/linux/sockios.h iproute2-7.2.0/include/uapi/linux/sockios.h
+--- iproute2-7.2.0.orig/include/uapi/linux/sockios.h	2026-10-11 12:45:15.062727618 +0800
++++ iproute2-7.2.0/include/uapi/linux/sockios.h	2026-10-11 12:48:44.257095257 +0800
+@@ -37,16 +37,24 @@
+ /* Get stamp (timespec) */
+ #define SIOCGSTAMPNS_NEW _IOR(SOCK_IOC_TYPE, 0x07, long long[2])
+ 
++#ifndef SIOCGSTAMP
+ #if __BITS_PER_LONG == 64 || (defined(__x86_64__) && defined(__ILP32__))
+ /* on 64-bit and x32, avoid the ?: operator */
+ #define SIOCGSTAMP	SIOCGSTAMP_OLD
++#else
++#define SIOCGSTAMP	((sizeof(struct timeval)) == 8 ? \
++			 SIOCGSTAMP_OLD : SIOCGSTAMP_NEW)
++#endif
++#endif /* SIOCGSTAMP */
++
++#ifndef SIOCGSTAMPNS
++#if __BITS_PER_LONG == 64 || (defined(__x86_64__) && defined(__ILP32__))
+ #define SIOCGSTAMPNS	SIOCGSTAMPNS_OLD
+ #else
+-#define SIOCGSTAMP	((sizeof(struct timeval))  == 8 ? \
+-			 SIOCGSTAMP_OLD   : SIOCGSTAMP_NEW)
+ #define SIOCGSTAMPNS	((sizeof(struct timespec)) == 8 ? \
+ 			 SIOCGSTAMPNS_OLD : SIOCGSTAMPNS_NEW)
+ #endif
++#endif /* SIOCGSTAMPNS */
+ 
+ /* Routing table calls. */
+ #define SIOCADDRT	0x890B		/* add routing table entry	*/
+diff -ruN iproute2-7.2.0.orig/lib/utils.c iproute2-7.2.0/lib/utils.c
+--- iproute2-7.2.0.orig/lib/utils.c	2026-10-11 12:45:15.169252214 +0800
++++ iproute2-7.2.0/lib/utils.c	2026-10-11 12:48:44.257212717 +0800
+@@ -1286,13 +1286,13 @@
+ 		size_t len;
+ 
+ 		len = strftime(ts, sizeof(ts), "%Y-%m-%dT%H:%M:%S", tm);
+-		snprintf(ts + len, sizeof(ts) - len, ".%06ld", tv.tv_usec);
++		snprintf(ts + len, sizeof(ts) - len, ".%06lld", (long long)tv.tv_usec);
+ 		print_string(PRINT_ANY, "timestamp_short", "[%s] ", ts);
+ 	} else {
+ 		char *tstr = asctime(tm);
+ 
+ 		tstr[strlen(tstr)-1] = 0;
+-		snprintf(ts, sizeof(ts), "%s %ld usec", tstr, tv.tv_usec);
++		snprintf(ts, sizeof(ts), "%s %lld usec", tstr, (long long)tv.tv_usec);
+ 		print_string(PRINT_ANY, "timestamp", "Timestamp: %s\n", ts);
+ 	}
+ 
+diff -ruN iproute2-7.2.0.orig/Makefile iproute2-7.2.0/Makefile
+--- iproute2-7.2.0.orig/Makefile	2026-10-11 12:45:15.034593614 +0800
++++ iproute2-7.2.0/Makefile	2026-10-11 12:48:44.257296884 +0800
+@@ -48,8 +48,8 @@
+ #options for mpls
+ ADDLIB+=mpls_ntop.o mpls_pton.o
+ 
+-CC := gcc
+-HOSTCC ?= $(CC)
++#CC := gcc
++HOSTCC := gcc
+ DEFINES += -D_GNU_SOURCE
+ # Turn on transparent support for LFS
+ DEFINES += -D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE -D_LARGEFILE64_SOURCE
+@@ -60,10 +60,11 @@
+ CFLAGS := $(WFLAGS) $(CCOPTS) -I../include -I../include/uapi $(DEFINES) $(CFLAGS)
+ YACCFLAGS = -d -t -v
+ 
+-SUBDIRS=lib ip tc bridge misc netem genl man
+-ifeq ($(HAVE_MNL),y)
+-SUBDIRS += tipc devlink rdma dcb vdpa netshaper dpll
+-endif
++#SUBDIRS=lib ip tc bridge misc netem genl man
++#ifeq ($(HAVE_MNL),y)
++#SUBDIRS += tipc devlink rdma dcb vdpa netshaper dpll
++#endif
++SUBDIRS=lib ip tc
+ 
+ LIBNETLINK=../lib/libutil.a ../lib/libnetlink.a
+ LDLIBS += $(LIBNETLINK)

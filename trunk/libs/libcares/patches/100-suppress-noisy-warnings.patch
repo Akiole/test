@@ -1,0 +1,13 @@
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -55,6 +55,10 @@
+ 
+ INCLUDE (EnableWarnings)
+ 
++# Padavan: suppress noisy warnings enabled by EnableWarnings.cmake
++# that produce hundreds of warnings in the cross-build environment.
++add_compile_options(-Wno-missing-include-dirs -Wno-sign-conversion)
++
+ # Optionally treat warnings as errors for the c-ares library itself.  This is
+ # applied per-target (see cares_set_werror() usage) rather than globally so it
+ # does not affect the test/fuzz harnesses (which carry their own warnings) or

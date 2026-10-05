@@ -1,0 +1,42 @@
+--- a/src/rfc1035.c
++++ b/src/rfc1035.c
+@@ -586,7 +586,6 @@
+ 		      len = to_wire(daemon->workspacename);
+ 		      if (!blockdata_expand(addr.rrblock.rrdata, addr.rrblock.datalen, daemon->workspacename, len))
+ 			{
+-			  blockdata_free(addr.rrblock.rrdata);
+ 			  return 0;
+ 			}
+ 
+@@ -608,7 +607,6 @@
+ 
+ 		  if (!blockdata_expand(addr.rrblock.rrdata, addr.rrblock.datalen, (char *)p, 20))
+ 		    {
+-		      blockdata_free(addr.rrblock.rrdata);
+ 		      return 0;
+ 		    }
+ 		  
+@@ -943,7 +941,6 @@
+ 			      /* Copy the rest of the RR and end. */
+ 			      if (!blockdata_expand(addr.rrblock.rrdata, addr.rrblock.datalen, (char *)p1, endrr - p1))
+ 				{
+-				  blockdata_free(addr.rrblock.rrdata);
+ 				  return 0;
+ 				}
+ 			      addr.rrblock.datalen += endrr - p1;
+@@ -963,7 +960,6 @@
+ 			      len = to_wire(name);
+ 			      if (!blockdata_expand(addr.rrblock.rrdata, addr.rrblock.datalen, name, len))
+ 				{
+-				  blockdata_free(addr.rrblock.rrdata);
+ 				  return 0;
+ 				}
+ 			      
+@@ -977,7 +973,6 @@
+ 
+ 			      if (!blockdata_expand(addr.rrblock.rrdata, addr.rrblock.datalen, (char *)p1, desc))
+ 				{
+-				  blockdata_free(addr.rrblock.rrdata);
+ 				  return 0;
+ 				}
+ 

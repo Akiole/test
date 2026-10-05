@@ -1,0 +1,409 @@
+               LPRng Installation
+          Patrick Powell <papowell@lprng.com>
+               with many modifications by
+	  Bernhard R. Link <brlink@debian.org>
+
+Last Updated 2007-02-08 18:08
+
+  SUPER EXPRESS INSTALLATION FOR TERMINALLY IMPATIENT SYSADMINS
+
+READ THE NEXT COUPLE OF PARAGRAPHS:
+
+To put files and executables in the most common 'STANDARD locations' 
+
+   sh STANDARD_configuration
+   make clean; make all; make install;
+   <install conf files (or just copy the .sample files)>
+   checkpc -f
+   <setup init script or other way to start lpd>
+
+The "STANDARD_configuration" script will run configure and set the most common
+configuration for UNIX/LINUX systems:
+
+  - /etc/printcap, /etc/lpd/lpd.conf, /etc/lpd/lpd.perms configuration files.
+  - executables in /usr/bin, /usr/sbin, /usr/libexec/filters
+  - you do not need any include files from /usr/local/include
+    or libraries from /usr/local/lib
+  - no Kerberos support
+
+   Here is the contents of the STANDARD_configuration file:
+    #!/bin/sh
+	set -x
+	if [ -d /usr/share/man ] ; then
+		mandir="--mandir=/usr/share/man"
+	fi
+	sh ./configure --prefix=/usr --sysconfdir=/etc $mandir \
+	 --disable-kerberos --enable-ssl --enable-force_localhost \
+
+  You can simply do:
+     sh STANDARD_configuration
+     make clean all
+     (as root):
+       make install
+       <install conf files (or just copy the .sample files)>
+       checkpc -f
+       <setup init script or other way to start lpd>
+
+
+USING CONFIGURE DEFAULTS DIRECTORIES
+ 
+  By default, configure will put files in /usr/local/... directories.
+  If you want to install LPRng in parallel with your existing printing system,
+  you can have configure put the executables in the /usr/local/... locations:
+     configure;
+     make clean all
+     (as root):
+       <install conf files>
+       make install
+       checkpc -f
+       <setup init script or other way to start lpd>
+
+   The currently running LPD server must be shut down and the LPRng lpd
+   server started.
+
+CAVEATS and WARNINGS:
+
+    The LPRng software requires an ANSI C compiler and a make utility that is
+    compatible with Gnu Make (verson 3.73 or later) or FreeBSD 4.2 or later.
+    LPRng is compiled and tested using GCC and Gnu Make.
+
+INCLUDE FILES AND LIBRARIES
+
+If you are using GETOPT or Kerberos you may need to extend the search
+paths for include files and libraries.  See the STANDARD_configuration
+and KERBEROS_configuration files for examples.
+
+Solaris Users:
+
+   You can get precompiled versions of the GCC compiler and GNU Make
+   from:
+      www.sunfreeware.com
+
+   The LPRng code has NOT been tested with the Sun Microsystems compilers,
+   and NOT been tested with 64 bit support enabled.
+
+   During compilation and installation, the PATH environment variable
+   MUST have /usr/local/bin FIRST followed by /usr/ccs/bin:
+
+     PATH=/usr/local/bin:/usr/ccs/bin:$PATH
+
+   If you have ANY problems with compilation,  and you are NOT using a
+   'clean' GCC installation,  please install GCC from a package (see
+   http://www.sunfreeware.com) or remove gcc and reinstall it.
+   Make sure that the include files are correct for your version
+   of Solaris.  In fact, I recommend that you do the compilation on a
+   'clean' machine that has nothing but a 'virgin' Solaris Install +
+   utilities BEFORE reporting problems.
+
+     You have been warned.
+
+HPUX Users:
+
+    See the following site for precompiled GCC and other tools:
+         http://hpux.cae.wisc.edu/
+
+   I STRONGLY recommend installing GCC and using GCC.  Make sure
+   that your include files are the correct ones for your particular
+   OS.
+
+   If you use the native or HP provided C compiler,  you will need to
+   add some additional flags to allow ANSI C compatibility.  The
+   -Aa and -Ae are candidates,  but you will have to check your
+   particular compiler for details.
+
+   Ryan Novosielski <novosirj@umdnj.edu> suggests that
+   for HP-UX 11.0 and 11.11 you may need to use
+   --with-linker=/usr/bin/ld
+
+     You have been warned.
+
+EXTREMELY IMPORTANT WARNING FOR THE SANITY OF SYSADMINS
+
+    It is extremely dangerous to use NFS mounted file systems for spool
+    directories.  The LPRng system depends on file locking for process
+    coordination and synchronization.  Given the historical evidence
+    of problems with file locks and NFS,  not to mention the terrible
+    performance impact,  it is strongly recommended that you use a
+    local file system for your spool directories.
+
+     You have been warned.
+
+SYSTEM STARTUP SCRIPTS
+
+There is a couple of system startup scripts in the conf/ directory
+of the LPRng source. (most with some instructions how to set them
+up, though those might be a bit out of date).
+
+CONFIGURATION
+
+  The configure (autoconf) utility is used to specify the
+  location of files and run time options for the LPRng software.
+
+  configure (autoconf) defaults for files and directories:
+     ${prefix}  - default is /usr/local
+     ${exec_prefix}  - default is ${prefix}
+     ${bindir}  is usually ${exec_refix}/bin, (/usr/local/bin)
+     ${sbindir} is usually ${exec_prefix}/sbin (/usr/local/sbin)
+     ${libdir} is usually ${exec_prefix}/lib (/usr/local/lib)
+     ${libexecdir} is usually ${exec_prefix}/libexec (/usr/local/libexec)
+     ${sysconfdir} is usually ${prefix}/etc (/usr/local/etc)
+     ${mandir} is usually ${prefix}/man     (/usr/local/man)
+
+  CONFIGURATION FILES:
+
+     THIS PARAGAPH DOES NOT DESCRIBE THE CURRENT BEHAVIOUR
+
+     All of the LPRng configuration files but printcap files go in
+     ${sysconfdir}/lpd/, usually /etc/lpd/.  The printcap file,
+     for historical and backwards compatibility reasons,
+     is is in ${sysconfdir}/printcap, i.e. - /etc/printcap.
+     We install a sample lpd.conf, lpd.perms, and printcap files,
+     sufficed with SAMPLESUFFIX, which is .sample by default:
+
+     Default 'configure' locations (and installed example files):
+         lpd.conf:   /usr/local/etc/lpd/lpd.conf  (/usr/local/etc/lpd/lpd.conf.sample)
+         lpd.perms:  /usr/local/etc/lpd/lpd.perms (/usr/local/etc/lpd/lpd.perms.sample)
+         printcap:   /usr/local/etc/printcap (/usr/local/etc/printcap.sample)
+
+     Standard UNIX Configuration (and installed example files):
+         lpd.conf:   /etc/lpd/lpd.conf  (/etc/lpd/lpd.conf.sample)
+         lpd.perms:  /etc/lpd/lpd.perms (/etc/lpd/lpd.perms.sample)
+         printcap:   /etc/printcap (/etc/printcap.sample)
+
+  EXECUTABLES AND MAN PAGES:
+         (* indicates SETUID root permissions, not set by current makefiles)
+     ${bindir}/ lpr*, lprm*, lpq*, lpstat*
+     ${sbindir}/lpc*, checkpc, lpd
+     ${libexecdir}/filters/ lpf, banner, etc
+     ${mandir}/ man pages
+
+CONFIGURATION OPTIONS
+
+  In addition to the --prefix, etc., mentioned above,  there are several
+    more you can use:
+
+     COMPILATION:
+  Environment variables (also can be on command line):
+  CC=          C compiler command
+  CFLAGS=      C compiler flags
+  LDFLAGS=     linker flags, e.g. -L<lib dir> if you have libraries in a
+              nonstandard directory <lib dir>
+  CPPFLAGS=    C/C++ preprocessor flags, e.g. -I<include dir> if you have
+              headers in a nonstandard directory <include dir>
+  CPP=         C preprocessor
+
+
+	Fine tuning of the installation directories:
+	  --bindir=DIR           user executables [EPREFIX/bin]
+	  --sbindir=DIR          system admin executables [EPREFIX/sbin]
+	  --libexecdir=DIR       program executables [EPREFIX/libexec]
+	  --datadir=DIR          read-only architecture-independent data [PREFIX/share]
+	  --sysconfdir=DIR       read-only single-machine data [PREFIX/etc]
+	  --sharedstatedir=DIR   modifiable architecture-independent data [PREFIX/com]
+	  --localstatedir=DIR    modifiable single-machine data [PREFIX/var]
+	  --libdir=DIR           object code libraries [EPREFIX/lib]
+	  --includedir=DIR       C header files [PREFIX/include]
+	  --oldincludedir=DIR    C header files for non-gcc [/usr/include]
+	  --infodir=DIR          info documentation [PREFIX/info]
+	  --mandir=DIR           man documentation [PREFIX/man]
+	  --with-config_subdir=CONFIG_SUBDIR configuration subdirectory (default 'lpd')
+	  --with-lpddir=DIR                 lpd executable directory (default \${sbindir})
+	  --with-lpd_conf_path=PATH         path of lpd.conf (default: \${sysconfdir}/${CONFIG_SUBDIR}/lpd.conf)
+	  --with-lpd_perms_path=PATH        path of lpd.perms (default: \${sysconfdir}/${CONFIG_SUBDIR}/lpd/lpd.perms)
+	  --with-printcap_path=PATH         path of printcap (default \${sysconfdir}/printcap)
+	  --with-lpd_printcap_path=PATH     path of lpd_printcap (default \${sysconfdir}/${CONFIG_SUBDIR}/lpd_printcap)
+	  --with-initpath=PATH              path of lpd startup file (default /usr/local/etc/rc.d/lprng.sh)
+										   use 'no' to disable installation and lpd startup
+	  --with-lockfile=PATH              lockfile PATH, default /var/run/lpd
+	  --with-filter-ld-libary-path=PATH filter LD_LIBRARY_PATH value, default empty (was /lib:/usr/lib:/usr/local/lib in earlier versions)
+	  --with-filter_path=PATH           filter PATH value, default /bin:/usr/bin:/usr/local/bin
+	  --with-localedir=PATH             specify locale information directory
+
+  OPERATIONAL 
+
+	  --disable-setuid                  do not install client executables setuid root
+	  --enable-priv_ports               require connections from privileged ports
+	  --disable-force_localhost         disable force_localhost default
+	  --disable-require_configfiles     client programs require lpd.conf, printcap
+	  --enable-kerberos                 enable kerberos support
+	  --disable-kerberos_checks         disable kerberos library location and checking for support
+	  --enable-nls                      use Native Language Support
+	  --enable-tcpwrappers              use tcp wrappers (-lwrap)
+	  --disable-ssl                     disable ssl support
+
+	  --with-unix_socket_path=DIR       unix socket path (default /var/run/lprng)
+	  --with-userid=NAME                run LPRng software as this userid, default daemon
+	  --with-groupid=NAME               run LPRng software as this groupid, default daemon
+	  --with-done_jobs=N                retain last N job status, default 1
+	  --with-done_jobs_max_age=N        retain job status N seconds, default 0 - no expiry
+	  --with-filterdir=DIR              filter directory (default \${libexecdir}/filters)
+	  --with-gnu-ld                     assume the C compiler uses GNU ld default=no
+	  --with-openssl=DIR          root location for OpenSSL
+	  --with-openssl-inc        OpenSSL include files
+	  --with-openssl-lib        OpenSSL library files
+	  --with-ssl_ca_file=FILE     ssl Certificate Authority CERT file (default \${sysconfdir}/${CONFIG_SUBDIR}/ssl.ca/ca.crt)
+	  --with-ssl_ca_key=KEY     ssl Certificate Authority private key file (default \${sysconfdir}/${CONFIG_SUBDIR}/ssl.ca/ca.key)
+	  --with-ssl_certs_dir=DIR     ssl Certificate Authority certs working directory (default \${sysconfdir}/${CONFIG_SUBDIR}/ssl.certs/)
+	  --with-ssl_crl_file=PATH     ssl Certificate Revocation List File (default \${sysconfdir}/${CONFIG_SUBDIR}/ssl.crl/ssl.crl)
+	  --with-ssl_server_cert=FILE     ssl server certificate file (default \${sysconfdir}/${CONFIG_SUBDIR}/ssl.server/server.crt)
+	  --with-ssl_server_password_file=FILE     ssl server private key in password file (default \${sysconfdir}/${CONFIG_SUBDIR}/ssl.server/server.pwd)
+
+STARTING LPD SERVER AND CHECKING CONFIGURATION
+
+    Use the following command to check to see that
+    the LPD server is running on the localhost:
+
+       #> lpc -s localhost lpd
+
+    If it has not been started,  then you can start it by hand:
+
+       #> /usr/sbin/lpd
+
+INSTALLATION PROBLEMS
+
+If the installation step did not install the executables
+in the correct location or there are other problems,
+use the following procedures to fix up the install:
+
+    # kill off the old server
+    On BSD:
+    kill `ps -aux |grep lpd | awk '{print $2}'`
+    On System V:
+    kill `ps -e |grep lpd | awk '{print $1}'`
+
+You should remove or rename the original lpd binaries if they
+have are still present:
+
+    mv /usr/lib/lpd /usr/lib/lpd.old
+    ln -s /usr/local/bin/lpd /usr/lib/lpd
+    # you might want to track down the old lpr, lpq, lprm binaries
+    find /usr -type file -name lp\*  -print >/tmp/candidates
+    find /sbin -type file -name lp\* -print >>/tmp/candidates
+    # Examine the /tmp/candidates file, and remove or rename the
+    # non-LPRng versions of the programs
+    # remove or rename the candidate files
+    /usr/local/sbin/lpd;    # start up LPD
+      OR
+    /usr/sbin/lpd;    # start up LPD
+      OR
+    /????/lpd         # start up LPD
+    lpq;    # test it with LPQ
+
+If you are running on Solaris, see the Solaris section in the LPRng
+Reference Manual for further instructions on integration with the
+LP subsystem.
+
+PRINTCAP FILES:
+
+Read the comments in the /etc/printcap.sample for details on
+how to set up a simple set of printcap entries.  You may also
+want to read the Printing Cookbook and the LPRng Reference Manual
+documentation.
+
+SECURITY WARNINGS:
+
+  The default configuration for LPRng allows connections from
+  any port while a strict RFC1179 implementation would require
+  connections only from a port in the range 721-731.  Relaxing
+  this restriction allows non-setuid root clients (lpr, lpq, etc)
+  to connect to the LPRng server.
+
+  The following is the default LPRng system installation:
+
+    1. All client programs are installed Setuid Root.
+       (NOT in the current version, yet undecided if that will come back)
+    2. No checking is done for strict RFC1179 conformance by
+       the lpd server
+    3. By default, all client programs will connect to the server
+       on the local host (force_localhost configuration option).
+
+  This configuration allows you to connect directly to non-LPRng systems
+  using the LPRng clients,  and to have the maximum flexibility with the
+  least amount of system configuration problems.  You can modify the
+  /etc/printcap file, and set 'force_localhost@' to send jobs to
+  a remote print server which requires connections
+  to originate from a privileged port.
+
+  The described configuration has the drawback of having SETUID clients,
+  which is regarded as dangerous .
+
+  A more cautious approch is to use the following:
+
+    1. No LPRng programs are installed Setuid Root
+       (configure --disable-setuid)
+    2. All clients communicate directly to the server on the localhost.
+       (i.e. - force_localhost is used)
+    3. The server is started at system initialization time by root
+       and it is the only program that opens a connection to a
+       remote print spooler.  This now reduces the problem
+       to a much more manageable level.
+
+  If you are truly paranoid then you should read the LPRng Refernece
+  Manual and the Printing Cookbook sections on Authentication,  and
+  add either SSL or Kerberos authentication to your system.
+
+KERBEROS:
+
+  LPRng uses the MIT Kerberos 5 distribution and provides backwards
+  compatibility with the MIT Kerberos 4 print support system.
+
+  If you want to use Kerberos authentication then configure with
+  the following options:
+
+  - for Kerberos 5 only:
+  ./configure --enable-kerberos
+
+  You may need to add the following if your libraries and include files are
+  not in the 'usual' places.  Replace /usr/local/lib with the directory
+  where the Kerberos libraries are and /usr/local/include where the include
+  files are.
+
+    LDFLAGS="-L/usr/local/lib" \
+     CPPFLAGS="-I/usr/local/include"
+
+******************** OVERRIDING CONFIGURES' GUESSES ******************
+If you get errors similar to the ones below, it may be
+because "configure" guessed wrong. You can override the
+guesses here, by editing the file config.h configure
+generates or by adding the given options to your CFLAGS,
+e.g ./configure CFLAGS="-Wall -O2 -g -W -DMAKE_USE_STATFS=STATVFS -DMAKE_USE_STTY=TERMIOS"
+
+"recvfiles.c: unknown struct fsb has no size":
+define STATFS: to use statfs(2) (BSD)
+       STATVFS: to use statvfs(2) (SVR4)
+    others for system specific cases
+
+either modify USE_STATFS_TYPE in config.h or add one of:
+
+-DMAKE_USE_STATFS=ULTRIX_STATFS
+-DMAKE_USE_STATFS=SVR3_STATFS
+-DMAKE_USE_STATFS=STATVFS
+-DMAKE_USE_STATFS=STATFS
+
+define MAKE_USE_STTY = 
+   SGTTYB   to use struct sgttyb and <sgtty.h> (BSD)
+   TERMIO  to use struct termio and <termio.h> (old sysV)
+   TERMIOS to use struct termios and <termio.h> (SVR4)
+
+either modify USE_STTY in config.h or add one of:
+
+ -DMAKE_USE_STTY=SGTTYB
+ -DMAKE_USE_STTY=TERMIO
+ -DMAKE_USE_STTY=TERMIOS
+
+a better way to do this is to edit the "ARGH" section of portable.h,
+and add the appropriate lines to the section for your OS, or add a new
+section if one doesn't exist; then you can send me the patches and
+I'll incorporate them into the distribution.
+
+SETPROCTITLE - overwrites the program argument information
+  when ps is used, displays status.  Used only by LPD
+if this does not work, add the following:
+
+-DNO_SETPROCTITLE
+
+## ****** TESTING AND SECURITY LOOPHOLE ******************************
+Define GETENV to allow the LPD_CONF environment
+ variable to be used as the name of a configuration file.  In non-testing
+ systems,  this is a security loophole.
+add -DGETENV=\"1\"

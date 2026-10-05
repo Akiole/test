@@ -1,0 +1,805 @@
+--- /dev/null	2026-10-10 13:00:53.771490000 +0800
++++ b/src/embed/embed.h	2026-10-10 12:55:54.100801461 +0800
+@@ -0,0 +1,51 @@
++/*
++ * Copyright 2014, Vietor Liu <vietor.liu at gmail.com>
++ * All rights reserved.
++ * Use of this source code is governed by a BSD-style license that can be
++ * found in the LICENSE file.
++ */
++
++#ifndef EMBED_H
++#define EMBED_H
++
++#ifdef __cplusplus
++#error "Just only support c language"
++#endif
++
++#ifndef NULL
++#define NULL ((void*)0)
++#endif
++
++#if defined(__GNUC__)
++
++#if defined(__LP64__)
++#define __BIT64__
++#endif
++
++#define likely(x)     __builtin_expect(!!(x), 1)
++#define unlikely(x)   __builtin_expect(!!(x), 0)
++#define inline_always __inline__ __attribute__((always_inline))
++
++#define container_of(ptr, type, member)					\
++	({const typeof( ((type *)0)->member ) *__mptr = (ptr);		\
++		(type *)( (char *)__mptr - __builtin_offsetof(type,member) );})
++
++#elif defined(_MSC_VER)
++
++#if defined(_M_X64)
++#define __BIT64__
++#endif
++
++#define likely(x)     (x)
++#define unlikely(x)   (x)
++#define inline        __inline
++#define inline_always __forceinline
++
++#define container_of(ptr, type, member)					\
++	(type *)((char *)ptr - (unsigned int)(&(((type *)0)->member)))
++
++#else
++#error "Unsupported compiler version"
++#endif
++
++#endif
+--- /dev/null	2026-10-10 13:00:53.771490000 +0800
++++ b/src/embed/list.h	2026-10-10 12:55:54.101545635 +0800
+@@ -0,0 +1,85 @@
++/*
++ * Copyright 2014, Vietor Liu <vietor.liu at gmail.com>
++ * All rights reserved.
++ * Use of this source code is governed by a BSD-style license that can be
++ * found in the LICENSE file.
++ */
++
++#ifndef LIST_H
++#define LIST_H
++
++#include "embed.h"
++
++struct list_head {
++	struct list_head *prev;
++	struct list_head *next;
++};
++
++static inline void list_init(struct list_head *list)
++{
++	list->prev = list;
++	list->next = list;
++}
++
++static inline void list_insert(struct list_head *list, struct list_head *elm)
++{
++	elm->prev = list;
++	elm->next = list->next;
++	list->next = elm;
++	elm->next->prev = elm;
++}
++
++static inline void list_remove(struct list_head *elm)
++{
++	elm->prev->next = elm->next;
++	elm->next->prev = elm->prev;
++	list_init(elm);
++}
++
++static inline int list_empty(const struct list_head *list)
++{
++	return list->next == list;
++}
++
++static inline void list_insert_list(struct list_head *list, struct list_head *other)
++{
++	if (list_empty(other))
++		return;
++
++	other->next->prev = list;
++	other->prev->next = list->next;
++	list->next->prev = other->prev;
++	list->next = other->next;
++	list_init(other);
++}
++
++#define list_first(ptr, type, member)                                   \
++	container_of((ptr)->next, type, member)
++
++#define list_for_each(pos, head, type, member)				\
++	for (pos = 0, pos = container_of((head)->next, type, member);	\
++		&pos->member != (head);					\
++		pos = container_of(pos->member.next, type, member))
++
++#define list_for_each_safe(pos, tmp, head, type, member)		\
++	for (pos = 0, tmp = 0, 						\
++		pos = container_of((head)->next, type, member),		\
++		tmp = container_of((pos)->member.next, type, member);	\
++		&pos->member != (head);					\
++		pos = tmp,					        \
++		tmp = container_of(pos->member.next, type, member))
++
++#define list_for_each_reverse(pos, head, type, member)		        \
++	for (pos = 0, pos = container_of((head)->prev, type, member);	\
++		&pos->member != (head);					\
++		pos = container_of(pos->member.prev, type, member))
++
++#define list_for_each_reverse_safe(pos, tmp, head, type, member)        \
++	for (pos = 0, tmp = 0, 					        \
++		pos = container_of((head)->prev, type, member),         \
++		tmp = container_of((pos)->member.prev, type, member);	\
++		&pos->member != (head);					\
++		pos = tmp,						\
++		tmp = container_of(pos->member.prev, type, member))
++
++#endif
+--- /dev/null	2026-10-10 13:00:53.771490000 +0800
++++ b/src/embed/rbtree.c	2026-10-10 12:55:54.104876541 +0800
+@@ -0,0 +1,431 @@
++/*
++ * Copyright 2014, Vietor Liu <vietor.liu at gmail.com>
++ * All rights reserved.
++ * Use of this source code is governed by a BSD-style license that can be
++ * found in the LICENSE file.
++ *
++ * Redistribution source code with modification from
++ * http://ftp.cc.uoc.gr/mirrors/OpenBSD/src/usr.sbin/nsd/rbtree.c
++ * Copyright (c) 2001-2006, NLnet Labs. All rights reserved.
++ * It's BSD-style license, See detail from
++ * http://ftp.cc.uoc.gr/mirrors/OpenBSD/src/usr.sbin/nsd/LICENSE
++ *
++ */
++
++#include "rbtree.h"
++
++struct rbnode rbnode_null = {
++	&rbnode_null,
++	&rbnode_null,
++	&rbnode_null,
++	RBCOLOR_BLACK
++};
++
++static void rbtree_rotate_left(struct rbtree *rbtree, struct rbnode *node)
++{
++	struct rbnode *right = node->right;
++
++	node->right = right->left;
++	if (right->left != RBNODE_NULL)
++		right->left->parent = node;
++
++	right->parent = node->parent;
++
++	if (node->parent != RBNODE_NULL) {
++		if (node == node->parent->left) {
++			node->parent->left = right;
++		} else  {
++			node->parent->right = right;
++		}
++	} else {
++		rbtree->root = right;
++	}
++	right->left = node;
++	node->parent = right;
++}
++
++static void rbtree_rotate_right(struct rbtree *rbtree, struct rbnode *node)
++{
++	struct rbnode *left = node->left;
++
++	node->left = left->right;
++	if (left->right != RBNODE_NULL)
++		left->right->parent = node;
++
++	left->parent = node->parent;
++
++	if (node->parent != RBNODE_NULL) {
++		if (node == node->parent->right) {
++			node->parent->right = left;
++		} else  {
++			node->parent->left = left;
++		}
++	} else {
++		rbtree->root = left;
++	}
++	left->right = node;
++	node->parent = left;
++}
++
++static void rbtree_insert_balance(struct rbtree *rbtree, struct rbnode *node)
++{
++	struct rbnode *uncle;
++
++	while (node != rbtree->root && node->parent->color == RBCOLOR_RED) {
++		if (node->parent == node->parent->parent->left) {
++			uncle = node->parent->parent->right;
++
++			if (uncle->color == RBCOLOR_RED) {
++				node->parent->color = RBCOLOR_BLACK;
++				uncle->color = RBCOLOR_BLACK;
++				node->parent->parent->color = RBCOLOR_RED;
++				node = node->parent->parent;
++			} else {
++				if (node == node->parent->right) {
++					node = node->parent;
++					rbtree_rotate_left(rbtree, node);
++				}
++				node->parent->color = RBCOLOR_BLACK;
++				node->parent->parent->color = RBCOLOR_RED;
++				rbtree_rotate_right(rbtree, node->parent->parent);
++			}
++		} else {
++			uncle = node->parent->parent->left;
++
++			if (uncle->color == RBCOLOR_RED) {
++				node->parent->color = RBCOLOR_BLACK;
++				uncle->color = RBCOLOR_BLACK;
++				node->parent->parent->color = RBCOLOR_RED;
++				node = node->parent->parent;
++			} else {
++				if (node == node->parent->left) {
++					node = node->parent;
++					rbtree_rotate_right(rbtree, node);
++				}
++				node->parent->color = RBCOLOR_BLACK;
++				node->parent->parent->color = RBCOLOR_RED;
++				rbtree_rotate_left(rbtree, node->parent->parent);
++			}
++		}
++	}
++	rbtree->root->color = RBCOLOR_BLACK;
++}
++
++static inline void change_parent_ptr(struct rbtree* rbtree, struct rbnode* parent, struct rbnode* old, struct rbnode* new)
++{
++	if(parent == RBNODE_NULL)
++	{
++		if(rbtree->root == old) rbtree->root = new;
++		return;
++	}
++	if(parent->left == old) parent->left = new;
++	if(parent->right == old) parent->right = new;
++}
++
++struct rbnode *rbtree_insert3(struct rbtree *rbtree, struct rbnode *data, int flag)
++{
++	int r = 0;
++	struct rbnode *node = rbtree->root;
++	struct rbnode *parent = RBNODE_NULL;
++
++	while (node != RBNODE_NULL) {
++		parent = node;
++		r = rbtree->compare(data, node);
++
++		if (r < 0)
++			node = node->left;
++		else if(r > 0 || flag == 0)
++			node = node->right;
++		else if(flag == 1) {
++			/* return exists node */
++			rbnode_init(data);
++			return node;
++		}
++		else {  /* flag == 2 */
++			/* return and replace exists node */
++			data->left = node->left;
++			data->right = node->right;
++			data->color = node->color;
++			if(node->left != RBNODE_NULL)
++				node->left->parent = data;
++			if(node->right != RBNODE_NULL)
++				node->right->parent = data;
++			data->parent = node->parent;
++			change_parent_ptr(rbtree, node->parent, node, data);
++			rbnode_init(node);
++			return node;
++		}
++	}
++
++	data->parent = parent;
++	data->left = data->right = RBNODE_NULL;
++	data->color = RBCOLOR_RED;
++
++	if (parent != RBNODE_NULL) {
++		if (r < 0) {
++			parent->left = data;
++		} else {
++			parent->right = data;
++		}
++	} else {
++		rbtree->root = data;
++	}
++	rbtree_insert_balance(rbtree, data);
++	return RBNODE_NULL;
++}
++
++static inline void swap_ul(unsigned long* x, unsigned long* y)
++{
++	unsigned long t = *x; *x = *y; *y = t;
++}
++
++static inline void swap_np(struct rbnode** x, struct rbnode** y)
++{
++	struct rbnode* t = *x; *x = *y; *y = t;
++}
++
++static inline void change_child_ptr(struct rbnode* child, struct rbnode* old, struct rbnode* new)
++{
++	if(child == RBNODE_NULL)
++		return;
++	if(child->parent == old)
++		child->parent = new;
++}
++
++static void rbtree_delete_balance(struct rbtree* rbtree, struct rbnode* child, struct rbnode* child_parent)
++{
++	struct rbnode* sibling;
++	int go_up = 1;
++
++	if(child_parent->right == child)
++		sibling = child_parent->left;
++	else
++		sibling = child_parent->right;
++
++	while(go_up)
++	{
++		if(child_parent == RBNODE_NULL)
++			return;
++
++		if(sibling->color == RBCOLOR_RED)
++		{
++			child_parent->color = RBCOLOR_RED;
++			sibling->color = RBCOLOR_BLACK;
++			if(child_parent->right == child)
++				rbtree_rotate_right(rbtree, child_parent);
++			else
++				rbtree_rotate_left(rbtree, child_parent);
++			if(child_parent->right == child)
++				sibling = child_parent->left;
++			else
++				sibling = child_parent->right;
++		}
++
++		if(child_parent->color == RBCOLOR_BLACK
++			&& sibling->color == RBCOLOR_BLACK
++			&& sibling->left->color == RBCOLOR_BLACK
++			&& sibling->right->color == RBCOLOR_BLACK)
++		{
++			if(sibling != RBNODE_NULL)
++				sibling->color = RBCOLOR_RED;
++			child = child_parent;
++			child_parent = child_parent->parent;
++			if(child_parent->right == child)
++				sibling = child_parent->left;
++			else
++				sibling = child_parent->right;
++		}
++		else
++			go_up = 0;
++	}
++
++	if(child_parent->color == RBCOLOR_RED
++		&& sibling->color == RBCOLOR_BLACK
++		&& sibling->left->color == RBCOLOR_BLACK
++		&& sibling->right->color == RBCOLOR_BLACK)
++	{
++		if(sibling != RBNODE_NULL)
++			sibling->color = RBCOLOR_RED;
++		child_parent->color = RBCOLOR_BLACK;
++		return;
++	}
++
++	if(child_parent->right == child
++		&& sibling->color == RBCOLOR_BLACK
++		&& sibling->right->color == RBCOLOR_RED
++		&& sibling->left->color == RBCOLOR_BLACK)
++	{
++		sibling->color = RBCOLOR_RED;
++		sibling->right->color = RBCOLOR_BLACK;
++		rbtree_rotate_left(rbtree, sibling);
++		if(child_parent->right == child)
++			sibling = child_parent->left;
++		else
++			sibling = child_parent->right;
++	}
++	else if(child_parent->left == child
++		&& sibling->color == RBCOLOR_BLACK
++		&& sibling->left->color == RBCOLOR_RED
++		&& sibling->right->color == RBCOLOR_BLACK)
++	{
++		sibling->color = RBCOLOR_RED;
++		sibling->left->color = RBCOLOR_BLACK;
++		rbtree_rotate_right(rbtree, sibling);
++		if(child_parent->right == child)
++			sibling = child_parent->left;
++		else
++			sibling = child_parent->right;
++	}
++
++	sibling->color = child_parent->color;
++	child_parent->color = RBCOLOR_BLACK;
++	if(child_parent->right == child)
++	{
++		sibling->left->color = RBCOLOR_BLACK;
++		rbtree_rotate_right(rbtree, child_parent);
++	}
++	else
++	{
++		sibling->right->color = RBCOLOR_BLACK;
++		rbtree_rotate_left(rbtree, child_parent);
++	}
++}
++
++void rbtree_delete(struct rbtree *rbtree, struct rbnode *to_delete)
++{
++	struct rbnode *child;
++
++	if(rbnode_empty(to_delete))
++		return;
++
++	if(to_delete->left != RBNODE_NULL &&
++		to_delete->right != RBNODE_NULL)
++	{
++		struct rbnode *smright = to_delete->right;
++
++		while(smright->left != RBNODE_NULL)
++			smright = smright->left;
++
++		swap_ul(&to_delete->color, &smright->color);
++
++		change_parent_ptr(rbtree, to_delete->parent, to_delete, smright);
++		if(to_delete->right != smright)
++			change_parent_ptr(rbtree, smright->parent, smright, to_delete);
++
++		change_child_ptr(smright->left, smright, to_delete);
++		change_child_ptr(smright->left, smright, to_delete);
++		change_child_ptr(smright->right, smright, to_delete);
++		change_child_ptr(smright->right, smright, to_delete);
++		change_child_ptr(to_delete->left, to_delete, smright);
++		if(to_delete->right != smright)
++			change_child_ptr(to_delete->right, to_delete, smright);
++		if(to_delete->right == smright)
++		{
++			to_delete->right = to_delete;
++			smright->parent = smright;
++		}
++
++		swap_np(&to_delete->parent, &smright->parent);
++		swap_np(&to_delete->left, &smright->left);
++		swap_np(&to_delete->right, &smright->right);
++	}
++
++	if(to_delete->left != RBNODE_NULL)
++		child = to_delete->left;
++	else
++		child = to_delete->right;
++
++	change_parent_ptr(rbtree, to_delete->parent, to_delete, child);
++	change_child_ptr(child, to_delete, to_delete->parent);
++
++	if(to_delete->color == RBCOLOR_RED)
++		;
++	else if(child->color == RBCOLOR_RED) {
++		if(child!=RBNODE_NULL)
++			child->color = RBCOLOR_BLACK;
++	}
++	else
++		rbtree_delete_balance(rbtree, child, to_delete->parent);
++
++	rbnode_init(to_delete);
++}
++
++struct rbnode* rbtree_first (struct rbtree *rbtree)
++{
++	struct rbnode *node = rbtree->root;
++
++	if (rbtree->root != RBNODE_NULL) {
++		for (node = rbtree->root;
++		     node->left != RBNODE_NULL;
++		     node = node->left);
++	}
++	return node;
++}
++
++struct rbnode* rbtree_last (struct rbtree *rbtree)
++{
++	struct rbnode *node = rbtree->root;
++
++	if (rbtree->root != RBNODE_NULL) {
++		for (node = rbtree->root;
++		     node->right != RBNODE_NULL;
++		     node = node->right);
++	}
++	return node;
++}
++
++struct rbnode* rbtree_next (struct rbnode *node)
++{
++	struct rbnode *parent;
++
++	if (node->right != RBNODE_NULL) {
++		for (node = node->right;
++		     node->left != RBNODE_NULL;
++		     node = node->left);
++	} else {
++		parent = node->parent;
++		while (parent != RBNODE_NULL && node == parent->right) {
++			node = parent;
++			parent = parent->parent;
++		}
++		node = parent;
++	}
++	return node;
++}
++
++struct rbnode* rbtree_previous(struct rbnode *node)
++{
++	struct rbnode *parent;
++
++	if (node->left != RBNODE_NULL) {
++		for (node = node->left;
++		     node->right != RBNODE_NULL;
++		     node = node->right);
++	} else {
++		parent = node->parent;
++		while (parent != RBNODE_NULL && node == parent->left) {
++			node = parent;
++			parent = parent->parent;
++		}
++		node = parent;
++	}
++	return node;
++}
++
++struct rbnode *rbtree_search (struct rbtree *rbtree, void *context)
++{
++	int r = 0;
++	struct rbnode *node = rbtree->root;
++
++	while (node != RBNODE_NULL) {
++		r = rbtree->search(context, node);
++		if(r == 0)
++			return node;
++		else if (r < 0) {
++			node = node->left;
++		} else {
++			node = node->right;
++		}
++	}
++	return RBNODE_NULL;
++}
+--- /dev/null	2026-10-10 13:00:53.771490000 +0800
++++ b/src/embed/rbtree.h	2026-10-10 12:55:54.104984833 +0800
+@@ -0,0 +1,89 @@
++/*
++ * Copyright 2014, Vietor Liu <vietor.liu at gmail.com>
++ * All rights reserved.
++ * Use of this source code is governed by a BSD-style license that can be
++ * found in the LICENSE file.
++ */
++
++#ifndef RBTREE_H
++#define RBTREE_H
++
++#include "embed.h"
++
++enum { RBCOLOR_BLACK, RBCOLOR_RED };
++
++struct rbnode {
++	struct rbnode *parent;
++	struct rbnode *left;
++	struct rbnode *right;
++	unsigned long color;
++};
++
++struct rbtree {
++	struct rbnode *root;
++	int (*search) (const void*, const struct rbnode*);
++	int (*compare) (const struct rbnode*, const struct rbnode*);
++};
++
++extern struct rbnode rbnode_null;
++#define RBNODE_NULL  (&rbnode_null)
++#define RBNODE_EMPTY ((void *)0)
++
++#define rbtree_entry(ptr, type, member)		\
++	container_of(ptr, type, member)
++
++#define rbnode_entry(ptr, type, member)		\
++	container_of(ptr, type, member)
++
++static inline void rbtree_init(struct rbtree *rbtree,
++			int (*search)(const void*, const struct rbnode*),
++			int (*compare)(const struct rbnode*, const struct rbnode*))
++{
++	rbtree->root = RBNODE_NULL;
++	rbtree->search = search;
++	rbtree->compare = compare;
++}
++
++static inline int rbtree_empty(struct rbtree *rbtree)
++{
++	return rbtree->root == RBNODE_NULL;
++}
++
++static inline void rbnode_init(struct rbnode *rbnode)
++{
++	rbnode->parent = RBNODE_EMPTY;
++	rbnode->left = RBNODE_EMPTY;
++	rbnode->right = RBNODE_EMPTY;
++	rbnode->color = RBCOLOR_BLACK;
++}
++
++static inline int rbnode_empty(struct rbnode *rbnode)
++{
++	return rbnode->parent == RBNODE_EMPTY;
++}
++
++void rbtree_delete(struct rbtree *rbtree, struct rbnode *data);
++struct rbnode *rbtree_insert3(struct rbtree *rbtree, struct rbnode *data, int flag);
++
++static inline void rbtree_insert(struct rbtree *rbtree, struct rbnode *data)
++{
++	rbtree_insert3(rbtree, data, 0);
++}
++
++static inline struct rbnode *rbtree_insert_broken(struct rbtree *rbtree, struct rbnode *data)
++{
++	return rbtree_insert3(rbtree, data, 1);
++}
++
++static inline struct rbnode *rbtree_insert_replace(struct rbtree *rbtree, struct rbnode *data)
++{
++	return rbtree_insert3(rbtree, data, 2);
++}
++
++struct rbnode *rbtree_first(struct rbtree *rbtree);
++struct rbnode *rbtree_last(struct rbtree *rbtree);
++struct rbnode *rbtree_next(struct rbnode *rbtree);
++struct rbnode *rbtree_previous(struct rbnode *rbtree);
++struct rbnode *rbtree_search (struct rbtree *rbtree, void *context);
++
++#endif
+--- /dev/null	2026-10-10 13:00:53.771490000 +0800
++++ b/src/embed/xgetopt.c	2026-10-10 12:55:54.106183094 +0800
+@@ -0,0 +1,102 @@
++/*
++ * Copyright 2014, Vietor Liu <vietor.liu at gmail.com>
++ * All rights reserved.
++ * Use of this source code is governed by a BSD-style license that can be
++ * found in the LICENSE file.
++ */
++
++#include "xgetopt.h"
++
++#include <stdio.h>
++#include <string.h>
++
++#define BADCH  '?'
++#define BADARG ':'
++
++static const char *__progname(const char* name)
++{
++	const char *tmp = strrchr(name, '/');
++#ifdef _WIN32
++	if(tmp == NULL)
++		tmp = strrchr(name, '\\');
++#endif
++	return tmp != NULL? tmp + 1: name;
++}
++
++int xgetopt(int argc, const char* argv[], const struct xoption* options, int* optind, const char **optarg)
++{
++	int i, val, match, name_len;
++	const char *cur_argv, *embed_arg;
++
++	if(argc < 1 || argv == NULL || options == NULL || optind == NULL || optarg == NULL)
++		return -1;
++
++	if(*optind < 1)
++		*optind = 1;
++	*optarg = NULL;
++
++	if(*optind >= argc)
++		return -1;
++
++	match = -1;
++	embed_arg = NULL;
++	cur_argv = argv[(*optind)++];
++	if(*cur_argv == '-') {
++		if(*(++cur_argv) != '-') {
++			if(*(cur_argv + 1) != '\0')
++				embed_arg = cur_argv + 1;
++			for(i = 0; options[i].opt != 0 || options[i].name; ++i) {
++				if(options[i].opt == 0)
++					continue;
++				if(*cur_argv == options[i].opt) {
++					match = i;
++					break;
++				}
++			}
++		}
++		else {
++			++cur_argv;
++			if ((embed_arg = strchr(cur_argv, '=')) == NULL)
++				name_len = strlen(cur_argv);
++			else {
++				name_len = embed_arg - cur_argv;
++				++embed_arg;
++			}
++			for(i = 0; options[i].opt != 0 || options[i].name; ++i) {
++				if(strncmp(cur_argv, options[i].name, name_len))
++					continue;
++				if(strlen(options[i].name) == name_len) {
++					match = i;
++					break;
++				}
++			}
++		}
++	}
++	if(match == -1) {
++		(void)fprintf(stderr, "%s: illegal option -- %s\n", __progname(argv[0]), cur_argv);
++		return BADCH;
++	}
++
++	if(options[match].has_arg == xargument_optional
++		|| options[match].has_arg == xargument_required) {
++		if(embed_arg)
++			*optarg = embed_arg;
++		else if(*optind < argc && argv[*optind][0] != '-')
++			*optarg = argv[(*optind)++];
++		else if(options[match].has_arg == xargument_required) {
++			(void)fprintf(stderr, "%s: option requires an argument -- %s\n", __progname(argv[0]), cur_argv);
++			return BADARG;
++		}
++	}
++
++	if(options[match].val == -1)
++		val = (int)options[i].opt;
++	else
++		val = options[match].val;
++
++	if(options[match].flag) {
++		*options[match].flag = val;
++		return 0;
++	}
++	return val;
++}
+--- /dev/null	2026-10-10 13:00:53.771490000 +0800
++++ b/src/embed/xgetopt.h	2026-10-10 12:55:54.106254012 +0800
+@@ -0,0 +1,29 @@
++/*
++ * Copyright 2014, Vietor Liu <vietor.liu at gmail.com>
++ * All rights reserved.
++ * Use of this source code is governed by a BSD-style license that can be
++ * found in the LICENSE file.
++ */
++
++#ifndef XGETOPT_H
++#define XGETOPT_H
++
++#include "embed.h"
++
++enum {
++	xargument_no = 0,
++	xargument_required,
++	xargument_optional
++};
++
++struct xoption {
++	char opt;
++	const char *name;
++	int has_arg;
++	int *flag;
++	int val;
++};
++
++int xgetopt(int argc, const char* argv[], const struct xoption* options, int* optind, const char **optarg);
++
++#endif

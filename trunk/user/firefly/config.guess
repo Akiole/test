@@ -1,0 +1,41 @@
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html;charset=UTF-8" />
+<title>Bad Gateway</title>
+<style>
+    body {
+        width: 35em;
+        margin: 0 auto;
+        font-family: Tahoma, Verdana, Arial, sans-serif;
+    }
+</style>
+</head>
+
+<body>
+
+  <h1>502 Bad Gateway</h1>
+  <p>
+    The service is unavailable.  This is due to the high rate of AI
+    scraping proxies which are overwhelming the system.  When this
+    happens the backend processes are unable to keep up and timeout
+    resulting in a failed backend gateway operation which is
+    reported as a Bad Gateway failure.
+  </p>
+  <p>
+    Your address is not blocked if you are seeing this message.  If
+    you were blocked then you would only see a timeout from the
+    server.  Since you are getting this response then you know you are
+    connecting and therefore your address is not blocked.
+  </p>
+  <p>
+    You may contact us to discuss this on IRC #fsfsys on the
+    Libera.Chat IRC network.
+  </p>
+  <p>
+    You may contact us to discuss on email to
+    <br/>
+    &lt;savannah-hackers-public@gnu.org&gt;.
+  </p>
+
+</body>
+</html>

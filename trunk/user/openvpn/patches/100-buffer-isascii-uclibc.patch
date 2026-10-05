@@ -1,0 +1,11 @@
+--- a/src/openvpn/buffer.c	2026-08-24 14:04:12.875019651 +0800
++++ b/src/openvpn/buffer.c	2026-08-24 14:03:57.365483269 +0800
+@@ -901,7 +901,7 @@
+     {
+         return true;
+     }
+-    if ((flags & CC_ASCII) && isascii(c))
++    if ((flags & CC_ASCII) && (c <= 127))
+     {
+         return true;
+     }

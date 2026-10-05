@@ -1,0 +1,14 @@
+--- a/include/netlink/route/cls/ematch.h
++++ b/include/netlink/route/cls/ematch.h
+@@ -15,6 +15,12 @@
+ extern "C" {
+ #endif
+ 
++struct ematch_quoted {
++	char *	data;
++	size_t	len;
++	int	index;
++};
++
+ /* FIXME: Should be moved to the kernel header at some point */
+ #define RTNL_EMATCH_PROGID	2

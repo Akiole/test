@@ -1,0 +1,378 @@
+# Build TurBoTse's Padavan 4.4 Kernel
+
+name: Custom Firmware Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Select router device"
+        required: true
+        type: choice
+        options:
+          - 360-T6GS
+          - 360-T6M
+          - 360-T6M-PB
+          - ARCADYAN-WE410443-TC
+          - ASUS-RT-AC85P
+          - BELL-A040WQ
+          - C-LIFE-XG1
+          - CMCC-A9
+          - DLINK-DIR-878
+          - DLINK-DIR-882
+          - FCJ-GAX1800B
+          - FCJ-GAX1800W
+          - GEHUA-GHL
+          - H3C-NX18PLUS
+          - H3C-TX1801
+          - HAIER-HAR-20S2U1
+          - HBD-WRL18M4GD
+          - HIWIFI-B70
+          - JCG-836PRO
+          - JCG-AC860M
+          - JCG-Q10PRO
+          - JCG-Q10PRO-PB
+          - JCG-Q11PRO
+          - JCG-Q20
+          - JCG-Q20-PB
+          - JCG-Y2
+          - JDCLOUD-RE-CP-02
+          - JDCLOUD-RE-SP-01B
+          - KONKA-KOMI-A8
+          - LENOVO-NEWIFI
+          - LENOVO-NEWIFI-3
+          - LINKSYS-EA7500-V2
+          - MAIPU-MPAX18
+          - MOTOROLA-MR2600
+          - NETGEAR-BZV
+          - NETGEAR-R6800
+          - NETGEAR-R7450
+          - PHICOMM-K2P
+          - PHICOMM-K2P-USB
+          - QIANMO-B1
+          - RAISECOM-MSG1500
+          - RAISECOM-MSG1500-Z
+          - REDMI-RM2100
+          - RUIJIE-EW1800GX-PRO
+          - SIM-AX1800T
+          - SKSPRUCE-WIA3300-10
+          - TPLINK-WDR8620
+          - XIAOMI-CR660X
+          - XIAOMI-MI-4
+          - XIAOMI-MI-R3G
+          - XIAOMI-MI-R3P
+          - XIAOMI-MI-R3P-PB
+          - XIAOMI-MI-R3P-SPI
+          - XIAOMI-MI-R4A
+          - XIAOMI-R2100
+          - XIAOYU-XY-C1
+          - YOUHUA-WR1200JS
+          - ZTE-E8820S
+          - ZTE-E8820V2
+          - ZTT-RX6000
+        default: PHICOMM-K2P
+      toolchain:
+        description: "Select compilation toolchain"
+        required: true
+        type: choice
+        options:
+          - mipsel-linux-musl
+          - mipsel-linux-uclibc
+        default: mipsel-linux-musl
+      host:
+        description: "Build host OS"
+        required: true
+        type: choice
+        options:
+          - ubuntu-latest
+          - macos-14
+        default: ubuntu-latest
+      cpufreq:
+        description: "Enable CPU Overclocking"
+        type: boolean
+        default: false
+      mt7621_oc:
+        description: "1000Mhz=0x312 1100Mhz=0x362 1120Mhz=0x372 1200Mhz=0x3B2"
+        type: choice
+        options: [ '0x312', '0x362', '0x372', '0x3B2' ]
+      plugins:
+        description: 'Plugin JSON, e.g. {"shadowsocks":"y","xray":"n"}'
+        required: true
+        type: string
+        default: '{"shadowsocks":"y","v2ray":"n","xray":"y","trojan":"n","ssobfs":"y","smartdns":"y","vlmcsd":"y","ttyd":"n","iperf3":"n"}'
+      customization:
+        description: 'Customization JSON'
+        required: true
+        type: string
+        default: '{"lanip":"192.168.2.1","signaccount":"admin","signpassword":"admin","wifi2gssid":"Padavan","wifi2gpsk":"1234567890","wifi5gssid":"Padavan-5G","wifi5gpsk":"1234567890"}'
+      nanoversion:
+        description: "Build Nano Version"
+        type: boolean
+        default: true
+      release:
+        description: "Upload to GitHub Release"
+        type: boolean
+        default: true
+      oldreleases:
+        description: "Delete Old Releases"
+        type: boolean
+        default: true
+      oldworkflow:
+        description: "Delete Old Workflows"
+        type: boolean
+        default: true
+
+env:
+  FIRMWARE_AUTHOR: TurBoTse
+  TOOLCHAIN: ${{ inputs.toolchain }}
+  CONFIGFILE: trunk/.config
+
+jobs:
+  build:
+    name: Build ${{ inputs.target }}-${{ inputs.toolchain }} @ ${{ inputs.host }}
+    runs-on: ${{ inputs.host }}
+    timeout-minutes: 180
+    permissions:
+      contents: write
+      actions: write
+
+    steps:
+      - name: Setup case-sensitive workspace (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          REPO="${GITHUB_REPOSITORY##*/}"
+          WORK_PARENT="$(dirname "$GITHUB_WORKSPACE")"
+          cd "$WORK_PARENT"
+          rmdir "$REPO"
+          hdiutil create "${HOME}/padavan.sparseimage" -volname "$REPO" -type SPARSE -size 30g -fs HFSX
+          hdiutil mount "${HOME}/padavan.sparseimage" -mountroot "$WORK_PARENT"
+
+      - uses: actions/checkout@main
+        with:
+          fetch-depth: 1
+
+      - uses: hendrikmuhs/ccache-action@main
+        with:
+          key: ${{ inputs.target }}-${{ inputs.toolchain }}-${{ inputs.host }}
+
+      - uses: actions/setup-go@main
+        with:
+          go-version: '1.27.x'
+          cache: false
+
+      # Single source of truth: delegates to the Makefile `deps` target so
+      # CI and local installs stay in sync.
+      - name: Install dependencies
+        run: make deps
+
+      # Prepend Homebrew GNU paths so build scripts see GNU sed/tar/grep/find/etc.
+      # The PATH list comes from trunk/host-tools.mk (DARWIN_GNU_PATH) — no duplicate maintenance.
+      - name: Setup GNU PATH (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          GNU_PATH=$(make -f trunk/host-tools.mk -p 2>/dev/null | sed -n 's/^DARWIN_GNU_PATH := //p' | head -1)
+          echo "PATH=${GNU_PATH}:$PATH" >> "$GITHUB_ENV"
+
+      - name: Set build date
+        run: echo "BUILD_DATE=$(TZ='Asia/Shanghai' date +%Y%m%d)" >> "$GITHUB_ENV"
+
+      - name: Validate Input JSON
+        run: |
+          jq empty <<< '${{ inputs.plugins }}' || { echo "❌ Invalid plugins JSON"; exit 1; }
+          jq empty <<< '${{ inputs.customization }}' || { echo "❌ Invalid customization JSON"; exit 1; }
+
+      - name: Export Customization & Plugin Flags
+        run: |
+          export_json() {
+            local JSON=$1
+            local PREFIX=$2
+            echo "$JSON" | jq -r 'to_entries[] | "\(.key)=\(.value)"' | while IFS='=' read -r k v; do
+              kupper=$(echo "$k" | tr '[:lower:]' '[:upper:]')
+              echo "${PREFIX}${kupper}=$v" >> "$GITHUB_ENV"
+            done
+          }
+
+          export_json '${{ inputs.customization }}' ""
+          if [ "${{ inputs.nanoversion }}" = "true" ]; then
+            echo "⚠️ Nano version — all plugins disabled."
+            echo '${{ inputs.plugins }}' | jq 'with_entries(.value="n")' > plugins_fixed.json
+          else
+            echo '${{ inputs.plugins }}' > plugins_fixed.json
+          fi
+          export_json "$(cat plugins_fixed.json)" "PLUGIN_"
+
+      - name: Apply Configurations
+        run: |
+          # Generate .config from template (replicates top-level Makefile product target)
+          # so we never mutate the tracked template file in the repo.
+          cp -f "trunk/configs/templates/${{ inputs.target }}.config" "$CONFIGFILE"
+          OS_LOWER=$(uname -s | tr '[:upper:]' '[:lower:]')
+          ARCH=$(uname -m)
+          TC_URL="https://github.com/TurBoTse/padavan/releases/download/toolchain/${{ inputs.toolchain }}-${OS_LOWER}-${ARCH}.tar.xz"
+          printf '\n%s\n%s\n%s\n%s\n%s\n' \
+              "CONFIG_CROSS_COMPILE=${{ inputs.toolchain }}" \
+              "CONFIG_CROSS_COMPILER_ROOT=$PWD/toolchain/${{ inputs.toolchain }}" \
+              "TOOLCHAIN_URL=$TC_URL" \
+              "CONFIG_CCACHE=y" \
+              "CONFIG_CCACHE_DIR=$PWD/trunk" \
+              >> "$CONFIGFILE"
+
+          for script in setip.sh setaccount.sh setwifi.sh; do
+            [ -f "trunk/custom/scripts/$script" ] || { echo "❌ Missing script: trunk/custom/scripts/$script"; exit 1; }
+          done
+          chmod +x trunk/custom/scripts/*.sh
+          bash trunk/custom/scripts/setip.sh "$LANIP" trunk/user/shared/src/defaults.h trunk/user/www/dict/CN.dict
+          bash trunk/custom/scripts/setaccount.sh "$SIGNACCOUNT" "$SIGNPASSWORD" trunk/user/shared/src/defaults.h
+          bash trunk/custom/scripts/setwifi.sh "$WIFI2GSSID" "$WIFI2GPSK" "$WIFI5GSSID" "$WIFI5GPSK" trunk/user/shared/src/defaults.h
+
+          for key in $(env | grep '^PLUGIN_' | cut -d= -f1); do
+            echo "CONFIG_FIRMWARE_INCLUDE_${key#PLUGIN_}=${!key}" >> "$CONFIGFILE"
+          done
+
+          if [ "${{ inputs.cpufreq }}" = "true" ]; then
+            echo "CONFIG_FIRMWARE_INCLUDE_OC=y" >> "$CONFIGFILE"
+            echo "CONFIG_FIRMWARE_MT7621_OC=${{ inputs.mt7621_oc }}" >> "$CONFIGFILE"
+          fi
+
+      - name: Apply Nano Optimization
+        if: ${{ inputs.nanoversion }}
+        run: |
+          for fs in ANTFS FAT EXFAT EXT2 EXT3 EXT4 XFS FUSE SWAP; do
+            sed -i "s/CONFIG_FIRMWARE_ENABLE_${fs}=y/CONFIG_FIRMWARE_ENABLE_${fs}=n/" "$CONFIGFILE"
+          done
+          modules=(UVC HID SERIAL AUDIO XFRM QOS IMQ IFB NFSD NFSC CIFS NTFS_3G LPRD U2EC TCPDUMP HDPARM PARTED
+            SMBD WINS SMBD_SYSLOG FTPD RPL2TP EAP_PEAP HTTPS SFTP DROPBEAR DROPBEAR_FAST_CODE OPENSSH OPENVPN SSWAN
+            OPENSSL_EC OPENSSL_EXE XUPNPD MINIDLNA FIREFLY FFMPEG_NEW TRANSMISSION TRANSMISSION_WEB_CONTROL ARIA
+            ARIA_WEB_CONTROL CURL SCUTCLIENT GDUT_DRCOM DOGCOM MINIEAP NJIT_CLIENT SOFTETHERVPN_SERVER SOFTETHERVPN_CLIENT
+            SOFTETHERVPN_CMD VLMCSD TTYD MSD_LITE LRZSZ HTOP NANO IPERF3 DUMP1090 RTL_SDR MTR SOCAT SRELAY MENTOHUST
+            FRPC FRPS REDSOCKS SHADOWSOCKS XRAY V2RAY TROJAN SSOBFS SINGBOX NAIVEPROXY ADBYBY DNSFORWARDER SMARTDNS
+            ADGUARDHOME ZEROTIER ALIDDNS DDNSTO ALDRIVER SQM WIREGUARD)
+          for m in "${modules[@]}"; do
+            sed -i "s/CONFIG_FIRMWARE_INCLUDE_${m}=y/CONFIG_FIRMWARE_INCLUDE_${m}=n/" "$CONFIGFILE"
+          done
+
+      - name: Build Firmware
+        run: |
+          make build TOOLCHAIN=${{ inputs.toolchain }}
+
+          # Extract toolchain versions for filename + release body
+          TC_BIN="toolchain/${{ inputs.toolchain }}/bin/${{ inputs.toolchain }}"
+          GCC_VER=$("${TC_BIN}-gcc" -dumpversion 2>/dev/null | head -1)
+          GCC_MAJOR=$(echo "$GCC_VER" | cut -d. -f1)
+          GO_VER=$(go version 2>/dev/null | grep -oE 'go[0-9.]+' | head -1)
+          if [ "${{ inputs.toolchain }}" = "mipsel-linux-musl" ]; then
+            LIBC="musl"
+          else
+            LIBC="uClibc-ng"
+          fi
+          echo "GCC_VER=${GCC_VER:-N/A}" >> "$GITHUB_ENV"
+          echo "LIBC=$LIBC" >> "$GITHUB_ENV"
+          echo "GO_VER=${GO_VER:-N/A}" >> "$GITHUB_ENV"
+
+          mkdir -p trunk/output
+          HOST_OS=$(echo "${{ inputs.host }}" | cut -d- -f1)
+          base="${{ inputs.target }}-4.4-${{ inputs.toolchain }}-gcc${GCC_MAJOR:-unknown}-${HOST_OS}"
+          [ "${{ inputs.nanoversion }}" = "true" ] && base="${base}-nano"
+          [ "${{ inputs.cpufreq }}" = "true" ] && base="${base}-cpufreq-${{ inputs.mt7621_oc }}"
+          base="${base}-${BUILD_DATE}"
+          i=1
+          shopt -s nullglob
+          for f in trunk/images/*.trx; do
+            suffix=""
+            [ $i -gt 1 ] && suffix="-$i"
+            mv "$f" "trunk/output/${base}${suffix}.trx"
+            i=$((i+1))
+          done
+          shopt -u nullglob
+          ls -lh trunk/output/ || echo "No trx files found"
+
+      - name: Print config.log on failure
+        if: failure()
+        run: |
+          echo "===================" && echo "config.log content:"
+          find . -name config.log -exec cat {} \; || echo "none"
+
+      - uses: actions/upload-artifact@main
+        if: failure()
+        with:
+          name: config-log
+          path: '**/config.log'
+
+      - name: Show build info
+        if: always()
+        run: |
+          uname -a
+          gcc --version | head -1
+          echo "ccache stats:"
+          ccache -s || true
+          echo "Target: ${{ inputs.target }}"
+          echo "Toolchain: ${{ inputs.toolchain }}"
+          echo "Host: ${{ inputs.host }}"
+
+      - uses: actions/upload-artifact@main
+        with:
+          name: ${{ inputs.target }}-${{ inputs.toolchain }}-${{ inputs.host }}-${{ env.BUILD_DATE }}
+          path: trunk/output/*.trx
+
+      - uses: ncipollo/release-action@main
+        if: ${{ inputs.release }}
+        with:
+          tag: ${{ env.BUILD_DATE }}
+          name: ${{ env.BUILD_DATE }}
+          body: |
+            ## Build Summary
+            - **Host**: ${{ inputs.host }}
+            - **Target**: ${{ inputs.target }}
+            - **Toolchain**: ${{ inputs.toolchain }}
+            - **GCC**: ${{ env.GCC_VER }}
+            - **C Library**: ${{ env.LIBC }}
+            - **Go**: ${{ env.GO_VER }}
+            - **Nano**: ${{ inputs.nanoversion }}
+            - **CPU OC**: ${{ inputs.cpufreq }} (${{ inputs.mt7621_oc }})
+            - **Plugins**: ${{ inputs.plugins }}
+            - **Custom**: ${{ inputs.customization }}
+          artifacts: trunk/output/*.trx
+          allowUpdates: true
+          replacesArtifacts: true
+          omitNameDuringUpdate: true
+          makeLatest: true
+
+      - name: Delete older releases
+        if: ${{ inputs.oldreleases }}
+        uses: actions/github-script@main
+        with:
+          script: |
+            const releases = await github.paginate(github.rest.repos.listReleases, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+            });
+            // Keep latest 3 releases, delete the rest; never delete toolchain release
+            const sorted = releases
+              .filter(r => r.tag_name !== 'toolchain' && !(r.name || '').toLowerCase().includes('toolchain'))
+              .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+            const toDelete = sorted.slice(3);
+            for (const rel of toDelete) {
+              console.log(`Deleting release: ${rel.tag_name} (${rel.name})`);
+              await github.rest.repos.deleteRelease({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                release_id: rel.id,
+              });
+              try {
+                await github.rest.git.deleteRef({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  ref: `tags/${rel.tag_name}`,
+                });
+                console.log(`Deleted tag: ${rel.tag_name}`);
+              } catch (e) {
+                console.log(`Tag ${rel.tag_name} already deleted or not found`);
+              }
+            }
+            console.log(`Deleted ${toDelete.length} old release(s), kept ${Math.min(3, releases.length)} latest.`);
+
+      - uses: Mattraks/delete-workflow-runs@main
+        if: ${{ inputs.oldworkflow }}
+        with:
+          retain_days: 0
+          keep_minimum_runs: 1

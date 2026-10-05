@@ -1,0 +1,19 @@
+--- a/utils/filecap.c	2026-10-12 15:53:04.311332424 +0800
++++ b/utils/filecap.c	2026-10-12 15:53:04.357290893 +0800
+@@ -152,6 +152,7 @@
+ //
+ int main(int argc, char *argv[])
+ {
++	int rc = 0;
+ #if CAP_LAST_CAP < 31 || !defined (VFS_CAP_U32) || \
+ 	(!defined (HAVE_ATTR_XATTR_H) && !defined(HAVE_SYS_XATTR_H))
+ 	fprintf(stderr, "File based capabilities are not supported\n");
+@@ -160,7 +161,7 @@
+ 	struct stat sbuf;
+ 	struct stat path_sbuf;
+ 	int nftw_flags = FTW_PHYS;
+-	int i, rc = 0;
++	int i;
+ 	int have_path_stat = 0;
+ 
+ 	if (argc >1) {

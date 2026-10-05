@@ -1,0 +1,13 @@
+.vscode/
+.idea/
+*.swp
+*~
+
+.DS_Store
+Thumbs.db
+
+toolchain/crosstool-ng-*/
+toolchain/toolchain-*/
+toolchain/mipsel-linux-*/
+toolchain/tarballs/
+toolchain/*.tar.xz

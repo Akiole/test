@@ -1,0 +1,26 @@
+--- a/src/configure.ac	2026-10-11 02:48:10.741810847 +0800
++++ b/src/configure.ac	2026-10-11 02:48:10.727738512 +0800
+@@ -7,11 +7,6 @@
+ fi
+ AC_MSG_RESULT([$program_prefix])
+ 
+-AC_CHECK_LIB(crypto, MD5,
+-    [LIBS="-lcrypto $LIBS"],
+-    [AC_MSG_ERROR([OpenSSL libraries not found.])]
+-  )
+-
+ AM_INIT_AUTOMAKE([-Wall -Werror foreign])
+ AC_LBL_C_INIT_BEFORE_CC(V_CCOPT, V_INCLS)
+ AC_PROG_CC
+--- a/src/Makefile.am	2026-10-11 02:48:10.742030265 +0800
++++ b/src/Makefile.am	2026-10-11 02:48:10.729516106 +0800
+@@ -10,6 +10,9 @@
+ 		njit8021xclient.c \
+ 		njit8021xclient.h \
+ 		debug.h \
++		md5-buildin/md5_one.c \
++		md5-buildin/md5_dgst.c \
++		md5-buildin/mem_clr.c \
+ 		$(NULL)
+ CCOPT = $(V_CCOPT)
+ DEFS  = $(V_DEFS)

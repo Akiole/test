@@ -1,0 +1,13 @@
+--- a/source3/smbd/vfs.c
++++ b/source3/smbd/vfs.c
+@@ -23,6 +23,10 @@
+    along with this program; if not, see <http://www.gnu.org/licenses/>.
+ */
+
++/* lib/replace/system/dir.h defines #define mkdir(dir, mode) mkdir(dir)
++ * which breaks the 3-arg function-pointer call handle->fns->mkdir(...).
++ * Undefine it here so VFS function pointer calls work correctly. */
++#undef mkdir
+
+ #include "includes.h"
+ #include "system/filesys.h"

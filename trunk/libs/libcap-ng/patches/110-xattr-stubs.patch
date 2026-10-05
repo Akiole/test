@@ -1,0 +1,40 @@
+--- a/src/cap-ng.c
++++ b/src/cap-ng.c
+@@ -101,6 +101,13 @@
+ // compile-in file system capabilities
+ #if !defined(HAVE_ATTR_XATTR_H) && !defined (HAVE_SYS_XATTR_H)
+ #undef VFS_CAP_U32
++/* VFS_CAP_U32 is re-defined below for data structs; file-cap code is then
++ * compiled but xattr/FIXUP are missing.  Define FIXUP and provide stubs. */
++#if __BYTE_ORDER == __BIG_ENDIAN
++#define FIXUP(x) bswap_32(x)
++#else
++#define FIXUP(x) (x)
++#endif
+ #endif
+ 
+ #ifdef VFS_CAP_U32
+@@ -1877,3 +1884,23 @@
+ 		*state = NULL;
+ 	}
+ }
++
++#if !defined(HAVE_ATTR_XATTR_H) && !defined(HAVE_SYS_XATTR_H)
++#include <errno.h>
++#include <sys/types.h>
++ssize_t fgetxattr(int fd, const char *name, void *value, size_t size)
++{
++	errno = ENOTSUP;
++	return -1;
++}
++ssize_t fsetxattr(int fd, const char *name, const void *value, size_t size, int flags)
++{
++	errno = ENOTSUP;
++	return -1;
++}
++int fremovexattr(int fd, const char *name)
++{
++	errno = ENOTSUP;
++	return -1;
++}
++#endif

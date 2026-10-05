@@ -1,0 +1,10 @@
+diff -ruN aria2-1.37.0.orig/osx-package/etc/manpaths.d/aria2 aria2-1.37.0/osx-package/etc/manpaths.d/aria2
+--- aria2-1.37.0.orig/osx-package/etc/manpaths.d/aria2	2023-11-15 17:49:41.000000000 +0800
++++ aria2-1.37.0/osx-package/etc/manpaths.d/aria2	1970-01-01 08:00:00.000000000 +0800
+@@ -1 +0,0 @@
+-/usr/local/aria2/share/doc/man
+diff -ruN aria2-1.37.0.orig/osx-package/etc/paths.d/aria2c aria2-1.37.0/osx-package/etc/paths.d/aria2c
+--- aria2-1.37.0.orig/osx-package/etc/paths.d/aria2c	2023-11-15 17:49:41.000000000 +0800
++++ aria2-1.37.0/osx-package/etc/paths.d/aria2c	1970-01-01 08:00:00.000000000 +0800
+@@ -1 +0,0 @@
+-/usr/local/aria2/bin

@@ -1,0 +1,34 @@
+--- a/sysklogd/syslogd_and_logger.c
++++ b/sysklogd/syslogd_and_logger.c
+@@ -49,9 +49,18 @@
+  * If we reference them just once, this saves 150 bytes.
+  * The pointers themselves are optimized out
+  * (no size change on uclibc).
++ *
++ * The (CODE *) cast inside musl's macro discards the const qualifier
++ * from the compound literal, triggering -Wdiscarded-qualifiers at the
++ * point of use.  Suppress it locally — the cast originates in musl's
++ * <syslog.h>, not here, and the result is immediately bound to a
++ * const-qualified pointer.
+  */
++#pragma GCC diagnostic push
++#pragma GCC diagnostic ignored "-Wdiscarded-qualifiers"
+ static const CODE *const bb_prioritynames = prioritynames;
+ static const CODE *const bb_facilitynames = facilitynames;
++#pragma GCC diagnostic pop
+ 
+ 
+ #if ENABLE_SYSLOGD
+
+--- a/sysklogd/syslogd.c
++++ b/sysklogd/syslogd.c
+@@ -1179,7 +1179,7 @@
+ 			}
+ 		}
+ #endif
+-		if (!ENABLE_FEATURE_REMOTE_LOG || (opts & OPT_locallog)) {
++		if (!ENABLE_FEATURE_REMOTE_LOG || (option_mask32 & OPT_locallog)) {
+ 			recvbuf[sz] = '\0'; /* ensure it *is* NUL terminated */
+ 			split_escape_and_log(recvbuf, sz);
+ 		}
+
