@@ -52,14 +52,22 @@ function copyIPv6(addr, el){
 	setTimeout(function(){ el.innerHTML = old; }, 1200);
 }
 function build_ipv6_map(){
-	var i, mac, v6;
+	var i, mac, v6, existing;
 	for(i = 0; i < ipv6_neigh_map.length; i++){
 		if(ipv6_neigh_map[i] && ipv6_neigh_map[i][0]){
 			mac = ipv6_neigh_map[i][0].replace(/:/g, "").toUpperCase();
 			v6 = ipv6_neigh_map[i][1];
-			/* prefer stable address (EUI-64 contains ff:fe), keep first otherwise */
-			if (!ipv6_by_mac[mac] || v6.indexOf("ff:fe") != -1)
+			existing = ipv6_by_mac[mac];
+			/* Prefer global addresses over link-local (fe80::);
+			   within same scope prefer stable EUI-64 (contains ff:fe). */
+			if (!existing) {
 				ipv6_by_mac[mac] = v6;
+			} else if (existing.indexOf("fe80:") == 0 && v6.indexOf("fe80:") != 0) {
+				ipv6_by_mac[mac] = v6;
+			} else if (existing.indexOf("fe80:") == v6.indexOf("fe80:") &&
+			           v6.indexOf("ff:fe") != -1 && existing.indexOf("ff:fe") == -1) {
+				ipv6_by_mac[mac] = v6;
+			}
 		}
 	}
 }

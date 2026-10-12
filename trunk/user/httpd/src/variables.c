@@ -617,6 +617,8 @@
 			{"lan_dns_x", "", NULL, EVM_RESTART_LAN},
 			{"lan_dns1", "", NULL, EVM_RESTART_LAN},
 			{"lan_dns2", "", NULL, EVM_RESTART_LAN},
+			{"lan_dnsv61", "", NULL, EVM_RESTART_LAN},
+			{"lan_dnsv62", "", NULL, EVM_RESTART_LAN},
 			{"lan_stp", "", NULL, EVM_RESTART_LAN},
 			{"lan_domain", "", NULL, EVM_RESTART_DHCPD},
 			{"force_igmp", "", NULL, EVM_RESTART_SYSCTL},

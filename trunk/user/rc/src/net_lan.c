@@ -763,7 +763,7 @@ full_restart_lan(void)
 	start_networkmap(1);
 
 	/* force httpd logout */
-	system("/usr/bin/iappd.sh restart");
+	doSystem("/usr/bin/iappd.sh restart");
 	doSystem("killall %s %s", "-SIGUSR1", "httpd");
 }
 
@@ -800,7 +800,19 @@ lan_up_manual(char *lan_ifname, char *lan_dname)
 			fprintf(fp, "nameserver %s\n", dns_ip);
 			dns_count++;
 		}
-		
+
+		dns_ip = nvram_safe_get("lan_dnsv61");
+		if (is_valid_ipv6(dns_ip)) {
+			fprintf(fp, "nameserver %s\n", dns_ip);
+			dns_count++;
+		}
+
+		dns_ip = nvram_safe_get("lan_dnsv62");
+		if (is_valid_ipv6(dns_ip)) {
+			fprintf(fp, "nameserver %s\n", dns_ip);
+			dns_count++;
+		}
+
 		if (!dns_count && is_valid_ipv4(gateway_ip))
 			fprintf(fp, "nameserver %s\n", gateway_ip);
 		
@@ -842,6 +854,18 @@ lan_up_auto(char *lan_ifname, char *lan_gateway, char *lan_dname)
 			
 			dns_ip = nvram_safe_get("lan_dns2");
 			if (is_valid_ipv4(dns_ip)) {
+				fprintf(fp, "nameserver %s\n", dns_ip);
+				dns_count++;
+			}
+
+			dns_ip = nvram_safe_get("lan_dnsv61");
+			if (is_valid_ipv6(dns_ip)) {
+				fprintf(fp, "nameserver %s\n", dns_ip);
+				dns_count++;
+			}
+
+			dns_ip = nvram_safe_get("lan_dnsv62");
+			if (is_valid_ipv6(dns_ip)) {
 				fprintf(fp, "nameserver %s\n", dns_ip);
 				dns_count++;
 			}
@@ -995,7 +1019,7 @@ udhcpc_lan_bound(char *lan_ifname, int is_renew)
 		create_hosts_lan(lan_ipaddr, lan_domain);
 		
 		lan_up_auto(lan_ifname, lan_gateway, lan_domain);
-		system("/usr/bin/iappd.sh restart");
+		doSystem("/usr/bin/iappd.sh restart");
 		logmessage("DHCP LAN Client", "%s, IP: %s/%s, GW: %s, lease time: %d",
 			udhcpc_lan_state, lan_ipaddr, lan_ipmask, lan_gateway, lease_dur);
 	}

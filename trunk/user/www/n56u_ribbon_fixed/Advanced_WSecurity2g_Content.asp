@@ -23,7 +23,7 @@ var $j = jQuery.noConflict();
 
 function initial(){
 	show_banner(1);
-	show_menu(5,1,5);
+	show_menu(5,3,5);
 	show_footer();
 
 	if (!support_5g_radio()){

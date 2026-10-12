@@ -1,0 +1,74 @@
+/**
+ * Copyright (C) 2012-2014 Steven Barth <steven@midlink.org>
+ * Copyright (C) 2018 Hans Dedecker <dedeckeh@gmail.com>
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License v2 as published by
+ * the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ */
+
+#ifndef _RA_H_
+#define _RA_H_
+
+#include <netinet/in.h>
+#include <stdbool.h>
+#include <stdint.h>
+
+#define ALL_IPV6_NODES {{{0xff, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,\
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01}}}
+
+#define ALL_IPV6_ROUTERS {{{0xff, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,\
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02}}}
+
+struct icmpv6_opt {
+	uint8_t type;
+	uint8_t len;
+	uint8_t data[6];
+};
+
+/* RFC8910 Captive-Portal §2.3 */
+struct icmpv6_opt_captive_portal {
+	uint8_t type; /* 37 */
+	uint8_t len; /* includes the Type and Length fields, in units of 8 bytes */
+	uint8_t data[]; /* padded with NUL (0x00) to make length multiple of 8 */
+};
+
+struct icmpv6_opt_route_info {
+	uint8_t type;
+	uint8_t len;
+	uint8_t prefix_len;
+	uint8_t flags;
+	uint32_t lifetime;
+	uint8_t prefix[];
+};
+
+typedef enum ra_ifid_mode {
+	RA_IFID_EUI64,
+	RA_IFID_FIXED,
+	RA_IFID_RANDOM,
+	RA_IFID_LLA,
+} ra_ifid_mode_t;
+
+#define ND_OPT_ROUTE_INFORMATION 24
+#define ND_OPT_CAPTIVE_PORTAL 37
+
+
+#define icmpv6_for_each_option(opt, start, end)\
+	for (opt = (struct icmpv6_opt*)(start);\
+	(void*)(opt + 1) <= (void*)(end) && opt->len > 0 &&\
+	(void*)(opt + opt->len) <= (void*)(end); opt += opt->len)
+
+
+int ra_init(const char *ifname, const struct in6_addr *ifid,
+	    ra_ifid_mode_t ifid_mode, unsigned int options,
+	    unsigned int holdoff_interval);
+bool ra_link_up(void);
+bool ra_process(void);
+
+#endif /* _RA_H_ */

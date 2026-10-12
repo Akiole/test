@@ -652,7 +652,7 @@ function update_wl_pmf_options() {
         }
 
     if (wpa_mode == '2' || wpa_mode == '4') {
-        // WPA2-Personal, WPA2-Enterprise, or WPA/WPA2-Enterprise: Disabled/Capable/Mandatory
+        // WPA2-Personal / WPA2-Enterprise: PMF optional
         new_array = new Array("<#btn_Disable#>","<#PMF_Capable#>","<#PMF_Mandatory#>");
         $("row_pmf").style.display = "";
     } else if (wpa_mode == '5' || mode == 'owe') {

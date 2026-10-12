@@ -49,7 +49,7 @@ var menu_open = [0, 0, 0];
 
 function initial(){
 	show_banner(1);
-	show_menu(5,6,1);
+	show_menu(5,10,1);
 	show_footer();
 
 	if(!found_utl_hdparm()){

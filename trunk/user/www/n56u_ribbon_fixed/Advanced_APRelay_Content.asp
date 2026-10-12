@@ -32,7 +32,7 @@ var aprelay_scanning = false;
 
 function initial(){
 	show_banner(1);
-	show_menu(5,2,7);
+	show_menu(5,4,7);
 	show_footer();
 	load_body();
 	refresh_status();

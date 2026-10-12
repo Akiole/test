@@ -101,7 +101,7 @@ protoflag_conv(const char *proto_name, int idx, int isFlag)
 			strcpy(g_buf, "tcp");
 	} else {
 		if (strlen(proto)>3 && !strncasecmp(proto, "TCP", 3))
-			strcpy(g_buf, proto+4);
+			snprintf(g_buf, 1024, "%s", proto+4);
 	}
 
 	return (g_buf_alloc(g_buf));
@@ -113,7 +113,7 @@ portrange_conv(const char *port_name, int idx)
 	char itemname_arr[32];
 
 	snprintf(itemname_arr, sizeof(itemname_arr), "%s%d", port_name, idx);
-	strcpy(g_buf, nvram_safe_get(itemname_arr));
+	snprintf(g_buf, 1024, "%s", nvram_safe_get(itemname_arr));
 
 	return (g_buf_alloc(g_buf));
 }
@@ -124,7 +124,7 @@ ip_conv(const char *ip_name, int idx)
 	char itemname_arr[32];
 
 	snprintf(itemname_arr, sizeof(itemname_arr), "%s%d", ip_name, idx);
-	strcpy(g_buf, nvram_safe_get(itemname_arr));
+	snprintf(g_buf, 1024, "%s", nvram_safe_get(itemname_arr));
 
 	return (g_buf_alloc(g_buf));
 }
@@ -135,7 +135,7 @@ general_conv(const char *ip_name, int idx)
 	char itemname_arr[32];
 
 	snprintf(itemname_arr, sizeof(itemname_arr), "%s%d", ip_name, idx);
-	strcpy(g_buf, nvram_safe_get(itemname_arr));
+	snprintf(g_buf, 1024, "%s", nvram_safe_get(itemname_arr));
 
 	return (g_buf_alloc(g_buf));
 }
@@ -226,7 +226,7 @@ timematch_conv(char *mstr, const char *nv_date, const char *nv_time)
 
 	/* check whole day */
 	if (i_full_time) {
-		sprintf(mstr, " -m time %s", "--kerneltz");
+		snprintf(mstr, 128, " -m time %s", "--kerneltz");
 	} else {
 		const char *contiguous = "";
 		
@@ -234,7 +234,7 @@ timematch_conv(char *mstr, const char *nv_date, const char *nv_time)
 		if (i_time_s > i_time_e)
 			contiguous = " --contiguous";
 		
-		sprintf(mstr, " -m time --timestart %c%c:%c%c:00 --timestop %c%c:%c%c:00%s %s",
+		snprintf(mstr, 128, " -m time --timestart %c%c:%c%c:00 --timestop %c%c:%c%c:00%s %s",
 			time[0], time[1], time[2], time[3], time[4], time[5], time[6], time[7],
 			contiguous, "--kerneltz");
 	}
@@ -289,11 +289,11 @@ iprange_ex_conv(const char *ip_name, int idx)
 	endip[k++] = 0;
 
 	if (mask==32)
-		sprintf(g_buf, "%s", startip);
+		snprintf(g_buf, 1024, "%s", startip);
 	else if (mask==0)
 		strcpy(g_buf, "");
 	else
-		sprintf(g_buf, "%s/%d", startip, mask);
+		snprintf(g_buf, 1024, "%s/%d", startip, mask);
 
 	return (g_buf_alloc(g_buf));
 }
@@ -437,8 +437,8 @@ include_mac_filter(FILE *fp, int mac_filter_mode, char *logdrop)
 			filter_mac = mac_conv("macfilter_list_x", i, mac_buf);
 			if (*filter_mac) {
 				mac_num++;
-				sprintf(nv_date, "macfilter_date_x%d", i);
-				sprintf(nv_time, "macfilter_time_x%d", i);
+				snprintf(nv_date, sizeof(nv_date), "macfilter_date_x%d", i);
+				snprintf(nv_time, sizeof(nv_time), "macfilter_time_x%d", i);
 				timematch_conv(mac_timematch, nv_date, nv_time);
 				fprintf(fp, "-A %s -m mac --mac-source %s%s -j %s\n", dtype, filter_mac, mac_timematch, ftype);
 			}
@@ -470,7 +470,7 @@ include_webstr_filter(FILE *fp)
 	webstr_items = 0;
 
 	foreach_x("url_num_x") {
-		sprintf(nv_name, "url_keyword_x%d", i);
+		snprintf(nv_name, sizeof(nv_name), "url_keyword_x%d", i);
 		filterstr = nvram_safe_get(nv_name);
 		if (strncasecmp(filterstr, "http://", 7) == 0)
 			filterstr += 7;
@@ -781,6 +781,12 @@ ipt_filter_rules(char *man_if, char *wan_if, char *lan_if, char *lan_ip,
 	is_nat_enabled = nvram_match("wan_nat_x", "1");
 	is_dos_enabled = nvram_match("fw_dos_x", "1");
 	is_fw_enabled  = nvram_match("fw_enable_x", "1");
+
+	/* In AP mode (WAN bridged), all ports are bridged to br0.
+	   Firewall DROP policy on INPUT blocks management access from
+	   the uplink network. Force ACCEPT in AP mode. */
+	if (get_ap_mode())
+		is_fw_enabled = 0;
 	is_url_enabled = nvram_match("url_enable_x", "1");
 	is_lwf_enabled = nvram_match("fw_lw_enable_x", "1");
 

@@ -48,7 +48,7 @@ check_root_partition(const char *devname, int is_mmc)
 #if defined (USE_MMC_SUPPORT)
 			if (is_mmc) {
 				for (i=1; i<9; i++) {
-					sprintf(ptname_check, "%sp%d", devname, i);
+					snprintf(ptname_check, sizeof(ptname_check), "%sp%d", devname, i);
 					if (strcmp(ptname, ptname_check) == 0) {
 						fclose(procpt);
 						return 1;
@@ -58,7 +58,7 @@ check_root_partition(const char *devname, int is_mmc)
 #endif
 			{
 				for (i=1; i<15; i++) {
-					sprintf(ptname_check, "%s%d", devname, i);
+					snprintf(ptname_check, sizeof(ptname_check), "%s%d", devname, i);
 					if (strcmp(ptname, ptname_check) == 0) {
 						fclose(procpt);
 						return 1;
@@ -107,7 +107,7 @@ mdev_sd_main(int argc, char **argv)
 
 	if (device_name[3] == '\0') {
 		// sda, sdb, sdc...
-		system("/sbin/hddtune.sh $MDEV");
+		doSystem("/sbin/hddtune.sh $MDEV");
 		
 		if (check_root_partition(device_name, 0))
 			goto out_unlock;
@@ -120,7 +120,7 @@ mdev_sd_main(int argc, char **argv)
 	snprintf(aidisk_cmd, sizeof(aidisk_cmd), "/sbin/automount.sh $MDEV AiDisk_%c%s", device_name[2], partno);
 
 	umask(0000);
-	if (system(aidisk_cmd) == 0)
+	if (doSystem(aidisk_cmd) == 0)
 		notify_rc("on_hotplug_mass_storage");
 
 out_unlock:
@@ -179,7 +179,7 @@ mdev_mmc_main(int argc, char **argv)
 	snprintf(aidisk_cmd, sizeof(aidisk_cmd), "/sbin/automount.sh $MDEV AiCard_%c%c", device_name[6], partno);
 
 	umask(0000);
-	if (system(aidisk_cmd) == 0)
+	if (doSystem(aidisk_cmd) == 0)
 		notify_rc("on_hotplug_mass_storage");
 
 out_unlock:

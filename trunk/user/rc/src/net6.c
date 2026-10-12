@@ -38,6 +38,30 @@
 
 #if defined (USE_IPV6)
 
+/* Disable IPv6 on all br0 slave interfaces (called after wireless ifaces are up) */
+void disable_ipv6_on_bridge_slaves(void)
+{
+	char brif_path[64];
+	char disable_path[80];
+	DIR *dir;
+	struct dirent *ent;
+
+	snprintf(brif_path, sizeof(brif_path),
+		 "/sys/class/net/%s/brif", IFNAME_BR);
+	dir = opendir(brif_path);
+	if (dir) {
+		while ((ent = readdir(dir)) != NULL) {
+			if (ent->d_name[0] == '.')
+				continue;
+			snprintf(disable_path, sizeof(disable_path),
+				 "/proc/sys/net/ipv6/conf/%s/disable_ipv6",
+				 ent->d_name);
+			fput_int(disable_path, 1);
+		}
+		closedir(dir);
+	}
+}
+
 void init_ipv6(void)
 {
 	int ipv6_type = get_ipv6_type();
@@ -65,12 +89,21 @@ void control_if_ipv6_all(int enable)
 		
 		set_interface_conf_int("ipv6", "all", "forwarding", 0);
 	} else {
-		set_interface_conf_int("ipv6", "all", "forwarding", 1);
-		
+		/* AP mode needs forwarding=0 so kernel accepts RA for SLAAC on br0 */
+		set_interface_conf_int("ipv6", "all", "forwarding", (get_ap_mode()) ? 0 : 1);
+
 		for (i=0; if6_on[i] != NULL; i++)
 			set_interface_conf_int("ipv6", if6_on[i], "disable_ipv6", 0);
-		
-		sprintf(tmp, "/proc/sys/net/ipv6/neigh/%s/%s", IFNAME_BR, "gc_stale_time");
+
+		/* restore accept_ra/autoconf on default and br0 (inherited when disabled) */
+		set_interface_conf_int("ipv6", "default", "accept_ra", 1);
+		set_interface_conf_int("ipv6", "default", "accept_ra_pinfo", 1);
+		set_interface_conf_int("ipv6", "default", "autoconf", 1);
+		set_interface_conf_int("ipv6", IFNAME_BR, "accept_ra", 1);
+		set_interface_conf_int("ipv6", IFNAME_BR, "accept_ra_pinfo", 1);
+		set_interface_conf_int("ipv6", IFNAME_BR, "autoconf", 1);
+
+		snprintf(tmp, sizeof(tmp), "/proc/sys/net/ipv6/neigh/%s/%s", IFNAME_BR, "gc_stale_time");
 		fput_int(tmp, 900); // ARP cache 15m
 	}
 }
@@ -82,6 +115,8 @@ void control_if_ipv6(const char *ifname, int enable)
 
 void control_if_ipv6_autoconf(const char *ifname, int enable)
 {
+	/* both needed for SLAAC: autoconf enables auto-config, accept_ra_pinfo accepts PIO */
+	set_interface_conf_int("ipv6", ifname, "autoconf", (enable) ? 1 : 0);
 	set_interface_conf_int("ipv6", ifname, "accept_ra_pinfo", (enable) ? 1 : 0);
 }
 
@@ -134,7 +169,7 @@ void clear_all_addr6(void)
 
 void clear_all_route6(void)
 {
-	system("ip -6 route flush scope all");
+	doSystem("ip -6 route flush scope all");
 }
 
 void full_restart_ipv6(int ipv6_type_old)
@@ -282,8 +317,11 @@ int ipv6_compact(const char *str6, char *p_comp6, int allow_prefix)
 		return -1;
 
 	inet_ntop(AF_INET6, &addr6, p_comp6, INET6_ADDRSTRLEN);
-	if (allow_prefix && prefix_len > 0 && prefix_len < 128)
-		sprintf(p_comp6, "%s/%d", p_comp6, prefix_len);
+	if (allow_prefix && prefix_len > 0 && prefix_len < 128) {
+		char tmp_comp[INET6_ADDRSTRLEN];
+		snprintf(tmp_comp, sizeof(tmp_comp), "%s/%d", p_comp6, prefix_len);
+		snprintf(p_comp6, INET6_ADDRSTRLEN, "%s", tmp_comp);
+	}
 
 	return 0;
 }

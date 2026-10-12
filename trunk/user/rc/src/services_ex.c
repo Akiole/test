@@ -765,9 +765,9 @@ start_upnp(void)
 	i_proto_use = nvram_get_int("upnp_proto");
 	i_clean_min = nvram_safe_get_int("upnp_clean_min", 10, 1, 999);
 	i_clean_int = nvram_safe_get_int("upnp_clean_int", 600, 0, 86400);
-	i_iports[0] = nvram_safe_get_int("upnp_iport_min", 21, 1, 65535);
+	i_iports[0] = nvram_safe_get_int("upnp_iport_min", 1024, 1, 65535);
 	i_iports[1] = nvram_safe_get_int("upnp_iport_max", 65535, 1, 65535);
-	i_eports[0] = nvram_safe_get_int("upnp_eport_min", 21, 1, 65535);
+	i_eports[0] = nvram_safe_get_int("upnp_eport_min", 1024, 1, 65535);
 	i_eports[1] = nvram_safe_get_int("upnp_eport_max", 65535, 1, 65535);
 	i_https_port = nvram_safe_get_int("upnp_https_port", 5001, 1, 65535);
 	i_stun_enable = nvram_get_int("upnp_stun_enable");
@@ -797,7 +797,7 @@ start_upnp(void)
 	lan_url = lan_addr;
 	ret = nvram_get_int("http_lanport");
 	if (ret && ret != 80) {
-		sprintf(var, "%s:%d", lan_addr, ret);
+		snprintf(var, sizeof(var), "%s:%d", lan_addr, ret);
 		lan_url = var;
 	}
 

@@ -878,9 +878,9 @@ gen_ralink_config(int is_soc_ap, int is_aband, int disable_autoscan)
 
 	//AutoChannelSkipList
 	if (!is_aband)
-		sprintf(list, "%d", 14);
+		snprintf(list, sizeof(list), "%d", 14);
 	else
-		sprintf(list, "%d;%d;%d;%d", 52, 56, 60, 64);
+		snprintf(list, sizeof(list), "%d;%d;%d;%d", 52, 56, 60, 64);
 	fprintf(fp, "AutoChannelSkipList=%s\n", list);
 
 	//BasicRate
@@ -987,7 +987,7 @@ gen_ralink_config(int is_soc_ap, int is_aband, int disable_autoscan)
 	}
 	list[0] = 0;
 	for (i = 0; i < 4; i++)
-		sprintf(list+strlen(list), "%d;", i_val);
+		snprintf(list + strlen(list), sizeof(list) - strlen(list), "%d;", i_val);
 	list[strlen(list) - 1] = '\0';
 	fprintf(fp, "AckPolicy=%s\n", list);
 
@@ -1277,7 +1277,7 @@ gen_ralink_config(int is_soc_ap, int is_aband, int disable_autoscan)
 	if (i_val < 1 || i_val > 4) i_val = 1;
 	fprintf(fp, "DefaultKeyID=%d\n", i_val);
 
-	sprintf(list, "%s_key%d", prefix, i_val);
+	snprintf(list, sizeof(list), "%s_key%d", prefix, i_val);
 	if ((strlen(nvram_safe_get(list)) == 5) || (strlen(nvram_safe_get(list)) == 13))
 		nvram_wlan_set(is_aband, "key_type", "1");
 	else if ((strlen(nvram_safe_get(list)) == 10) || (strlen(nvram_safe_get(list)) == 26))
@@ -1583,10 +1583,10 @@ gen_ralink_config(int is_soc_ap, int is_aband, int disable_autoscan)
 	{
 		char wlan_param[32], macbuf[24];
 		
-		sprintf(wlan_param, "%s_%s", prefix, "maclist_x");
+		snprintf(wlan_param, sizeof(wlan_param), "%s_%s", prefix, "maclist_x");
 		i_num = nvram_wlan_get_int(is_aband, "macnum_x");
 		for (i = 0; i < i_num; i++)
-			sprintf(list+strlen(list), "%s;", mac_conv(wlan_param, i, macbuf));
+			snprintf(list + strlen(list), sizeof(list) - strlen(list), "%s;", mac_conv(wlan_param, i, macbuf));
 		if (i_num > 0)
 			list[strlen(list) - 1] = '\0';
 	}
@@ -1659,10 +1659,10 @@ gen_ralink_config(int is_soc_ap, int is_aband, int disable_autoscan)
 	if (i_wds == 2 || i_wds == 3) {
 		char wlan_param[32], macbuf[24];
 		
-		sprintf(wlan_param, "%s_%s", prefix, "wdslist_x");
+		snprintf(wlan_param, sizeof(wlan_param), "%s_%s", prefix, "wdslist_x");
 		i_num = nvram_wlan_get_int(is_aband, "wdsnum_x");
 		for (i = 0; i < i_num; i++)
-			sprintf(list+strlen(list), "%s;", mac_conv(wlan_param, i, macbuf));
+			snprintf(list + strlen(list), sizeof(list) - strlen(list), "%s;", mac_conv(wlan_param, i, macbuf));
 		if (i_num > 0)
 			list[strlen(list) - 1] = '\0';
 	}
@@ -1674,7 +1674,7 @@ gen_ralink_config(int is_soc_ap, int is_aband, int disable_autoscan)
 		i_val = nvram_wlan_get_int(is_aband, "key");
 		if (i_val < 1 || i_val > 4) i_val = 1;
 		fprintf(fp, "WdsDefaultKeyID=%d;%d;%d;%d\n", i_val, i_val, i_val, i_val);
-		sprintf(list, "%s_key%d", prefix, i_val);
+		snprintf(list, sizeof(list), "%s_key%d", prefix, i_val);
 		p_str = nvram_safe_get(list);
 	} else if ((i_auth == 2 && i_encr == 2) || (i_auth == 3 && i_encr == 3)) {
 		p_str = nvram_wlan_get(is_aband, "wpa_psk");

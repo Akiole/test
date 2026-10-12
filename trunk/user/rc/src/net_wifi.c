@@ -756,7 +756,7 @@ restart_wifi_wl(int radio_on, int need_reload_conf)
 		update_vga_clamp_wl(0);
 		LED_CONTROL(LED_SW5G, LED_ON);
 	}
-	system("/usr/bin/iappd.sh restart");
+	doSystem("/usr/bin/iappd.sh restart");
 #endif
 }
 
@@ -802,7 +802,7 @@ restart_wifi_rt(int radio_on, int need_reload_conf)
 		update_vga_clamp_rt(0);
 		LED_CONTROL(LED_SW2G, LED_ON);
 	}
-	system("/usr/bin/iappd.sh restart");
+	doSystem("/usr/bin/iappd.sh restart");
 }
 
 int is_need_8021x(char *auth_mode)

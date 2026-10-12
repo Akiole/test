@@ -53,7 +53,7 @@ var vpn_clients = [];
 
 function initial(){
 	show_banner(0);
-	show_menu(15, -1, 0);
+	show_menu(16,-1, 0);
 	show_footer();
 
 	if (!found_app_ovpn())

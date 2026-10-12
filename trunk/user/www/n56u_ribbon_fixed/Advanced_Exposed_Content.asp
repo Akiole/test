@@ -44,7 +44,7 @@ function initial(){
 		id_menu--;
 
 	show_banner(1);
-	show_menu(5,4,id_menu);
+	show_menu(5,2,id_menu);
 	show_footer();
 
 	showLANIPList();

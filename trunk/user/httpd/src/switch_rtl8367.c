@@ -163,7 +163,7 @@ int fill_eth_port_status(int port_id_uapi, char linkstate[40])
 			text_eee = ", EEE";
 		
 		/* 1000 Mbps, Full Duplex, FC TX/RX */
-		sprintf(linkstate, "%d Mbps, %s%s%s", lspeed, text_dup, text_fc, text_eee);
+		snprintf(linkstate, 40, "%d Mbps, %s%s%s", lspeed, text_dup, text_fc, text_eee);
 	} else
 		strcpy(linkstate, "No Link");
 

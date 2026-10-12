@@ -1462,7 +1462,7 @@ get_if_state(const char *ifname, char addr4[INET_ADDRSTRLEN])
 			addr4_in.s_addr = get_interface_addr4(ifname);
 			if (addr4_in.s_addr != INADDR_ANY) {
 				ifstate = IF_STATE_HAS_ADDR;
-				strcpy(addr4, inet_ntoa(addr4_in));
+				snprintf(addr4, INET_ADDRSTRLEN, "%s", inet_ntoa(addr4_in));
 			}
 		}
 	}
@@ -1499,7 +1499,7 @@ static int
 wanlink_hook(int eid, webs_t wp, int argc, char **argv)
 {
 	FILE *fp;
-	char wan_dns[512], wan_mac[18], etherlink[40], apclilink[32];
+	char wan_dns[512], wan_dns6[512], wan_mac[18], etherlink[40], apclilink[32];
 	char wan_desc[32], tmp[64], prefix[16];
 	char addr4_wan[INET_ADDRSTRLEN], addr4_man[INET_ADDRSTRLEN];
 	char *wan0_ip, *wanx_ip, *wan0_gw, *wanx_gw, *wan_ip6, *lan_ip6, *wan_ifname, *man_ifname;
@@ -1563,7 +1563,7 @@ wanlink_hook(int eid, webs_t wp, int argc, char **argv)
 						unsigned char mac[8];
 						
 						if (get_interface_hwaddr(wan_ifname, mac) == 0) {
-							sprintf(wan_mac, "%02X:%02X:%02X:%02X:%02X:%02X", 
+							snprintf(wan_mac, sizeof(wan_mac), "%02X:%02X:%02X:%02X:%02X:%02X", 
 								mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 						}
 						
@@ -1606,12 +1606,12 @@ wanlink_hook(int eid, webs_t wp, int argc, char **argv)
 				unsigned char mac[8];
 				
 				if (get_interface_hwaddr(man_ifname, mac) == 0) {
-					sprintf(wan_mac, "%02X:%02X:%02X:%02X:%02X:%02X", 
+					snprintf(wan_mac, sizeof(wan_mac), "%02X:%02X:%02X:%02X:%02X:%02X", 
 						mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 				}
 				
 				if (get_apcli_peer_connected(man_ifname, &wrq)) {
-					sprintf(apclilink, "BSSID: %02X:%02X:%02X:%02X:%02X:%02X", 
+					snprintf(apclilink, sizeof(apclilink), "BSSID: %02X:%02X:%02X:%02X:%02X:%02X", 
 						(unsigned char)wrq.u.ap_addr.sa_data[0],
 						(unsigned char)wrq.u.ap_addr.sa_data[1],
 						(unsigned char)wrq.u.ap_addr.sa_data[2],
@@ -1813,21 +1813,49 @@ wanlink_hook(int eid, webs_t wp, int argc, char **argv)
 			wan0_gw = "---";
 			status_code = (wan_ifstate == IF_STATE_UP) ? INET_STATE_NETIF_WAIT_DHCP : INET_STATE_NETIF_NOT_READY;
 		}
+
+#if defined (USE_IPV6)
+		/* AP mode: WAN==LAN==br0, get br0's SLAAC address for display */
+		ipv6_type = get_ipv6_type();
+		if (ipv6_type != IPV6_DISABLED) {
+			if (get_ifaddr6(IFNAME_BR, 0, addr6_wan))
+				wan_ip6 = addr6_wan;
+			else if (get_ifaddr6(IFNAME_BR, 1, addr6_wan))
+				wan_ip6 = addr6_wan;
+			else
+				wan_ip6 = "---";
+			lan_ip6 = wan_ip6;
+		} else {
+			wan_ip6 = "---";
+			lan_ip6 = "---";
+		}
+#endif
 	}
 
 	wan_dns[0] = 0;
+	wan_dns6[0] = 0;
 	fp = fopen("/etc/resolv.conf", "r");
 	if (fp) {
-		int is_first = 1;
+		int is_first4 = 1, is_first6 = 1;
 		char line_buf[96], dns_item[80];
 		while (fgets(line_buf, sizeof(line_buf), fp)) {
 			if (sscanf(line_buf, "nameserver %79s\n", dns_item) < 1)
 				continue;
 			if (strlen(dns_item) < 7)
 				continue;
-			if (strcmp(dns_item, "127.0.0.1") != 0) {
-				if (is_first)
-					is_first = 0;
+			if (strcmp(dns_item, "127.0.0.1") == 0)
+				continue;
+			if (strchr(dns_item, ':')) {
+				/* IPv6 DNS server */
+				if (is_first6)
+					is_first6 = 0;
+				else
+					strcat(wan_dns6, "<br/>");
+				strcat(wan_dns6, dns_item);
+			} else {
+				/* IPv4 DNS server */
+				if (is_first4)
+					is_first4 = 0;
 				else
 					strcat(wan_dns, "<br/>");
 				strcat(wan_dns, dns_item);
@@ -1839,6 +1867,8 @@ wanlink_hook(int eid, webs_t wp, int argc, char **argv)
 
 	if (strlen(wan_dns) < 7)
 		strcpy(wan_dns, "---");
+	if (strlen(wan_dns6) < 4)
+		strcpy(wan_dns6, "---");
 
 	websWrite(wp, "function wanlink_status() { return %d;}\n", status_code);
 	websWrite(wp, "function wanlink_etherlink() { return '%s';}\n", etherlink);
@@ -1853,6 +1883,7 @@ wanlink_hook(int eid, webs_t wp, int argc, char **argv)
 	websWrite(wp, "function wanlink_ip6_wan() { return '%s';}\n", wan_ip6);
 	websWrite(wp, "function wanlink_ip6_lan() { return '%s';}\n", lan_ip6);
 	websWrite(wp, "function wanlink_dns() { return '%s';}\n", wan_dns);
+	websWrite(wp, "function wanlink_dns6() { return '%s';}\n", wan_dns6);
 	websWrite(wp, "function wanlink_mac() { return '%s';}\n", wan_mac);
 	websWrite(wp, "function wanlink_bytes_rx() { return %llu;}\n", wan_bytes_rx);
 	websWrite(wp, "function wanlink_bytes_tx() { return %llu;}\n", wan_bytes_tx);
@@ -1987,9 +2018,9 @@ static int scutclient_version_hook(int eid, webs_t wp, int argc, char **argv)
 		if (strlen(ver) > 0)
 			ver[strlen(ver) - 1] = 0;
 		if (!(ver[0]>='0' && ver[0]<='9'))
-			sprintf(ver, "%s", "unknown");
+			snprintf(ver, sizeof(ver), "%s", "unknown");
 	} else {
-		sprintf(ver, "%s", "unknown");
+		snprintf(ver, sizeof(ver), "%s", "unknown");
 	}
 	websWrite(wp, "function scutclient_version() { return '%s';}\n", ver);
 	return 0;
@@ -2121,7 +2152,7 @@ static int singbox_version_hook(int eid, webs_t wp, int argc, char **argv)
 		pclose(fstream);
 	}
 	if (strlen(ver) == 0)
-		sprintf(ver, "%s", "unknown");
+		snprintf(ver, sizeof(ver), "%s", "unknown");
 	websWrite(wp, "function singbox_version() { return '%s';}\n", ver);
 	return 0;
 }
@@ -2266,7 +2297,7 @@ static int mihomo_version_hook(int eid, webs_t wp, int argc, char **argv)
 		pclose(fstream);
 	}
 	if (strlen(ver) == 0)
-		sprintf(ver, "%s", "unknown");
+		snprintf(ver, sizeof(ver), "%s", "unknown");
 	websWrite(wp, "function mihomo_version() { return '%s';}\n", ver);
 	return 0;
 }
@@ -2347,116 +2378,102 @@ static int shadowsocks_action_hook(int eid, webs_t wp, int argc, char **argv)
 
 #if defined(APP_SHADOWSOCKS)
 static int
-applydb_cgi(webs_t wp, char *urlPrefix, char *webDir, int arg,
-		char *url, char *path, char *query)
+is_safe_dbvar_name(const char *name)
 {
-	char *action_mode;
-	char *action_script;
-	char dbjson[100][9999];
+	if (!name || !*name)
+		return 0;
+	/* Allow only alphanumerics, underscore, dot, and hyphen */
+	while (*name) {
+		if (!isalnum((unsigned char)*name) && *name != '_' && *name != '.' && *name != '-')
+			return 0;
+		name++;
+	}
+	return 1;
+}
+
+static void
+applydb_process_token(const char *token, const char *name_prefix)
+{
 	char dbvar[2048];
 	char dbval[9999];
-	char notify_cmd[128];
-	char db_cmd[128];
-	int i, j;
-	char *result = NULL;
-	char *temp = NULL;
-	char *name = websGetVar(wp, "p","");
-	char scPath[128];
+	const char *eq;
+	size_t name_len;
+
+	if (!token || !*token)
+		return;
+
+	/* Match the variable name prefix (case-insensitive) */
+	name_len = strlen(name_prefix);
+	if (name_len == 0 || strncasecmp(token, name_prefix, name_len) != 0)
+		return;
+
+	/* Find the '=' separator */
+	eq = strchr(token, '=');
+	if (!eq)
+		return;
+
+	/* Extract variable name (everything before '=') */
+	name_len = (size_t)(eq - token);
+	if (name_len >= sizeof(dbvar))
+		name_len = sizeof(dbvar) - 1;
+	memcpy(dbvar, token, name_len);
+	dbvar[name_len] = '\0';
+
+	/* Validate variable name to prevent injection */
+	if (!is_safe_dbvar_name(dbvar))
+		return;
+
+	/* Extract value (everything after '=') */
+	snprintf(dbval, sizeof(dbval), "%s", eq + 1);
+
+	/* Dispatch based on value — use eval() to avoid shell injection */
+	if (strcmp(dbval, "deleting") == 0) {
+		eval("dbus", "remove", dbvar, NULL);
+	} else if (strcmp(dbval, "ping") == 0) {
+		eval("/etc_ro/ss/ping.sh", dbvar, NULL);
+	} else if (strcmp(dbval, "allping") == 0) {
+		eval("/etc_ro/ss/allping.sh", NULL);
+	} else if (strcmp(dbval, "dlink") == 0) {
+		eval("/usr/bin/update_dlink.sh", "start", NULL);
+	} else if (strcmp(dbval, "ddlink") == 0) {
+		eval("/usr/bin/update_dlink.sh", "reset", NULL);
+	} else {
+		eval("dbus", "set", dbvar, dbval, NULL);
+	}
+}
+
+static int
+applydb_cgi(webs_t wp, char *urlPrefix, char *webDir, int arg,
+			char *url, char *path, char *query)
+{
+	char *name = websGetVar(wp, "p", "");
 	char *post_db_buf = post_json_buf;
-	action_mode = websGetVar(wp, "action_mode", "");
-	action_script = websGetVar(wp, "action_script", "");
-	char userm[] = "deleting";
-	char useping[] = "ping";
-	char useaping[] = "allping";
-	char usedlink[] = "dlink";
-	char useddlink[] = "ddlink";
+	char *result;
 
 	dbclient client;
 	dbclient_start(&client);
+
 	if (strlen(name) <= 0) {
 		printf("No \"name\"!\n");
 	}
-	if ( !strcmp("", post_db_buf)){
-		//get
-		sprintf(post_db_buf, "%s", post_buf_backup+1);
+
+	/* Prepare the POST data buffer */
+	if (!strcmp("", post_db_buf)) {
+		/* GET request: copy from backup buffer */
+		snprintf(post_db_buf, sizeof(post_json_buf), "%s", post_buf_backup + 1);
 		unescape(post_db_buf);
-		//logmessage("HTTPD", "url: %s,%s", post_db_buf, name);
-		// post_db_buf aliases post_json_buf; self-strcpy removed (UB)
-		result = strtok( post_json_buf, "&" );
-		i =0;
-	while( result != NULL )
-	{
-		if (result!=NULL)
-		{
-		strcpy(dbjson[i], result);
-		i++;
-			result = strtok( NULL, "&" );
-		}
-	}
-	for (j =0; j < i; j++)
-	{
-		if(!strncasecmp(dbjson[j], name, strlen(name))){
-				memset(dbvar,'\0',sizeof(dbvar));
-				memset(dbval,'\0',sizeof(dbval));
-				temp=strstr(dbjson[j], "=");
-				strcpy(dbval, temp+1);
-				strncpy(dbvar, dbjson[j], strlen(dbjson[j])-strlen(temp));
-			//logmessage("HTTPD", "name: %s post: %s", dbvar, userm);
-			if(strcmp(dbval,userm) == 0)
-				doSystem("dbus remove %s", dbvar);
-			else if(strcmp(dbval,useping) == 0)
-				doSystem("/etc_ro/ss/ping.sh %s", dbvar);
-			else if(strcmp(dbval,useaping) == 0)
-				doSystem("/etc_ro/ss/allping.sh");
-			else if(strcmp(dbval,usedlink) == 0)
-				doSystem("/usr/bin/update_dlink.sh %s", "start");
-			else if(strcmp(dbval,useddlink) == 0)
-				doSystem("/usr/bin/update_dlink.sh %s", "reset");
-			else
-				doSystem("dbus set %s='%s'", dbvar, dbval);
-		}
-	}
 	} else {
-	//post
-	unescape(post_db_buf);
-	//logmessage("HTTPD", "name: %s post: %s", name, post_json_buf);
-	//logmessage("HTTPD", "name: %s post: %s", name, post_db_buf);
-	// post_db_buf aliases post_json_buf; self-strcpy removed (UB)
-	result = strtok( post_json_buf, "&" );
-	i =0;
-	while( result != NULL )
-	{
-		if (result!=NULL)
-		{
-		strcpy(dbjson[i], result);
-		i++;
-			result = strtok( NULL, "&" );
-		}
+		/* POST request: data already in buffer */
+		unescape(post_db_buf);
 	}
-	for (j =0; j < i; j++)
-	{
-		if(!strncasecmp(dbjson[j], name, strlen(name))){
-				memset(dbvar,'\0',sizeof(dbvar));
-				memset(dbval,'\0',sizeof(dbval));
-				temp=strstr(dbjson[j], "=");
-				strcpy(dbval, temp+1);
-				strncpy(dbvar, dbjson[j], strlen(dbjson[j])-strlen(temp));
-			//logmessage("HTTPD", "name: %s post: %s", dbvar, dbval);
-			if(strcmp(dbval,userm) == 0)
-				doSystem("dbus remove %s", dbvar);
-			else if(strcmp(dbval,useping) == 0)
-				doSystem("/etc_ro/ss/ping.sh %s", dbvar);
-			else if(strcmp(dbval,useaping) == 0)
-				doSystem("/etc_ro/ss/allping.sh");
-			else if(strcmp(dbval,usedlink) == 0)
-				doSystem("/usr/bin/update_dlink.sh %s", "start");
-			else if(strcmp(dbval,useddlink) == 0)
-				doSystem("/usr/bin/update_dlink.sh %s", "reset");
-			else
-				doSystem("dbus set %s='%s'", dbvar, dbval);
-		}
+
+	/* Process each &-separated token on the fly (no large stack array) */
+	result = strtok(post_json_buf, "&");
+	while (result != NULL) {
+		applydb_process_token(result, name);
+		result = strtok(NULL, "&");
 	}
-	}
+
 	dbclient_end(&client);
 	doSystem("/sbin/mtd_storage.sh %s", "save");
 	return 0;
@@ -2544,7 +2561,7 @@ static int rules_count_hook(int eid, webs_t wp, int argc, char **argv)
 		fgets(count, sizeof(count), fstream);
 		pclose(fstream);
 	} else {
-		sprintf(count, "%d", 0);
+		snprintf(count, sizeof(count), "%d", 0);
 	}
 	if (strlen(count) > 0)
 		count[strlen(count) - 1] = 0;
@@ -2556,7 +2573,7 @@ static int rules_count_hook(int eid, webs_t wp, int argc, char **argv)
 		fgets(count, sizeof(count), fstream);
 		pclose(fstream);
 	} else {
-		sprintf(count, "%d", 0);
+		snprintf(count, sizeof(count), "%d", 0);
 	}
 	if (strlen(count) > 0)
 		count[strlen(count) - 1] = 0;
@@ -2770,7 +2787,7 @@ wol_action_hook(int eid, webs_t wp, int argc, char **argv)
 	}
 	else if (strlen(dst_mac) == 17)
 	{
-		strcpy(wol_mac, dst_mac);
+		snprintf(wol_mac, sizeof(wol_mac), "%s", dst_mac);
 	}
 	else
 	{
@@ -2808,7 +2825,7 @@ nf_values_hook(int eid, webs_t wp, int argc, char **argv)
 			nf_count[strlen(nf_count) - 1] = 0; /* get rid of '\n' */
 	}
 	else {
-		sprintf(nf_count, "%d", 0);
+		snprintf(nf_count, sizeof(nf_count), "%d", 0);
 	}
 	
 	websWrite(wp, "function nf_conntrack_count() { return '%s';}\n", nf_count);
@@ -3376,7 +3393,7 @@ openvpn_srv_cert_hook(int eid, webs_t wp, int argc, char **argv)
 			continue;
 		if (!i_tcv2 && (i == 5))
 			continue;
-		sprintf(key_file, "%s/%s", STORAGE_OVPNSVR_DIR, openvpn_server_keys[i]);
+		snprintf(key_file, sizeof(key_file), "%s/%s", STORAGE_OVPNSVR_DIR, openvpn_server_keys[i]);
 		if (!f_exists(key_file)) {
 			has_found_cert = 0;
 			break;
@@ -3411,7 +3428,7 @@ static int openvpn_cli_cert_hook(int eid, webs_t wp, int argc, char **argv)
 			continue;
 		if (!i_atls && (i == 3))
 			continue;
-		sprintf(key_file, "%s/%s", STORAGE_OVPNCLI_DIR, openvpn_client_keys[i]);
+		snprintf(key_file, sizeof(key_file), "%s/%s", STORAGE_OVPNCLI_DIR, openvpn_client_keys[i]);
 		if (!f_exists(key_file)) {
 			has_found_cert = 0;
 			break;
@@ -3496,7 +3513,7 @@ static int ej_get_nvram_list(int eid, webs_t wp, int argc, char **argv) {
 				websWrite(wp, ", ");
 			
 			if (hiddenVar && strcmp(hiddenVar, gv->name) == 0)
-				sprintf(buf, "\"%s\"", "*");
+				snprintf(buf, sizeof(buf), "\"%s\"", "*");
 			else
 				snprintf(buf, sizeof(buf), "\"%s\"", nvram_get_list_x(gv->name, i));
 			websWrite(wp, "%s", buf);
@@ -4249,7 +4266,7 @@ nvram_add_group_table(webs_t wp, char *serviceId, struct variable *v, int count)
 
     for (gv = (struct variable *)v->argv[0]; gv->name!=NULL; gv++)
     {
-    	strcpy(buf, nvram_get_list_x(gv->name, count));
+    	snprintf(buf, sizeof(buf), "%s", nvram_get_list_x(gv->name, count));
     	addlen=0;
     	
     	fieldLen = atoi(gv->longname)+addlen;
@@ -4274,7 +4291,7 @@ nvram_add_group_table(webs_t wp, char *serviceId, struct variable *v, int count)
     	}
     	
     	if (fieldCount==0)
-    	   sprintf(bufs, "%s", buf);
+    	   snprintf(bufs, sizeof(bufs), "%s", buf);
     	else
     	   strncat(bufs, buf, sizeof(bufs) - strlen(bufs) - 1);
     	
@@ -4411,7 +4428,7 @@ static void do_html_post_and_get(const char *url, FILE *stream, int len, char *b
 		while (len--)
 			(void)fgetc(stream);
 	}
-	sprintf(post_json_buf, "%s", post_buf);
+	snprintf(post_json_buf, sizeof(post_json_buf), "%s", post_buf);
 
 	query = url;
 	query = strsep(&query, "?");
@@ -4462,7 +4479,7 @@ do_update_cgi(const char *url, FILE *stream)
 		for (handler = &ej_handlers[0]; handler->pattern; handler++) {
 			if (strcmp(handler->pattern, pattern) == 0) {
 				for (argc = 0; argc < 16; ++argc) {
-					sprintf(args, "arg%d", argc);
+					snprintf(args, sizeof(args), "arg%d", argc);
 					if ((argv[argc] = (char *)get_cgi(args)) == NULL)
 						break;
 				}

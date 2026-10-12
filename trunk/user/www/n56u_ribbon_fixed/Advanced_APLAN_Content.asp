@@ -36,10 +36,36 @@ var old_lan_mask = "<% nvram_get_x("","lan_netmask"); %>";
 
 function initial(){
 	show_banner(1);
-	show_menu(5,3,1);
+	show_menu(5,1,1);
 	show_footer();
 
 	on_change_lan_dhcpc();
+
+	// Load wanlink functions dynamically and set DNS placeholders
+	try {
+		var wanlinkScript = document.createElement('script');
+		wanlinkScript.src = '/status_wanlink.asp';
+		wanlinkScript.onload = function() {
+			var ipv4Dns = [], ipv6Dns = [];
+			if (typeof wanlink_dns === 'function') {
+				var wanDnsStr = wanlink_dns();
+				if (wanDnsStr && wanDnsStr !== '---') {
+					ipv4Dns = wanDnsStr.split('<br/>');
+				}
+			}
+			if (typeof wanlink_dns6 === 'function') {
+				var wanDns6Str = wanlink_dns6();
+				if (wanDns6Str && wanDns6Str !== '---') {
+					ipv6Dns = wanDns6Str.split('<br/>');
+				}
+			}
+			if (document.form.lan_dns1 && ipv4Dns[0]) document.form.lan_dns1.placeholder = ipv4Dns[0];
+			if (document.form.lan_dns2 && ipv4Dns[1]) document.form.lan_dns2.placeholder = ipv4Dns[1];
+			if (document.form.lan_dnsv61 && ipv6Dns[0]) document.form.lan_dnsv61.placeholder = ipv6Dns[0];
+			if (document.form.lan_dnsv62 && ipv6Dns[1]) document.form.lan_dnsv62.placeholder = ipv6Dns[1];
+		};
+		document.head.appendChild(wanlinkScript);
+	} catch(e) {}
 }
 
 function on_change_lan_dhcpc(){
@@ -68,6 +94,8 @@ function on_change_lan_dns(){
 	}
 	inputCtrl(document.form.lan_dns1, en_dns);
 	inputCtrl(document.form.lan_dns2, en_dns);
+	inputCtrl(document.form.lan_dnsv61, en_dns);
+	inputCtrl(document.form.lan_dnsv62, en_dns);
 }
 
 function applyRule(){
@@ -274,21 +302,19 @@ function done_validating(action){
                                         <tr>
                                             <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this,4,1);"><#LANHostConfig_IPRouters_itemname#></a></th>
                                             <td>
-                                                <input type="text" id="lan_ipaddr" name="lan_ipaddr" value="<% nvram_get_x("", "lan_ipaddr"); %>" maxlength="15" class="input" size="15" onKeyPress="return is_ipaddr(this,event);" />
-                                                &nbsp;<span style="color:#888;">192.168.2.1</span>
+                                                <input type="text" id="lan_ipaddr" name="lan_ipaddr" value="<% nvram_match_x("", "lan_proto_x", "1", "", nvram_get_x("", "lan_ipaddr")); %>" maxlength="15" class="input" size="15" placeholder="<% nvram_get_x("", "lan_ipaddr_t"); %>" onKeyPress="return is_ipaddr(this,event);" />
                                             </td>
                                         </tr>
                                         <tr>
                                             <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this,4,2);"><#LANHostConfig_SubnetMask_itemname#></a></th>
                                             <td>
-                                                <input type="text" maxlength="15" class="input" size="15" name="lan_netmask" value="<% nvram_get_x("", "lan_netmask"); %>" onkeypress="return is_ipaddr(this,event);" />
-                                                &nbsp;<span style="color:#888;">255.255.255.0</span>
+                                                <input type="text" maxlength="15" class="input" size="15" name="lan_netmask" value="<% nvram_match_x("", "lan_proto_x", "1", "", nvram_get_x("", "lan_netmask")); %>" placeholder="<% nvram_get_x("", "lan_netmask_t"); %>" onkeypress="return is_ipaddr(this,event);" />
                                             </td>
                                         </tr>
                                         <tr>
                                             <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this,4,3);"><#LANHostConfig_x_Gateway_itemname#></a></th>
                                             <td>
-                                                <input type="text" maxlength="15" class="input" size="15" name="lan_gateway" value="<% nvram_get_x("", "lan_gateway"); %>" onkeypress="return is_ipaddr(this,event);" />
+                                                <input type="text" maxlength="15" class="input" size="15" name="lan_gateway" value="<% nvram_match_x("", "lan_proto_x", "1", "", nvram_get_x("", "lan_gateway")); %>" placeholder="<% nvram_get_x("", "lan_gateway_t"); %>" onkeypress="return is_ipaddr(this,event);" />
                                             </td>
                                         </tr>
                                         <tr>
@@ -315,13 +341,25 @@ function done_validating(action){
                                         <tr>
                                             <th><#LANHostConfig_x_LDNSServer1_itemname#> 1:</th>
                                             <td>
-                                                <input type="text" name="lan_dns1" value="<% nvram_get_x("", "lan_dns1"); %>" maxlength="15" class="input" size="15" onkeypress="return is_ipaddr(this,event);" />
+                                                <input type="text" name="lan_dns1" value="<% nvram_get_x("", "lan_dns1"); %>" maxlength="15" class="input" size="15" placeholder="<% nvram_get_x("", "lan_ipaddr"); %>" onkeypress="return is_ipaddr(this,event);" />
                                             </td>
                                         </tr>
                                         <tr>
                                             <th><#LANHostConfig_x_LDNSServer1_itemname#> 2:</th>
                                             <td>
-                                                <input type="text" name="lan_dns2" value="<% nvram_get_x("", "lan_dns2"); %>" maxlength="15" class="input" size="15" onkeypress="return is_ipaddr(this,event);" />
+                                                <input type="text" name="lan_dns2" value="<% nvram_get_x("", "lan_dns2"); %>" maxlength="15" class="input" size="15" placeholder="<% nvram_get_x("", "lan_ipaddr"); %>" onkeypress="return is_ipaddr(this,event);" />
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <th><#LANHostConfig_x_LDNSServer6_itemname#>:</th>
+                                            <td>
+                                                <input type="text" name="lan_dnsv61" value="<% nvram_get_x("", "lan_dnsv61"); %>" maxlength="40" class="input" size="25" placeholder="<% nvram_get_x("", "ip6_lan_addr"); %>" onkeypress="return is_string(this,event);" />
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <th><#LANHostConfig_x_LDNSServer61_itemname#>:</th>
+                                            <td>
+                                                <input type="text" name="lan_dnsv62" value="<% nvram_get_x("", "lan_dnsv62"); %>" maxlength="40" class="input" size="25" placeholder="<% nvram_get_x("", "ip6_lan_addr"); %>" onkeypress="return is_string(this,event);" />
                                             </td>
                                         </tr>
                                         <tr>

@@ -731,16 +731,17 @@ match( const char *pattern, const char *string )
 static void
 eat_post_data(FILE *conn_fp, int clen)
 {
-	char fake_buf[128];
+	char discard_buf[4096];
 
 	do_cgi_clear();
 
-	if (!fgets(fake_buf, MIN(clen+1, sizeof(fake_buf)), conn_fp))
-		return;
-
-	clen -= strlen(fake_buf);
-	while (clen--)
-		fgetc(conn_fp);
+	/* Drain remaining POST data in chunks instead of byte-by-byte */
+	while (clen > 0) {
+		int chunk = MIN(clen, (int)sizeof(discard_buf));
+		if (fread(discard_buf, 1, chunk, conn_fp) != (size_t)chunk)
+			break;
+		clen -= chunk;
+	}
 }
 
 static void
@@ -849,8 +850,16 @@ handle_login_post(FILE *conn_fp, const conn_item_t *item, int clen)
 			read_len = 0;
 	}
 	remaining = clen - read_len;
-	while (remaining-- > 0)
-		fgetc(conn_fp);
+	/* Drain remaining POST data in chunks instead of byte-by-byte */
+	{
+		char discard_buf[4096];
+		while (remaining > 0) {
+			int chunk = MIN(remaining, (int)sizeof(discard_buf));
+			if (fread(discard_buf, 1, chunk, conn_fp) != (size_t)chunk)
+				break;
+			remaining -= chunk;
+		}
+	}
 
 	p = post_buf;
 	while (p && *p) {
@@ -942,13 +951,16 @@ handle_request(FILE *conn_fp, const conn_item_t *item)
 			cur = cp + strlen(cp) + 1;
 		}
 		else if (strncasecmp( cur, "Content-Length:", 15) == 0) {
+			unsigned long clen_ul;
 			cp = cur + 15;
 			cp += strspn( cp, " \t" );
-			clen = strtoul( cp, NULL, 0 );
-			if ((clen < 0) || (clen > 50000000)) {
+			clen_ul = strtoul( cp, NULL, 0 );
+			/* Validate before assigning to int to avoid truncation overflow */
+			if (clen_ul > 50000000UL) {
 				send_error( 400, "Bad Request", NULL, "Content length invalid.", conn_fp);
 				return;
 			}
+			clen = (int)clen_ul;
 		}
 		else if (strncasecmp( cur, "If-Modified-Since:", 18) == 0) {
 			cp = cur + 18;
@@ -1104,10 +1116,10 @@ reset_lang_dict(void)
 static void
 catch_sig(int sig)
 {
+	/* Only use async-signal-safe operations here */
 	if (sig == SIGTERM)
 	{
 		daemon_exit = 1;
-		httpd_log("Received %s, terminating.", "SIGTERM");
 	}
 	else if (sig == SIGHUP)
 	{
@@ -1416,6 +1428,8 @@ main(int argc, char **argv)
 	init_cgi(NULL);
 	release_dictionary(&kw_XX);
 	release_dictionary(&kw_EN);
+
+	httpd_log("Server terminating.");
 
 	return 0;
 }

@@ -4548,7 +4548,24 @@ EXPORT_SYMBOL_GPL(nand_release);
 
 static int __init nand_base_init(void)
 {
-	led_trigger_register_simple("nand-disk", &nand_led_trigger);
+	struct led_trigger *trig;
+	int ret;
+
+	/* Use led_trigger_register() directly so we can ignore -EEXIST.
+	   ledtrig-mtd may have already registered "nand-disk". */
+	trig = kzalloc(sizeof(struct led_trigger), GFP_KERNEL);
+	if (!trig)
+		return -ENOMEM;
+
+	trig->name = "nand-disk";
+	ret = led_trigger_register(trig);
+	if (ret < 0) {
+		kfree(trig);
+		if (ret != -EEXIST)
+			pr_err("nand: failed to register nand-disk LED trigger (%d)\n", ret);
+	} else {
+		nand_led_trigger = trig;
+	}
 	return 0;
 }
 

@@ -46,7 +46,7 @@ ip6_service = '<% nvram_get_x("", "ip6_service"); %>';
 
 function initial(){
 	show_banner(0);
-	show_menu(16, -1, 0);
+	show_menu(17,-1, 0);
 	show_footer();
 
 	if (!found_app_ovpn())

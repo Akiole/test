@@ -46,7 +46,7 @@ function initial(){
 		$("dummyShareway").value = 0;
 	
 	show_banner(0);
-	show_menu(17, -1, 0);
+	show_menu(15,-1, 0);
 	show_footer();
 }
 

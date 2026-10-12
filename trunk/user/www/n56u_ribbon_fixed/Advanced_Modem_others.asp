@@ -56,7 +56,7 @@ function initial(){
 		id_menu = 3;
 
 	show_banner(1);
-	show_menu(5,6,id_menu);
+	show_menu(5,10,id_menu);
 	show_footer();
 
 	gen_country_list();

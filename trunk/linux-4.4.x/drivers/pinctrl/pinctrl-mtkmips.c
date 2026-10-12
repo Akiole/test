@@ -206,11 +206,12 @@ static int rt2880_pmx_group_enable(struct pinctrl_dev *pctrldev,
 	int i;
 	int shift;
 
-	/* dont allow double use */
-	if (p->groups[group].enabled) {
-		dev_notice(p->dev, "%s is already enabled\n", p->groups[group].name);
-		return -EBUSY;
-	}
+	/* Allow re-muxing even if group was already enabled by bootloader.
+	   Previously this returned -EBUSY and caused "Error applying setting,
+	   reverse things back" for NAND-on-sdhci boards where U-Boot already
+	   configured the pins. */
+	if (p->groups[group].enabled)
+		dev_dbg(p->dev, "%s is already enabled, re-muxing\n", p->groups[group].name);
 
 	p->groups[group].enabled = 1;
 	p->func[func]->enabled = 1;

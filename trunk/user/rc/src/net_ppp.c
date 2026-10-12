@@ -70,13 +70,13 @@ safe_start_xl2tpd(void)
 		get_vpns_pool(nvram_get_int("vpns_vuse"), &vaddr, &vmask, &vp_b, &vp_e);
 		
 		pool_in.s_addr = htonl(vaddr);
-		strcpy(sa_v, inet_ntoa(pool_in));
+		snprintf(sa_v, sizeof(sa_v), "%s", inet_ntoa(pool_in));
 		
 		pool_in.s_addr = htonl((vaddr & vmask) | vp_b);
-		strcpy(sp_b, inet_ntoa(pool_in));
+		snprintf(sp_b, sizeof(sp_b), "%s", inet_ntoa(pool_in));
 		
 		pool_in.s_addr = htonl((vaddr & vmask) | vp_e);
-		strcpy(sp_e, inet_ntoa(pool_in));
+		snprintf(sp_e, sizeof(sp_e), "%s", inet_ntoa(pool_in));
 		
 		fprintf(fp, "[lns default]\n");
 		fprintf(fp, "hostname = %s\n", get_our_hostname());
@@ -202,7 +202,7 @@ start_rpl2tp(int unit)
 	sleep(1);
 
 	/* start-session */
-	return system("/usr/sbin/l2tp-control \"start-session 0.0.0.0\"");
+	return doSystem("/usr/sbin/l2tp-control \"start-session 0.0.0.0\"");
 }
 #endif
 

@@ -29,7 +29,7 @@ struct nvram_pair router_defaults[] = {
 	{ "nvram_manual", "0" },                       /* Manual commit mode: 1: manual, 0: auto */
 
 #if defined (USE_NAND_FLASH)
-	{ "mtd_rwfs_mount", "0" },                     /* Allow mount MTD RWFS partition on boot */
+	{ "mtd_rwfs_mount", "1" },                     /* Allow mount MTD RWFS partition on boot */
 #endif
 
 	/* Miscellaneous parameters */
@@ -57,6 +57,8 @@ struct nvram_pair router_defaults[] = {
 	{ "lan_dns_x", "1" },                          /* LAN DNS [static|dhcp] */
 	{ "lan_dns1", "" },                            /* LAN DNS1 */
 	{ "lan_dns2", "" },                            /* LAN DNS2 */
+	{ "lan_dnsv61", "" },                          /* LAN IPv6 DNS1 */
+	{ "lan_dnsv62", "" },                          /* LAN IPv6 DNS2 */
 	{ "lan_domain", "lan" },                       /* LAN domain name */
 	{ "lan_stp", "1" },                            /* LAN spanning tree protocol */
 
@@ -203,7 +205,7 @@ struct nvram_pair router_defaults[] = {
 	{ "wl_PktAggregate", "1" },                    /* Packet aggregation */
 	{ "wl_APSDCapable", "1" },                     /* APSD */
 	{ "wl_HT_OpMode", "1" },                       /* HT op mode */
-	{ "wl_pmf", "1" },                             /* PMF (1=optional, required for WPA3) */
+	{ "wl_pmf", "1" },                             /* PMF (auto-enabled for WPA3/WPA2-WPA3 mixed) */
 	{ "wl_sta_pmf", "0" },                         /* Station PMF */
 #if defined (USE_WID_5G) && (USE_WID_5G==7615 || USE_WID_5G==7915)
 	{ "wl_HT_BW", "2" },                           /* MT7615/MT7915: 20/40/80MHz (no 160MHz) */
@@ -273,7 +275,7 @@ struct nvram_pair router_defaults[] = {
 	{ "wl_guest_wpa_mode", "6" },                  /* Guest WPA mode */
 	{ "wl_guest_crypto", "aes" },                  /* Guest encryption */
 	{ "wl_guest_wpa_psk", "" },                    /* Guest key */
-	{ "wl_guest_pmf", "1" },                        /* Guest PMF (1=optional, required for WPA3) */
+	{ "wl_guest_pmf", "1" },                        /* Guest PMF (auto-enabled for WPA3) */
 	{ "wl_guest_macrule", "0" },                   /* Guest MAC rule */
 	{ "wl_guest_mcs_mode", "0" },                  /* Guest MCS mode */
 
@@ -351,7 +353,7 @@ struct nvram_pair router_defaults[] = {
 	{ "rt_stream_rx", STR(BOARD_NUM_ANT_2G_RX) },
 	{ "rt_preamble", "1" },                        /* Preamble type */
 	{ "rt_greenap", "0" },                         /* 2.4GHz GreenAP */
-	{ "rt_pmf", "1" },                             /* PMF (1=optional, required for WPA3) */
+	{ "rt_pmf", "1" },                             /* PMF (auto-enabled for WPA3/WPA2-WPA3 mixed) */
 	{ "rt_sta_pmf", "0" },                         /* Station PMF */
 	{ "rt_HT_RDG", "0" },                          /* HT RDG */
 	{ "rt_HT_AMSDU", "1" },                        /* HT AMSDU */
@@ -387,7 +389,7 @@ struct nvram_pair router_defaults[] = {
 	{ "rt_guest_wpa_mode", "6" },                  /* Guest WPA mode */
 	{ "rt_guest_crypto", "aes" },                  /* Guest encryption */
 	{ "rt_guest_wpa_psk", "" },                    /* Guest key */
-	{ "rt_guest_pmf", "1" },                        /* Guest PMF (1=optional, required for WPA3) */
+	{ "rt_guest_pmf", "1" },                        /* Guest PMF (auto-enabled for WPA3) */
 	{ "rt_guest_macrule", "0" },                   /* Guest MAC rule */
 	{ "rt_guest_mcs_mode", "0" },                  /* Guest MCS mode */
 
@@ -481,9 +483,9 @@ struct nvram_pair router_defaults[] = {
 	{ "upnp_secure", "1" },                        /* UPnP secure mode */
 	{ "upnp_clean_min", "10" },                    /* UPnP clean min */
 	{ "upnp_clean_int", "600" },                   /* UPnP clean interval */
-	{ "upnp_iport_min", "21" },                    /* UPnP internal port min */
+	{ "upnp_iport_min", "1024" },                  /* UPnP internal port min */
 	{ "upnp_iport_max", "65535" },                 /* UPnP internal port max */
-	{ "upnp_eport_min", "80" },                    /* UPnP external port min */
+	{ "upnp_eport_min", "1024" },                  /* UPnP external port min */
 	{ "upnp_eport_max", "65535" },                 /* UPnP external port max */
 	{ "upnp_https_port", "5001" },                 /* UPnP HTTPS port */
 	{ "upnp_stun_enable", "1" },                   /* UPnP STUN enable */

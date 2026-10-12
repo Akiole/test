@@ -243,6 +243,7 @@ function fill_info(){
 	$("WANIP4").innerHTML = wanlink_ip4_wan();
 	$("WANGW4").innerHTML = wanlink_gw4_wan();
 	$("WANDNS").innerHTML = wanlink_dns();
+	$("WANDNS6").innerHTML = wanlink_dns6();
 	$("WANMAC").innerHTML = wanlink_mac();
 }
 
@@ -353,6 +354,10 @@ function submitInternet(v){
   <tr>
     <th><#DNS#></th>
     <td colspan="3"><span id="WANDNS"></span></td>
+  </tr>
+  <tr>
+    <th><#DNS6#></th>
+    <td colspan="3"><span id="WANDNS6"></span></td>
   </tr>
   <tr>
     <th><#MAC_Address#></th>

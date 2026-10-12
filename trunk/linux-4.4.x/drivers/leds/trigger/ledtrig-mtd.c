@@ -38,7 +38,9 @@ EXPORT_SYMBOL(ledtrig_mtd_activity);
 static int __init ledtrig_mtd_init(void)
 {
 	led_trigger_register_simple("mtd", &ledtrig_mtd);
-	led_trigger_register_simple("nand-disk", &ledtrig_nand);
+	/* "nand-disk" is already registered by nand_base.c.
+	   Registering here causes "-17 EEXIST" warning at boot. */
+	/* led_trigger_register_simple("nand-disk", &ledtrig_nand); */
 
 	return 0;
 }

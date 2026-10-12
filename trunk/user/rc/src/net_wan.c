@@ -1710,7 +1710,7 @@ update_resolvconf(int is_first_run, int do_not_notify)
 					resolv_changed = 1;
 				
 				for (i = 1; i <= 3; i++) {
-					sprintf(dns_name_x, "wan_dns%d_x", i);
+					snprintf(dns_name_x, sizeof(dns_name_x), "wan_dns%d_x", i);
 					wan_dns = nvram_safe_get(dns_name_x);
 					if (is_valid_ipv4(wan_dns)) {
 						fprintf(fp, "nameserver %s\n", wan_dns);
@@ -1719,10 +1719,15 @@ update_resolvconf(int is_first_run, int do_not_notify)
 				}
 				
 			} else if (!is_first_run) {
-				wan_dns = get_wan_unit_value(0, "dns");
-				if (strlen(wan_dns) < 7)
-					wan_dns = nvram_safe_get("wanx_dns");
-				
+				if (get_ap_mode()) {
+					/* AP mode: DNS from LAN DHCP client is in lan_dns_t */
+					wan_dns = nvram_safe_get("lan_dns_t");
+				} else {
+					wan_dns = get_wan_unit_value(0, "dns");
+					if (strlen(wan_dns) < 7)
+						wan_dns = nvram_safe_get("wanx_dns");
+				}
+
 				foreach(word, wan_dns, next) {
 					if (is_valid_ipv4(word)) {
 						fprintf(fp, "nameserver %s\n", word);
@@ -1861,7 +1866,7 @@ add_dhcp_routes(char *rt, char *rt_rfc, char *rt_ms, char *ifname, int metric)
 		if (gateway && bits > 0 && bits <= 32)
 		{
 			mask.s_addr = htonl(0xffffffff << (32 - bits));
-			strcpy(netmask, inet_ntoa(mask));
+			snprintf(netmask, sizeof(netmask), "%s", inet_ntoa(mask));
 			route_add(ifname, metric, ipaddr, gateway, netmask);
 		}
 	}
@@ -2014,7 +2019,7 @@ get_wan_ifname(char wan_ifname[16])
 		}
 	}
 
-	strcpy(wan_ifname, ifname);
+	snprintf(wan_ifname, 16, "%s", ifname);
 }
 
 in_addr_t

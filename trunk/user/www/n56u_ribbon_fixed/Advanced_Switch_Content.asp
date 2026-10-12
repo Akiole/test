@@ -45,7 +45,7 @@ function initial(){
 	}
 
 	show_banner(1);
-	show_menu(5,3,id_menu);
+	show_menu(5,1,id_menu);
 	show_footer();
 
 	fill_ports();

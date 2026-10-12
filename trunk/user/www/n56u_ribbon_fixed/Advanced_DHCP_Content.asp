@@ -59,7 +59,7 @@ var isMenuopen = 0;
 
 function initial(){
 	show_banner(1);
-	show_menu(5,3,2);
+	show_menu(5,1,2);
 	show_footer();
 	showtext($("LANIP"), '<% nvram_get_x("", "lan_ipaddr"); %>');
 
@@ -92,30 +92,36 @@ function initial(){
 		document.form.dhcp_verbose.remove(2);
 	}
 
-	// 获取 WAN 口真实 DNS 并设置到 placeholder（区分 IPv4/IPv6）
+	// Load wanlink functions dynamically and set DNS placeholders
 	try {
-		var wanDnsStr = wanlink_dns();
-		if (wanDnsStr && wanDnsStr !== '---') {
-			var wanDnsList = wanDnsStr.split('<br/>');
+		var wanlinkScript = document.createElement('script');
+		wanlinkScript.src = '/status_wanlink.asp';
+		wanlinkScript.onload = function() {
 			var ipv4Dns = [], ipv6Dns = [];
-			for (var di = 0; di < wanDnsList.length; di++) {
-				if (wanDnsList[di].indexOf(':') !== -1)
-					ipv6Dns.push(wanDnsList[di]);
-				else
-					ipv4Dns.push(wanDnsList[di]);
+			if (typeof wanlink_dns === 'function') {
+				var wanDnsStr = wanlink_dns();
+				if (wanDnsStr && wanDnsStr !== '---') {
+					ipv4Dns = wanDnsStr.split('<br/>');
+				}
+			}
+			if (typeof wanlink_dns6 === 'function') {
+				var wanDns6Str = wanlink_dns6();
+				if (wanDns6Str && wanDns6Str !== '---') {
+					ipv6Dns = wanDns6Str.split('<br/>');
+				}
 			}
 			var dns1 = document.getElementsByName('dhcp_dns1_x')[0];
 			var dns2 = document.getElementsByName('dhcp_dns2_x')[0];
 			var dns3 = document.getElementsByName('dhcp_dns3_x')[0];
-			if (dns1) dns1.placeholder = ipv4Dns[0] || '';
-			if (dns2) dns2.placeholder = ipv4Dns[1] || '';
-			if (dns3) dns3.placeholder = ipv4Dns[2] || '';
+			if (dns1 && ipv4Dns[0]) dns1.placeholder = ipv4Dns[0];
+			if (dns2 && ipv4Dns[1]) dns2.placeholder = ipv4Dns[1];
+			if (dns3 && ipv4Dns[2]) dns3.placeholder = ipv4Dns[2];
 			var dnsv6 = document.getElementsByName('dhcp_dnsv6_x')[0];
 			var dnsv61 = document.getElementsByName('dhcp_dnsv61_x')[0];
-			var lanIpv6 = '<% nvram_get_x("", "ip6_lan_addr"); %>';
-			if (dnsv6) dnsv6.placeholder = ipv6Dns[0] || lanIpv6 || '';
-			if (dnsv61) dnsv61.placeholder = ipv6Dns[1] || '';
-		}
+			if (dnsv6 && ipv6Dns[0]) dnsv6.placeholder = ipv6Dns[0];
+			if (dnsv61 && ipv6Dns[1]) dnsv61.placeholder = ipv6Dns[1];
+		};
+		document.head.appendChild(wanlinkScript);
 	} catch(e) {}
 
 	load_body();

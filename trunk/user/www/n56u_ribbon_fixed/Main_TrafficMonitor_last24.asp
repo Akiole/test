@@ -128,7 +128,7 @@ $j(document).ready(function(){
 
 function initial(){
 	show_banner(0);
-	show_menu(11, -1, 0);
+	show_menu(11,-1, 0);
 	show_footer();
 
 	initTab();

@@ -31,12 +31,13 @@ static struct hsearch_data *htab = NULL;
 void
 unescape(char *s)
 {
-	unsigned int c;
+	unsigned int c = 0;
 
 	while ((s = strpbrk(s, "%+"))) {
 		/* Parse %xx */
 		if (*s == '%') {
-			sscanf(s + 1, "%02x", &c);
+			if (sscanf(s + 1, "%02x", &c) != 1)
+				c = 0;
 			*s++ = (char) c;
 			memmove(s, s + 2, strlen(s + 2) + 1);
 		}
@@ -98,8 +99,11 @@ init_cgi(char *query)
 	nel = 1;
 	while (strsep(&q, "&;"))
 		nel++;
-	if (htab == NULL)
+	if (htab == NULL) {
 		htab = calloc(1, sizeof(*htab));
+		if (!htab)
+			return;
+	}
 	hcreate_r(nel, htab);
 
 	for (q = query; q < (query + len);) {

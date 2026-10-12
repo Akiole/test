@@ -373,23 +373,23 @@ ej_conntrack_table(int eid, webs_t wp, int argc, char **argv)
 #if defined (USE_IPV6)
 		if (strcmp(ipv, "ipv6") == 0) {
 			struct in6_addr addr6;
+			char tmp6[48];
 			if (inet_pton(AF_INET6, src, &addr6) == 1) {
-				inet_ntop(AF_INET6, &addr6, src+1, sizeof(src)-1);
-				src[0] = '[';
-				strcat(src, "]");
+				inet_ntop(AF_INET6, &addr6, tmp6, sizeof(tmp6));
+				snprintf(src, sizeof(src), "[%s]", tmp6);
 			}
 			if (inet_pton(AF_INET6, dst, &addr6) == 1) {
-				inet_ntop(AF_INET6, &addr6, dst+1, sizeof(dst)-1);
-				dst[0] = '[';
-				strcat(dst, "]");
+				inet_ntop(AF_INET6, &addr6, tmp6, sizeof(tmp6));
+				snprintf(dst, sizeof(dst), "[%s]", tmp6);
 			}
 		}
 #endif
-		strcat(src, ":");
-		strcat(src, sport);
-		strcat(dst, ":");
-		strcat(dst, dport);
-		ret += websWrite(wp, "%-8s%-48s%s\n", proto, src, dst);
+		{
+			char src_disp[80], dst_disp[80];
+			snprintf(src_disp, sizeof(src_disp), "%s:%s", src, sport);
+			snprintf(dst_disp, sizeof(dst_disp), "%s:%s", dst, dport);
+			ret += websWrite(wp, "%-8s%-48s%s\n", proto, src_disp, dst_disp);
+		}
 	}
 
 	fclose(fp);
@@ -1048,13 +1048,16 @@ print_sta_list(webs_t wp, RT_802_11_MAC_TABLE *mp, int num_ss_rx, int ap_idx)
 		rssi = get_rssi_from_me(&mp->Entry[i], num_ss_rx);
 
 		MACHTTRANSMIT_SETTING RxRate;
+		char rx_rate_str[16];
 		bzero(&RxRate, sizeof(RxRate));
 		RxRate.word = mp->Entry[i].LastRxRate;
-		/* Fallback: if LastRxRate is invalid (zero), use TxRate */
+		/* Show real Rx rate when available, otherwise dash instead of duplicating TxRate */
 		if (RxRate.word == 0)
-			RxRate = mp->Entry[i].TxRate;
+			sprintf(rx_rate_str, "  -  ");
+		else
+			sprintf(rx_rate_str, "%5dM", getRate(RxRate));
 
-		ret += websWrite(wp, "%02X:%02X:%02X:%02X:%02X:%02X  %-7s %3s %3d %3s %4s %4s %5dM %5dM %4d %3s %02d:%02d:%02d\n",
+		ret += websWrite(wp, "%02X:%02X:%02X:%02X:%02X:%02X  %-7s %3s %3d %3s %4s %4s %5dM %s %4d %3s %02d:%02d:%02d\n",
 				mp->Entry[i].Addr[0], mp->Entry[i].Addr[1], mp->Entry[i].Addr[2],
 				mp->Entry[i].Addr[3], mp->Entry[i].Addr[4], mp->Entry[i].Addr[5],
 				GetPhyMode(mp->Entry[i].TxRate.field.MODE),
@@ -1063,8 +1066,8 @@ print_sta_list(webs_t wp, RT_802_11_MAC_TABLE *mp, int num_ss_rx, int ap_idx)
 				mp->Entry[i].TxRate.field.ShortGI ? "YES" : "NO",
 				mp->Entry[i].TxRate.field.ldpc ? "YES" : "NO",
 				mp->Entry[i].TxRate.field.STBC ? "YES" : "NO",
-				getRate(mp->Entry[i].TxRate), 
-				getRate(RxRate),
+				getRate(mp->Entry[i].TxRate),
+				rx_rate_str,
 				rssi,
 				mp->Entry[i].Psm ? "YES" : "NO",
 				hr, min, sec
@@ -1170,19 +1173,19 @@ print_wmode(webs_t wp, unsigned int wmode, unsigned int phy_mode)
 	if (wmode) {
 		char *p = buf;
 		if (wmode & WMODE_A)
-			p += sprintf(p, "/a");
+			p += snprintf(p, sizeof(buf) - (p - buf), "/a");
 		if (wmode & WMODE_B)
-			p += sprintf(p, "/b");
+			p += snprintf(p, sizeof(buf) - (p - buf), "/b");
 		if (wmode & WMODE_G)
-			p += sprintf(p, "/g");
+			p += snprintf(p, sizeof(buf) - (p - buf), "/g");
 		if (wmode & WMODE_GN)
-			p += sprintf(p, "/n");
+			p += snprintf(p, sizeof(buf) - (p - buf), "/n");
 		if (wmode & WMODE_AN)
-			p += sprintf(p, "/n");
+			p += snprintf(p, sizeof(buf) - (p - buf), "/n");
 		if (wmode & WMODE_AC)
-			p += sprintf(p, "/ac");
+			p += snprintf(p, sizeof(buf) - (p - buf), "/ac");
 		if ((wmode & WMODE_AX_24G) || (wmode & WMODE_AX_5G) || (wmode & WMODE_AX_6G))
-			p += sprintf(p, "/ax");
+			p += snprintf(p, sizeof(buf) - (p - buf), "/ax");
 		if (p != buf)
 			ret += websWrite(wp, "WPHY Mode\t: 11%s\n", buf+1);
 	} else {
@@ -1549,7 +1552,7 @@ ej_wl_auth_list(int eid, webs_t wp, int argc, char **argv)
 		num_ss_rx = nvram_wlan_get_int(1, "stream_rx");
 		for (i=0; i<mp->Num; i++)
 		{
-			sprintf(mac, "%02X:%02X:%02X:%02X:%02X:%02X",
+			snprintf(mac, sizeof(mac), "%02X:%02X:%02X:%02X:%02X:%02X",
 				mp->Entry[i].Addr[0], mp->Entry[i].Addr[1],
 				mp->Entry[i].Addr[2], mp->Entry[i].Addr[3],
 				mp->Entry[i].Addr[4], mp->Entry[i].Addr[5]);
@@ -1580,7 +1583,7 @@ ej_wl_auth_list(int eid, webs_t wp, int argc, char **argv)
 		RT_802_11_MAC_TABLE_INIC *mp = (RT_802_11_MAC_TABLE_INIC *)wrq.u.data.pointer;
 		for (i = 0; i < mp->Num; i++)
 		{
-			sprintf(mac, "%02X:%02X:%02X:%02X:%02X:%02X",
+			snprintf(mac, sizeof(mac), "%02X:%02X:%02X:%02X:%02X:%02X",
 				mp->Entry[i].Addr[0], mp->Entry[i].Addr[1],
 				mp->Entry[i].Addr[2], mp->Entry[i].Addr[3],
 				mp->Entry[i].Addr[4], mp->Entry[i].Addr[5]);
@@ -1604,7 +1607,7 @@ ej_wl_auth_list(int eid, webs_t wp, int argc, char **argv)
 		RT_802_11_MAC_TABLE *mp = (RT_802_11_MAC_TABLE *)wrq.u.data.pointer;
 		for (i = 0; i < mp->Num; i++)
 		{
-			sprintf(mac, "%02X:%02X:%02X:%02X:%02X:%02X",
+			snprintf(mac, sizeof(mac), "%02X:%02X:%02X:%02X:%02X:%02X",
 				mp->Entry[i].Addr[0], mp->Entry[i].Addr[1],
 				mp->Entry[i].Addr[2], mp->Entry[i].Addr[3],
 				mp->Entry[i].Addr[4], mp->Entry[i].Addr[5]);
@@ -1661,7 +1664,7 @@ ej_wl_band_list(int eid, webs_t wp, int argc, char **argv)
 			RT_802_11_MAC_TABLE *mp = (RT_802_11_MAC_TABLE *)wrq.u.data.pointer;
 			for (i=0; i<mp->Num; i++)
 			{
-				sprintf(mac, "%02X:%02X:%02X:%02X:%02X:%02X",
+				snprintf(mac, sizeof(mac), "%02X:%02X:%02X:%02X:%02X:%02X",
 					mp->Entry[i].Addr[0], mp->Entry[i].Addr[1],
 					mp->Entry[i].Addr[2], mp->Entry[i].Addr[3],
 					mp->Entry[i].Addr[4], mp->Entry[i].Addr[5]);
@@ -1699,7 +1702,7 @@ ej_wl_band_list(int eid, webs_t wp, int argc, char **argv)
 		RT_802_11_MAC_TABLE *mp = (RT_802_11_MAC_TABLE *)wrq.u.data.pointer;
 		for (i=0; i<mp->Num; i++)
 		{
-			sprintf(mac, "%02X:%02X:%02X:%02X:%02X:%02X",
+			snprintf(mac, sizeof(mac), "%02X:%02X:%02X:%02X:%02X:%02X",
 				mp->Entry[i].Addr[0], mp->Entry[i].Addr[1],
 				mp->Entry[i].Addr[2], mp->Entry[i].Addr[3],
 				mp->Entry[i].Addr[4], mp->Entry[i].Addr[5]);
@@ -1723,7 +1726,7 @@ ej_wl_band_list(int eid, webs_t wp, int argc, char **argv)
 		RT_802_11_MAC_TABLE *mp = (RT_802_11_MAC_TABLE *)wrq.u.data.pointer;
 		for (i=0; i<mp->Num; i++)
 		{
-			sprintf(mac, "%02X:%02X:%02X:%02X:%02X:%02X",
+			snprintf(mac, sizeof(mac), "%02X:%02X:%02X:%02X:%02X:%02X",
 				mp->Entry[i].Addr[0], mp->Entry[i].Addr[1],
 				mp->Entry[i].Addr[2], mp->Entry[i].Addr[3],
 				mp->Entry[i].Addr[4], mp->Entry[i].Addr[5]);
@@ -1749,7 +1752,7 @@ ej_wl_band_list(int eid, webs_t wp, int argc, char **argv)
 		RT_802_11_MAC_TABLE *mp = (RT_802_11_MAC_TABLE *)wrq.u.data.pointer;
 		for (i = 0; i < mp->Num; i++)
 		{
-			sprintf(mac, "%02X:%02X:%02X:%02X:%02X:%02X",
+			snprintf(mac, sizeof(mac), "%02X:%02X:%02X:%02X:%02X:%02X",
 				mp->Entry[i].Addr[0], mp->Entry[i].Addr[1],
 				mp->Entry[i].Addr[2], mp->Entry[i].Addr[3],
 				mp->Entry[i].Addr[4], mp->Entry[i].Addr[5]);
@@ -2026,7 +2029,7 @@ ej_wl_bssid_5g(int eid, webs_t wp, int argc, char **argv)
 	snprintf(bssid, sizeof(bssid), "%s", nvram_safe_get("wl_macaddr"));
 	if (get_interface_hwaddr(IFNAME_5G_MAIN, mac) == 0)
 	{
-		sprintf(bssid, "%02X:%02X:%02X:%02X:%02X:%02X",
+		snprintf(bssid, sizeof(bssid), "%02X:%02X:%02X:%02X:%02X:%02X",
 			mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 	}
 
@@ -2050,7 +2053,7 @@ ej_wl_bssid_2g(int eid, webs_t wp, int argc, char **argv)
 #endif
 		if (get_interface_hwaddr(IFNAME_2G_MAIN, mac) == 0)
 		{
-			sprintf(bssid, "%02X:%02X:%02X:%02X:%02X:%02X",
+			snprintf(bssid, sizeof(bssid), "%02X:%02X:%02X:%02X:%02X:%02X",
 				mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 		}
 #if defined(USE_RT3352_MII)

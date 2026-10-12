@@ -54,8 +54,10 @@ function fill_status(scode,ltype){
 function fill_info(){
 	fill_status(wanlink_status(), wanlink_type());
 	$("LANIP4").innerHTML = wanlink_ip4_wan();
+	$("LANIP6").innerHTML = wanlink_ip6_wan();
 	$("LANGW4").innerHTML = wanlink_gw4_wan();
 	$("LANDNS").innerHTML = wanlink_dns();
+	$("LANDNS6").innerHTML = wanlink_dns6();
 	$("LANMAC").innerHTML = wanlink_mac();
 }
 
@@ -93,12 +95,20 @@ function update_lanip(){
     <td><span id="LANIP4"></span></td>
   </tr>
   <tr>
+    <th><#IP6_Addr#> LAN:</th>
+    <td><span id="LANIP6"></span></td>
+  </tr>
+  <tr>
     <th><#Gateway#> LAN:</th>
     <td><span id="LANGW4"></span></td>
   </tr>
   <tr>
     <th>DNS:</th>
     <td><span id="LANDNS"></span></td>
+  </tr>
+  <tr>
+    <th><#DNS6#></th>
+    <td><span id="LANDNS6"></span></td>
   </tr>
   <tr>
     <th><#MAC_Address#></th>

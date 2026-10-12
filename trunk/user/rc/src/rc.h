@@ -48,6 +48,7 @@
 #define SCRIPT_ZCIP_VIPTV		"/tmp/zcip_viptv.script"
 #define SCRIPT_WPACLI_WAN		"/tmp/wpacli.script"
 #define SCRIPT_DHCP6C_WAN		"/tmp/dhcp6c.script"
+#define SCRIPT_ODHCP6C_WAN		"/tmp/odhcp6c.script"
 
 #define SCRIPT_POST_WAN			"/etc/storage/post_wan_script.sh"
 #define SCRIPT_POST_FIREWALL		"/etc/storage/post_iptables_script.sh"
@@ -330,6 +331,7 @@ int  ipdown_main(int argc, char **argv);
 #if defined (USE_IPV6)
 /* net6.c */
 void init_ipv6(void);
+void disable_ipv6_on_bridge_slaves(void);
 void control_if_ipv6_all(int enable);
 void control_if_ipv6(const char *ifname, int enable);
 void control_if_ipv6_autoconf(const char *ifname, int enable);
@@ -375,6 +377,7 @@ void stop_sit_tunnel(void);
 void wan6_up(char *wan_ifname, int unit);
 void wan6_down(char *wan_ifname, int unit);
 int dhcp6c_main(int argc, char **argv);
+int odhcp6c_main(int argc, char **argv);
 int start_dhcp6c(char *wan_ifname);
 void stop_dhcp6c(void);
 

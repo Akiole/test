@@ -2551,9 +2551,7 @@ INT32 mtf_trans_rxd_into_rxblk(RTMP_ADAPTER *pAd, struct _RX_BLK *rx_blk, PNDIS_
 	/* rx rate */
 	if (rxd_grp0->rxd_1 & RXD_GROUP3_VLD) {
 		pAd->phy_stat_elem.rx_raw = rxd_grp3->rxd_16;
-#ifdef RATE_PRIOR_SUPPORT
 		rx_blk->rx_rate.field.MCS = ((rxd_grp3->rxd_16 & BITS(0, 6)) >> 0);
-#endif
 	}
 
 

@@ -90,7 +90,10 @@ static void check_buf(dbclient* client, int len) {
 
     if(NULL == client->buf) {
         client->buf = (char*)malloc(clen+1);
-        client->buf_max = clen;
+        if (client->buf)
+            client->buf_max = clen;
+        else
+            client->buf_max = 0;
     }
 }
 
@@ -151,7 +154,8 @@ int dbclient_bulk(dbclient* client, const char* command, const char* key, int nk
 
     n1 = nc + nk + nv + 3;// replace key value\n
     check_buf(client, n1 + HEADER_PREFIX);
-    n2 = sprintf(client->buf, "%s%07d %s ", MAGIC, n1, command);
+    if (!client->buf) return -1;
+    n2 = snprintf(client->buf, client->buf_max, "%s%07d %s ", MAGIC, n1, command);
 
     memcpy(client->buf + n2, key, nk);
     client->buf[n2+nk] = ' ';
@@ -177,6 +181,7 @@ static int read_util(dbclient* client, int len, unsigned int delay) {
     struct timeval tv,  tv2;
 
     check_buf(client, len);
+    if (!client->buf) return -1;
     gettimeofday(&tv2, NULL);
     timeout = (tv2.tv_sec * 1000) + (tv2.tv_usec / 1000) + delay;
     client->buf_pos = 0;
@@ -295,7 +300,8 @@ int dbclient_list(dbclient* client, char* prefix, webs_t wp, fn_db_parse fn) {
 
     n1 = strlen("list") + strlen(prefix) + 2;//list prefix\n
     check_buf(client, n1 + HEADER_PREFIX);
-    n2 = sprintf(client->buf, "%s%07d list %s\n", MAGIC, n1, prefix);
+    if (!client->buf) return -1;
+    n2 = snprintf(client->buf, client->buf_max, "%s%07d list %s\n", MAGIC, n1, prefix);
     if(0 != write_util(client, n1 + HEADER_PREFIX, 100)) {
         return -1;
     }

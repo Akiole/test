@@ -258,15 +258,18 @@ void start_sit_tunnel(int ipv6_type, char *wan_ifname, char *wan_addr4, char *wa
 		
 		memcpy(&net6, &addr6, sizeof(addr6));
 		ipv6_to_net(&net6, size6);
-		inet_ntop(AF_INET6, &net6, sit_6rd_prefix, INET6_ADDRSTRLEN);
-		sprintf(sit_6rd_prefix, "%s/%d", sit_6rd_prefix, size6);
+		{
+			char tmp_prefix[INET6_ADDRSTRLEN];
+			inet_ntop(AF_INET6, &net6, tmp_prefix, sizeof(tmp_prefix));
+			snprintf(sit_6rd_prefix, sizeof(sit_6rd_prefix), "%s/%d", tmp_prefix, size6);
+		}
 		
 		strcpy(sit_6rd_relay_prefix, "0.0.0.0/0");
 		size4 = get_wan_unit_value_int(0, "6rd_size");
 		if (size4 > 0 && size4 <= 32)
 		{
 			net4.s_addr = addr4.s_addr & htonl(0xffffffffUL << (32 - size4));
-			sprintf(sit_6rd_relay_prefix, "%s/%d", inet_ntoa(net4), size4);
+			snprintf(sit_6rd_relay_prefix, sizeof(sit_6rd_relay_prefix), "%s/%d", inet_ntoa(net4), size4);
 		}
 		
 		doSystem("ip tunnel 6rd dev %s 6rd-prefix %s 6rd-relay_prefix %s", IFNAME_SIT, sit_6rd_prefix, sit_6rd_relay_prefix);
@@ -295,7 +298,7 @@ void start_sit_tunnel(int ipv6_type, char *wan_ifname, char *wan_addr4, char *wa
 
 	/* WAN IPv6 gateway (auto-generate for 6to4/6rd) */
 	if (ipv6_type == IPV6_6TO4 || ipv6_type == IPV6_6RD) {
-		sprintf(addr6s, "::%s", sit_relay);
+		snprintf(addr6s, sizeof(addr6s), "::%s", sit_relay);
 		wan_gate6 = addr6s;
 		/* add direct default gateway for workaround "No route to host" on new kernel */
 		doSystem("ip -6 route add default dev %s metric %d", IFNAME_SIT, 2048);
@@ -389,6 +392,9 @@ void wan6_up(char *wan_ifname, int unit)
 			control_if_ipv6_radv(wan_ifname, 1);
 			/* wait for interface ready */
 			sleep(2);
+			/* solicit RA immediately to speed up SLAAC after reconnect */
+			if (allow_ra)
+				doSystem("ping6 -c 1 -W 1 ff02::2%%%s > /dev/null 2>&1", wan_ifname);
 			start_dhcp6c(wan_ifname);
 		}
 	}
@@ -451,7 +457,7 @@ int dhcp6c_main(int argc, char **argv)
 
 	dns6_auto = nvram_get_int("ip6_dns_auto");
 	if (dns6_auto) {
-		dns6_new = getenv("dns");
+		dns6_new = getenv("new_domain_name_servers");
 		if (store_wan_dns6(dns6_new))
 			update_resolvconf(0, 0);
 	}
@@ -459,7 +465,15 @@ int dhcp6c_main(int argc, char **argv)
 	return 0;
 }
 
-int start_dhcp6c(char *wan_ifname)
+/* forward declarations for static helpers used by start_dhcp6c() */
+static int start_dhcp6c_busybox(char *wan_ifname);
+static int start_dhcp6c_odhcp6c(char *wan_ifname);
+
+/*
+ * Start BusyBox dhcp6c.
+ * Generates config file and DUID, then invokes /sbin/dhcp6c.
+ */
+static int start_dhcp6c_busybox(char *wan_ifname)
 {
 	FILE *fp;
 	int wan6_dhcp, dns6_auto, lan6_auto, sla_id, sla_len;
@@ -471,6 +485,12 @@ int start_dhcp6c(char *wan_ifname)
 	wan6_dhcp = nvram_get_int("ip6_wan_dhcp");
 	dns6_auto = nvram_get_int("ip6_dns_auto");
 	lan6_auto = nvram_get_int("ip6_lan_auto");
+
+	/* AP mode: br0 uses SLAAC, only need DNS from dhcp6c */
+	if (get_ap_mode()) {
+		wan6_dhcp = 0;
+		lan6_auto = 0;
+	}
 
 	if (!wan6_dhcp && !dns6_auto && !lan6_auto)
 		return 1;
@@ -491,7 +511,7 @@ int start_dhcp6c(char *wan_ifname)
 			((unsigned int)(ea[4]) << 8) |
 			((unsigned int)(ea[5]));
 
-		/* create DUID from WAN MAC */
+		/* create DUID-LL from WAN MAC */
 		duid_len = sizeof(duid3) + ETHER_ADDR_LEN;
 		duid3.type = htons(3);		/* DUID-LL */
 		duid3.hwtype = htons(1);	/* Ethernet */
@@ -522,7 +542,7 @@ int start_dhcp6c(char *wan_ifname)
 	if (wan6_dhcp || lan6_auto)
 		fprintf(fp, " send rapid-commit;\n");
 	else
-		fprintf(fp, " information-only ;\n"); /* space needed for dhcp6c port in busybox */
+		fprintf(fp, " information-only ;\n");
 	if (dns6_auto)
 		fprintf(fp, " request domain-name-servers;\n");
 	fprintf(fp,
@@ -548,15 +568,216 @@ int start_dhcp6c(char *wan_ifname)
 
 	fclose(fp);
 
-	logmessage("DHCPv6 WAN Client", "starting on wan (%s) ...", wan_ifname);
+	logmessage("DHCPv6 WAN Client (dhcp6c)", "starting on wan (%s) ...", wan_ifname);
 
 	return eval("/sbin/dhcp6c", "-D", "LL", wan_ifname);
 }
 
+/*
+ * Start DHCPv6 client with automatic backend selection.
+ * Prefers BusyBox dhcp6c if available, falls back to odhcp6c.
+ */
+int start_dhcp6c(char *wan_ifname)
+{
+	/* prefer BusyBox dhcp6c if compiled in and executable */
+	if (access("/sbin/dhcp6c", X_OK) == 0)
+		return start_dhcp6c_busybox(wan_ifname);
+
+	return start_dhcp6c_odhcp6c(wan_ifname);
+}
+
+/*
+ * Start odhcp6c (OpenWrt DHCPv6 client).
+ * Used when BusyBox dhcp6c is not available.
+ */
+static int start_dhcp6c_odhcp6c(char *wan_ifname)
+{
+	int wan6_dhcp, dns6_auto, lan6_auto;
+
+	wan6_dhcp = nvram_get_int("ip6_wan_dhcp");
+	dns6_auto = nvram_get_int("ip6_dns_auto");
+	lan6_auto = nvram_get_int("ip6_lan_auto");
+
+	/* AP mode: br0 uses SLAAC, only need DNS from odhcp6c */
+	if (get_ap_mode()) {
+		wan6_dhcp = 0;
+		lan6_auto = 0;
+	}
+
+	if (!wan6_dhcp && !dns6_auto && !lan6_auto)
+		return 1;
+
+	/* ensure script symlink to rc exists */
+	unlink(SCRIPT_ODHCP6C_WAN);
+	symlink("/sbin/rc", SCRIPT_ODHCP6C_WAN);
+
+	logmessage("DHCPv6 WAN Client (odhcp6c)", "starting on wan (%s) ...", wan_ifname);
+
+	/*
+	 * odhcp6c command line:
+	 * -N none|force : IA_NA mode (none = use RA for WAN addr, force = DHCPv6)
+	 * -P 0          : request prefix delegation (auto length)
+	 * -s <script>   : status update script
+	 * -r dns        : request DNS servers option
+	 * -d            : daemonize
+	 * -p <pidfile>  : pid file path
+	 */
+	if (lan6_auto) {
+		if (wan6_dhcp) {
+			if (dns6_auto)
+				return eval("/sbin/odhcp6c", "-N", "force", "-P", "0",
+					"-s", SCRIPT_ODHCP6C_WAN, "-r", "dns",
+					"-d", "-p", "/var/run/odhcp6c.pid", wan_ifname, NULL);
+			else
+				return eval("/sbin/odhcp6c", "-N", "force", "-P", "0",
+					"-s", SCRIPT_ODHCP6C_WAN,
+					"-d", "-p", "/var/run/odhcp6c.pid", wan_ifname, NULL);
+		} else {
+			if (dns6_auto)
+				return eval("/sbin/odhcp6c", "-N", "none", "-P", "0",
+					"-s", SCRIPT_ODHCP6C_WAN, "-r", "dns",
+					"-d", "-p", "/var/run/odhcp6c.pid", wan_ifname, NULL);
+			else
+				return eval("/sbin/odhcp6c", "-N", "none", "-P", "0",
+					"-s", SCRIPT_ODHCP6C_WAN,
+					"-d", "-p", "/var/run/odhcp6c.pid", wan_ifname, NULL);
+		}
+	} else {
+		/* no PD requested, information-only mode for DNS */
+		if (dns6_auto)
+			return eval("/sbin/odhcp6c", "-N", "none",
+				"-s", SCRIPT_ODHCP6C_WAN, "-r", "dns",
+				"-d", "-p", "/var/run/odhcp6c.pid", wan_ifname, NULL);
+	}
+
+	return 1;
+}
+
 void stop_dhcp6c(void)
 {
-	char *svcs[] = { "dhcp6c", NULL };
+	char *svcs[] = { "dhcp6c", "odhcp6c", NULL };
 	kill_services(svcs, 3, 1);
+}
+
+/*
+ * odhcp6c status update script callback.
+ * Called by odhcp6c with $1 = action and environment variables:
+ *   PREFIXES  - delegated prefixes (addr/len,preferred,valid,t1,t2)
+ *   RDNSS     - DNS servers from DHCPv6
+ *   RA_DNS    - DNS servers from RA
+ *   ADDRESSES - IA_NA addresses
+ */
+int odhcp6c_main(int argc, char **argv)
+{
+	int ipv6_type, dns6_auto, lan6_auto;
+	char *action, *prefixes_env, *dns6_new, *lan_addr6_new;
+	char prefixes_buf[256] = {0};
+	char prefix_addr[INET6_ADDRSTRLEN] = {0};
+	char br_addr[INET6_ADDRSTRLEN + 8] = {0};
+	char *prefix_str, *saveptr = NULL;
+	int prefix_len = 0;
+	unsigned char ea[ETHER_ADDR_LEN];
+	struct in6_addr prefix_in6, full_in6;
+	unsigned char eui64[8];
+
+	ipv6_type = get_ipv6_type();
+	if (ipv6_type != IPV6_NATIVE_DHCP6)
+		return 0;
+
+	/* odhcp6c invokes script as: <script> <ifname> <action> */
+	action = (argc > 2) ? argv[2] : "";
+
+	/* on unbound/stopped, clear LAN IPv6 and exit */
+	if (strcmp(action, "unbound") == 0 || strcmp(action, "stopped") == 0) {
+		lan6_auto = nvram_get_int("ip6_lan_auto");
+		if (lan6_auto) {
+			clear_if_addr6(IFNAME_BR);
+			store_lan_addr6(NULL);
+		}
+		return 0;
+	}
+
+	/* only process bound/updated/rebound/ra-updated actions */
+	if (strcmp(action, "bound") != 0 &&
+	    strcmp(action, "updated") != 0 &&
+	    strcmp(action, "rebound") != 0 &&
+	    strcmp(action, "ra-updated") != 0 &&
+	    strcmp(action, "informed") != 0)
+		return 0;
+
+	lan6_auto = nvram_get_int("ip6_lan_auto");
+	/* AP mode: br0 uses SLAAC, skip PD prefix handling */
+	if (lan6_auto && !get_ap_mode()) {
+		prefixes_env = getenv("PREFIXES");
+		if (prefixes_env && *prefixes_env) {
+			/* copy to local buffer before tokenizing (getenv string is read-only) */
+			snprintf(prefixes_buf, sizeof(prefixes_buf), "%s", prefixes_env);
+			/* parse first prefix: "addr/len,preferred,valid,t1,t2" */
+			prefix_str = strtok_r(prefixes_buf, " ", &saveptr);
+			if (prefix_str) {
+				char *comma = strchr(prefix_str, ',');
+				if (comma)
+					*comma = '\0';
+				char *slash = strchr(prefix_str, '/');
+				if (slash) {
+					*slash = '\0';
+					prefix_len = atoi(slash + 1);
+				}
+				if (prefix_len > 0 && prefix_len <= 64) {
+					/*
+					 * Use the delegated prefix for LAN.
+					 * Build full address as prefix + EUI-64 (from br0 MAC),
+					 * matching BusyBox dhcp6c prefix-interface behavior.
+					 */
+					snprintf(prefix_addr, sizeof(prefix_addr), "%s", prefix_str);
+					/* Build LAN address from prefix + EUI-64 (derived from br0 MAC) */
+					if (inet_pton(AF_INET6, prefix_addr, &prefix_in6) == 1 &&
+						ether_atoe(nvram_safe_get("lan_hwaddr"), ea)) {
+						eui64[0] = ea[0]; eui64[1] = ea[1]; eui64[2] = ea[2];
+						eui64[3] = 0xff;  eui64[4] = 0xfe;
+						eui64[5] = ea[3]; eui64[6] = ea[4]; eui64[7] = ea[5];
+						memcpy(&full_in6, &prefix_in6, 8);
+						memcpy((char *)&full_in6 + 8, eui64, 8);
+						inet_ntop(AF_INET6, &full_in6, br_addr, sizeof(br_addr));
+						strncat(br_addr, "/64", sizeof(br_addr) - strlen(br_addr) - 1);
+					} else {
+						snprintf(br_addr, sizeof(br_addr), "%s1/64", prefix_addr);
+					}
+
+					/* skip reconfig if address unchanged (avoid RA rebuild on renewal) */
+					char current_br_addr[INET6_ADDRSTRLEN + 8] = {0};
+					if (get_ifaddr6(IFNAME_BR, 0, current_br_addr) &&
+						strcmp(current_br_addr, br_addr) == 0) {
+						/* address unchanged, skip reconfiguration */
+					} else {
+						/* clear existing global IPv6 on br0, then assign new */
+						clear_if_addr6(IFNAME_BR);
+						doSystem("ip -6 addr add %s dev %s", br_addr, IFNAME_BR);
+
+						/* store LAN address for nvram/status */
+						lan_addr6_new = get_ifaddr6(IFNAME_BR, 0, br_addr);
+						store_lan_addr6(lan_addr6_new);
+
+						logmessage("DHCPv6 WAN Client", "LAN prefix assigned: %s", br_addr);
+					}
+				}
+			}
+		}
+	}
+
+	/* handle DNS from DHCPv6 (RDNSS) or RA (RA_DNS) */
+	dns6_auto = nvram_get_int("ip6_dns_auto");
+	if (dns6_auto) {
+		dns6_new = getenv("RDNSS");
+		if (!dns6_new || !(*dns6_new))
+			dns6_new = getenv("RA_DNS");
+		if (dns6_new && *dns6_new) {
+			if (store_wan_dns6(dns6_new))
+				update_resolvconf(0, 0);
+		}
+	}
+
+	return 0;
 }
 
 #endif

@@ -313,11 +313,11 @@ get_eeprom_params(void)
 		productid[12] = 0;
 		
 		if(valid_subver(buffer[27]))
-			sprintf(fwver_sub, "%d.%d.%d%c", buffer[0], buffer[1], (buffer[2] << 8) | buffer[3], buffer[27]);
+			snprintf(fwver_sub, sizeof(fwver_sub), "%d.%d.%d%c", buffer[0], buffer[1], (buffer[2] << 8) | buffer[3], buffer[27]);
 		else
-			sprintf(fwver_sub, "%d.%d.%d", buffer[0], buffer[1], (buffer[2] << 8) | buffer[3]);
+			snprintf(fwver_sub, sizeof(fwver_sub), "%d.%d.%d", buffer[0], buffer[1], (buffer[2] << 8) | buffer[3]);
 		
-		sprintf(fwver, "%d.%d.%d", buffer[0], buffer[1], (buffer[2] << 8) | buffer[3]);
+		snprintf(fwver, sizeof(fwver), "%d.%d.%d", buffer[0], buffer[1], (buffer[2] << 8) | buffer[3]);
 	}
 
 #if defined(FWBLDSTR)
@@ -450,7 +450,7 @@ char_to_ascii(char *output, char *input)
 			*ptr = input[i];
 			ptr ++;
 		} else {
-			sprintf(tmp, "%%%.02X", (unsigned char)input[i]);
+			snprintf(tmp, sizeof(tmp), "%%%.02X", (unsigned char)input[i]);
 			strcpy(ptr, tmp);
 			ptr += 3;
 		}
@@ -477,7 +477,7 @@ int
 fput_int(const char *name, int value)
 {
 	char svalue[32];
-	sprintf(svalue, "%d", value);
+	snprintf(svalue, sizeof(svalue), "%d", value);
 	return fput_string(name, svalue);
 }
 
@@ -527,7 +527,7 @@ load_user_config(FILE *fp, const char *dir_name, const char *file_name, const ch
 				continue;
 			
 			line[strlen(line) - 1] = '\n';
-			fprintf(fp, line);
+			fputs(line, fp);
 		}
 		
 		fclose(fp_user);
@@ -857,8 +857,8 @@ rename_if_dir_exist(const char *dir, const char *subdir)
 	if ((dirp = opendir(dir))) {
 		while (dirp && (direntp = readdir(dirp))) {
 			if (!strcasecmp(direntp->d_name, subdir) && strcmp(direntp->d_name, subdir)) {
-				sprintf(oldpath, "%s/%s", dir, direntp->d_name);
-				sprintf(newpath, "%s/%s", dir, subdir);
+				snprintf(oldpath, sizeof(oldpath), "%s/%s", dir, direntp->d_name);
+				snprintf(newpath, sizeof(newpath), "%s/%s", dir, subdir);
 				rename(oldpath, newpath);
 				return 1;
 			}
@@ -883,7 +883,7 @@ if_dircase_exist(const char *dir, const char *subdir)
 	if ((dirp = opendir(dir))) {
 		while (dirp && (direntp = readdir(dirp))) {
 			if (!strcasecmp(direntp->d_name, subdir) && strcmp(direntp->d_name, subdir)) {
-				sprintf(oldpath, "%s/%s", dir, direntp->d_name);
+				snprintf(oldpath, sizeof(oldpath), "%s/%s", dir, direntp->d_name);
 				return strdup(oldpath);
 			}
 		}

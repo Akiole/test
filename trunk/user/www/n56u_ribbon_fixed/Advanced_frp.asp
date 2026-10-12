@@ -37,7 +37,7 @@ $j(document).ready(function() {
 
 function initial(){
 	show_banner(2);
-	show_menu(27, 0);
+	show_menu(24,0);
 	show_footer();
 
 fill_status(frpc_status());

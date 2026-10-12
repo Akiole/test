@@ -26,3 +26,6 @@ $(eval $(call BuildPackage,$(PKG_NAME)))
 
 romfs:
 	$(MAKE) -C $(PKG_BUILD_DIR) $(MAKE_FLAGS) CONFIG_PREFIX=$(ROMFSDIR) install
+
+clean:
+	rm -f ./busybox.config.generated

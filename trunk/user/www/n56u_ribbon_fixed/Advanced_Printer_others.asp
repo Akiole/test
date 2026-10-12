@@ -42,7 +42,7 @@ function initial(){
 		id_menu -= 1;
 
 	show_banner(1);
-	show_menu(5,6,id_menu);
+	show_menu(5,10,id_menu);
 	show_footer();
 
 	if(!found_srv_u2ec())

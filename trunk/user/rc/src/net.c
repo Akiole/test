@@ -402,7 +402,7 @@ start_xupnpd(char *wan_ifname)
 		if (has_daemon)
 			eval("/usr/bin/xupnpd");
 		else
-			system("/usr/bin/xupnpd &");
+			doSystem("/usr/bin/xupnpd &");
 	}
 }
 #endif
@@ -501,7 +501,7 @@ flush_conntrack_table(char *ip)
 void
 flush_route_caches(void)
 {
-	system("ip route flush cache");
+	doSystem("ip route flush cache");
 }
 
 void
@@ -522,11 +522,11 @@ is_ftp_conntrack_loaded(int ftp_port0, int ftp_port1)
 	if (ftp_port0 || ftp_port1)
 	{
 		if (ftp_port0 && ftp_port1)
-			sprintf(ports_val, "%d,%d", ftp_port0, ftp_port1);
+			snprintf(ports_val, sizeof(ports_val), "%d,%d", ftp_port0, ftp_port1);
 		else if (ftp_port0)
-			sprintf(ports_val, "%d", ftp_port0);
+			snprintf(ports_val, sizeof(ports_val), "%d", ftp_port0);
 		else
-			sprintf(ports_val, "%d", ftp_port1);
+			snprintf(ports_val, sizeof(ports_val), "%d", ftp_port1);
 		
 		if (strcmp(ports_val, ports_use) == 0)
 			return 2;
@@ -680,11 +680,11 @@ reload_nat_modules(void)
 		char ports_val[32];
 		
 		if (needed_ftp0 && needed_ftp1)
-			sprintf(ports_val, "ports=%d,%d", needed_ftp0, needed_ftp1);
+			snprintf(ports_val, sizeof(ports_val), "ports=%d,%d", needed_ftp0, needed_ftp1);
 		else if (needed_ftp0)
-			sprintf(ports_val, "ports=%d", needed_ftp0);
+			snprintf(ports_val, sizeof(ports_val), "ports=%d", needed_ftp0);
 		else
-			sprintf(ports_val, "ports=%d", needed_ftp1);
+			snprintf(ports_val, sizeof(ports_val), "ports=%d", needed_ftp1);
 		
 		module_smart_load("nf_conntrack_ftp", ports_val);
 		if (wan_nat_x != 0)
@@ -763,7 +763,7 @@ set_ipv4_forward(int is_on)
 	char tmp[64];
 
 	/* enable/disable forwarding IPv4 */
-	sprintf(tmp, "/proc/sys/net/%s/%s", "ipv4", "ip_forward");
+	snprintf(tmp, sizeof(tmp), "/proc/sys/net/%s/%s", "ipv4", "ip_forward");
 	fput_int(tmp, (is_on) ? 1 : 0);
 }
 
@@ -801,14 +801,14 @@ set_tcp_syncookies(void)
 	char tmp[64];
 	int fw_syn_cook = nvram_get_int("fw_syn_cook");
 
-	sprintf(tmp, "/proc/sys/net/%s/%s", "ipv4", "tcp_syncookies");
+	snprintf(tmp, sizeof(tmp), "/proc/sys/net/%s/%s", "ipv4", "tcp_syncookies");
 	fput_int(tmp, (fw_syn_cook) ? 1 : 0);
 
 	/* Tweak DoS-related... */
-	sprintf(tmp, "/proc/sys/net/%s/%s", "ipv4", "icmp_ignore_bogus_error_responses");
+	snprintf(tmp, sizeof(tmp), "/proc/sys/net/%s/%s", "ipv4", "icmp_ignore_bogus_error_responses");
 	fput_int(tmp, 1);
 
-	sprintf(tmp, "/proc/sys/net/%s/%s", "ipv4", "icmp_echo_ignore_broadcasts");
+	snprintf(tmp, sizeof(tmp), "/proc/sys/net/%s/%s", "ipv4", "icmp_echo_ignore_broadcasts");
 	fput_int(tmp, 1);
 }
 
@@ -818,43 +818,43 @@ set_tcp_tweaks(void)
 	char tmp[64];
 
 	/* Tweak TCP IPv4 performance */
-	sprintf(tmp, "/proc/sys/net/%s/%s", "ipv4", "tcp_fin_timeout");
+	snprintf(tmp, sizeof(tmp), "/proc/sys/net/%s/%s", "ipv4", "tcp_fin_timeout");
 	fput_int(tmp, 30);		// def: 60
 
-	sprintf(tmp, "/proc/sys/net/%s/%s", "ipv4", "tcp_keepalive_intvl");
+	snprintf(tmp, sizeof(tmp), "/proc/sys/net/%s/%s", "ipv4", "tcp_keepalive_intvl");
 	fput_int(tmp, 30);		// def: 75
 
-	sprintf(tmp, "/proc/sys/net/%s/%s", "ipv4", "tcp_keepalive_probes");
+	snprintf(tmp, sizeof(tmp), "/proc/sys/net/%s/%s", "ipv4", "tcp_keepalive_probes");
 	fput_int(tmp, 5);		// def: 9
 
-	sprintf(tmp, "/proc/sys/net/%s/%s", "ipv4", "tcp_keepalive_time");
+	snprintf(tmp, sizeof(tmp), "/proc/sys/net/%s/%s", "ipv4", "tcp_keepalive_time");
 	fput_int(tmp, 1800);		// def: 7200
 
-	sprintf(tmp, "/proc/sys/net/%s/%s", "ipv4", "tcp_retries2");
+	snprintf(tmp, sizeof(tmp), "/proc/sys/net/%s/%s", "ipv4", "tcp_retries2");
 	fput_int(tmp, 5);		// def: 15
 
-	sprintf(tmp, "/proc/sys/net/%s/%s", "ipv4", "tcp_syn_retries");
+	snprintf(tmp, sizeof(tmp), "/proc/sys/net/%s/%s", "ipv4", "tcp_syn_retries");
 	fput_int(tmp, 3);		// def: 5
 
-	sprintf(tmp, "/proc/sys/net/%s/%s", "ipv4", "tcp_synack_retries");
+	snprintf(tmp, sizeof(tmp), "/proc/sys/net/%s/%s", "ipv4", "tcp_synack_retries");
 	fput_int(tmp, 3);		// def: 5
 
-//	sprintf(tmp, "/proc/sys/net/%s/%s", "ipv4", "tcp_tw_recycle");
+//	snprintf(tmp, sizeof(tmp), "/proc/sys/net/%s/%s", "ipv4", "tcp_tw_recycle");
 //	fput_int(tmp, 1);		//def: 1
 
-	sprintf(tmp, "/proc/sys/net/%s/%s", "ipv4", "tcp_tw_reuse");
+	snprintf(tmp, sizeof(tmp), "/proc/sys/net/%s/%s", "ipv4", "tcp_tw_reuse");
 	fput_int(tmp, 1);		//def: 1
 
-	sprintf(tmp, "/proc/sys/net/%s/%s", "ipv4", "tcp_rfc1337");
+	snprintf(tmp, sizeof(tmp), "/proc/sys/net/%s/%s", "ipv4", "tcp_rfc1337");
 	fput_int(tmp, 1);		//def: 1
 
-	sprintf(tmp, "/proc/sys/net/%s/%s", "ipv4", "tcp_mtu_probing");
+	snprintf(tmp, sizeof(tmp), "/proc/sys/net/%s/%s", "ipv4", "tcp_mtu_probing");
 	fput_int(tmp, 1);		//def: 0, enable PLPMTUD
 
-	sprintf(tmp, "/proc/sys/net/%s/%s", "ipv4", "tcp_no_metrics_save");
+	snprintf(tmp, sizeof(tmp), "/proc/sys/net/%s/%s", "ipv4", "tcp_no_metrics_save");
 	fput_int(tmp, 1);		//def: 0
 
-	sprintf(tmp, "/proc/sys/net/%s/%s", "core", "netdev_max_backlog");
+	snprintf(tmp, sizeof(tmp), "/proc/sys/net/%s/%s", "core", "netdev_max_backlog");
 	fput_int(tmp, 2000);		//def: 1000
 }
 

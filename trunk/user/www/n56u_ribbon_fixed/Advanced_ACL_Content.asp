@@ -39,7 +39,7 @@ var isMenuopen = 0;
 function initial(){
 	show_banner(1);
 	
-	show_menu(5,2,4);
+	show_menu(5,4,4);
 	
 	show_footer();
 	

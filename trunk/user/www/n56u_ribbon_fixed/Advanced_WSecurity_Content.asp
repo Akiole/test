@@ -23,7 +23,7 @@ var $j = jQuery.noConflict();
 
 function initial(){
 	show_banner(1);
-	show_menu(5,2,5);
+	show_menu(5,4,5);
 	show_footer();
 }
 

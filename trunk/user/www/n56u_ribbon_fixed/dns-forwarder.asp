@@ -31,7 +31,7 @@ $j(document).ready(function(){
 
 function initial(){
 	show_banner(2);
-	show_menu(19, 0);
+	show_menu(22,0);
 	show_footer();
 	fill_status(dnsforwarder_status());
 }

@@ -25,7 +25,7 @@ var wds_aplist = [["", "", ""]];
 
 function initial(){
 	show_banner(1);
-	show_menu(5,1,3);
+	show_menu(5,3,3);
 
 	show_footer();
 

@@ -35,7 +35,7 @@ $j(document).ready(function() {
 
 function initial(){
 	show_banner(1);
-	show_menu(5,1,1);
+	show_menu(5,3,1);
 	show_footer();
 
 	var o1 = document.form.rt_gmode;

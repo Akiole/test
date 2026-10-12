@@ -46,12 +46,13 @@ void reset_lan6_vars(void)
 		lan_addr6 = nvram_safe_get("ip6_lan_addr");
 		lan_size6 = nvram_get_int("ip6_lan_size");
 		if (*lan_addr6) {
+			char tmp_addr[INET6_ADDRSTRLEN];
 			memset(&addr6, 0, sizeof(addr6));
 			ipv6_from_string(lan_addr6, &addr6);
-			inet_ntop(AF_INET6, &addr6, addr6s, INET6_ADDRSTRLEN);
+			inet_ntop(AF_INET6, &addr6, tmp_addr, sizeof(tmp_addr));
 			if (lan_size6 < 48 || lan_size6 > 64)
 				lan_size6 = 64;
-			sprintf(addr6s, "%s/%d", addr6s, lan_size6);
+			snprintf(addr6s, sizeof(addr6s), "%s/%d", tmp_addr, lan_size6);
 		}
 	}
 
@@ -176,10 +177,11 @@ char *get_lan_addr6_prefix(char *p_addr6s)
 	char *lan_addr6 = nvram_safe_get("lan_addr6");
 
 	if (*lan_addr6) {
+		char tmp_addr[INET6_ADDRSTRLEN];
 		if (ipv6_from_string(lan_addr6, &addr6) >= 0) {
 			ipv6_to_net(&addr6, 64);
-			if (inet_ntop(AF_INET6, &addr6, p_addr6s, INET6_ADDRSTRLEN) != NULL) {
-				sprintf(p_addr6s, "%s/%d", p_addr6s, 64);
+			if (inet_ntop(AF_INET6, &addr6, tmp_addr, sizeof(tmp_addr)) != NULL) {
+				snprintf(p_addr6s, INET6_ADDRSTRLEN, "%s/%d", tmp_addr, 64);
 				return p_addr6s;
 			}
 		}

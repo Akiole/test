@@ -106,7 +106,7 @@ catch_sig_fatal(int sig)
 	sync();
 
 #ifdef MTD_FLASH_32M_REBOOT_BUG
-	system("/bin/mtd_write -r unlock mtd1");
+	doSystem("/bin/mtd_write -r unlock mtd1");
 #else
 	reboot(RB_AUTOBOOT);
 #endif
@@ -357,6 +357,7 @@ static void
 init_nodes(void)
 {
 	mknod("/dev/nvram",  S_IFCHR | 0666, makedev(228, 0));
+	mknod("/dev/ppp",    S_IFCHR | 0666, makedev(108, 0));
 #if defined (USE_HW_NAT)
 	mknod("/dev/hwnat0", S_IFCHR | 0666, makedev(220, 0));
 #endif
@@ -429,7 +430,7 @@ init_sysctl(void)
 	fput_string("/proc/sys/net/ipv4/tcp_congestion_control", "bbr");
 
 	fput_string("/proc/sys/net/ipv4/tcp_rmem", "4096 131072 6291456");
-	fput_string("/proc/sys/net/ipv4/tcp_wmem", "4096 16384 4194304");
+	fput_string("/proc/sys/net/ipv4/tcp_wmem", "4096 131072 6291456");
 	fput_int("/proc/sys/net/ipv4/tcp_fastopen", 3);
 
 	set_interface_conf_int("ipv4", "all", "rp_filter", 0); // new logic for new kernels
@@ -460,9 +461,9 @@ init_main_loop(void)
 	/* Basic initialization */
 	init_time();
 #if BOARD_RAM_SIZE > 32
-	system("dev_init.sh");
+	doSystem("dev_init.sh");
 #else
-	system("dev_init.sh -l");
+	doSystem("dev_init.sh -l");
 #endif
 	init_nodes();
 	init_mdev();

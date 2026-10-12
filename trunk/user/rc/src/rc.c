@@ -64,7 +64,7 @@ nvram_restore_defaults(void)
 
 	int i_offset = get_wired_mac_e2p_offset(0) + 4;
 	if (flash_mtd_read(MTD_PART_NAME_FACTORY, i_offset, buffer, 2) == 0) {
-		sprintf(lan_mac, "%02X%02X", buffer[0] & 0xff, buffer[1] & 0xff);
+		snprintf(lan_mac, sizeof(lan_mac), "%02X%02X", buffer[0] & 0xff, buffer[1] & 0xff);
 	}
 
 	/* Restore defaults if told to or OS has changed */
@@ -83,7 +83,7 @@ nvram_restore_defaults(void)
 	for (np = router_defaults; np->name; np++) {
 		if (restore_defaults || !nvram_get(np->name)) {
 			if (strstr(np->name,"wl_ssid") || strstr(np->name,"rt_ssid") || !strcmp(np->name,"wl_guest_ssid") || !strcmp(np->name,"rt_guest_ssid")){
-				sprintf(tmp, np->value, lan_mac);
+				snprintf(tmp, sizeof(tmp), np->value, lan_mac);
 				nvram_set(np->name, tmp);
 			} else {
 				nvram_set(np->name, np->value);
@@ -694,18 +694,18 @@ init_crontab(void)
 {
 	int ret = 0; //no change
 #if defined (APP_SCUT)
-	ret |= system("/sbin/check_crontab.sh a/1 a a a a scutclient_watchcat.sh");
+	ret |= doSystem("/sbin/check_crontab.sh a/1 a a a a scutclient_watchcat.sh");
 #endif
 	if (nvram_get_int("ap_rssi_enable")) {
 		int interval = nvram_get_int("ap_rssi_interval");
 		if (interval < 1) interval = 1;
 		if (interval > 60) interval = 60;
-		system("sed -i '/ap_rssi_collect.sh/d' /etc/storage/cron/crontabs/admin 2>/dev/null");
+		doSystem("sed -i '/ap_rssi_collect.sh/d' /etc/storage/cron/crontabs/admin 2>/dev/null");
 		char cmd[128];
 		snprintf(cmd, sizeof(cmd), "/sbin/check_crontab.sh a/%d a a a a ap_rssi_collect.sh", interval);
-		ret |= system(cmd);
+		ret |= doSystem(cmd);
 	} else {
-		system("sed -i '/ap_rssi_collect.sh/d' /etc/storage/cron/crontabs/admin 2>/dev/null");
+		doSystem("sed -i '/ap_rssi_collect.sh/d' /etc/storage/cron/crontabs/admin 2>/dev/null");
 	}
 	return ret;
 }
@@ -799,6 +799,15 @@ init_router(void)
 
 	start_services_once(is_ap_mode);
 
+#if defined (USE_IPV6)
+	/* wireless slaves appear after start_services_once(); disable IPv6 on them */
+	disable_ipv6_on_bridge_slaves();
+
+	/* AP mode has no WAN, so start dhcp6c on br0 for IPv6 DNS only */
+	if (is_ap_mode && get_ipv6_type() != IPV6_DISABLED)
+		start_dhcp6c(IFNAME_BR);
+#endif
+
 	notify_leds_detect_link();
 
 	start_rwfs_optware();
@@ -809,9 +818,9 @@ init_router(void)
 	}
 	// system ready
 	nvram_set_int("ntp_ready", 0);
-	system("/usr/bin/copyscripts.sh &");
-	system("/etc/storage/started_script.sh &");
-	system("/usr/bin/autostart.sh &");
+	doSystem("/usr/bin/copyscripts.sh &");
+	doSystem("/etc/storage/started_script.sh &");
+	doSystem("/usr/bin/autostart.sh &");
 }
 
 /*
@@ -1051,7 +1060,7 @@ handle_notifications(void)
 		}
 		else if (strcmp(entry->d_name, RCN_RESTART_HDDTUNE) == 0)
 		{
-			system("/sbin/hddtune.sh");
+			doSystem("/sbin/hddtune.sh");
 			set_pagecache_reclaim();
 		}
 #if defined(APP_FTPD)
@@ -1542,6 +1551,7 @@ static const applet_rc_t applets_rc[] = {
 	{ "ipv6-up",		ipv6up_main		},
 	{ "ipv6-down",		ipv6down_main		},
 	{ "dhcp6c.script",	dhcp6c_main		},
+	{ "odhcp6c.script",	odhcp6c_main		},
 #endif
 	{ "ip-up.vpns",		ipup_vpns_main		},
 	{ "ip-down.vpns",	ipdown_vpns_main	},

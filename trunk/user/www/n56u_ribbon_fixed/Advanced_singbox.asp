@@ -50,7 +50,7 @@
 			} catch (e) {}
 
 			try { show_banner(2); } catch (e) {}
-			try { show_menu(28, 0); } catch (e) {}
+			try { show_menu(20,0); } catch (e) {}
 			try { show_footer(); } catch (e) {}
 			try { change_server_type(); } catch (e) {}
 			try { change_transport(); } catch (e) {}

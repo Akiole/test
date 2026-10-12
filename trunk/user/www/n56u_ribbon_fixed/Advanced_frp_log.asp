@@ -44,7 +44,7 @@
             if (!found_app_mentohust()) {
                 id_menu = id_menu - 1;
             }
-            show_menu(5, 10, id_menu);
+            show_menu(5,9, id_menu);
             show_footer();
         }
     </script>

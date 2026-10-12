@@ -5236,12 +5236,7 @@ VOID RTMPIoctlGetMacTable(
 			/* the connected time per entry*/
 			pDst->ConnectedTime = pEntry->StaConnectTime;
 			pDst->TxRate.word = RTMPGetLastTxRate(pAd, pEntry);
-#ifdef RTMP_RBUS_SUPPORT
-
-			if (IS_RBUS_INF(pAd))
-				pDst->LastRxRate = pEntry->LastRxRate;
-
-#endif /* RTMP_RBUS_SUPPORT */
+			pDst->LastRxRate = pEntry->LastRxRate;
 			pMacTab->Num += 1;
 		}
 	}

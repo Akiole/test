@@ -33,7 +33,7 @@ $j(document).ready(function() {
 
 function initial(){
 	show_banner(1);
-	show_menu(5,4,2);
+	show_menu(5,2,2);
 	show_footer();
 
 	document.form.ip6_lan_sfps_fake.value = decimalToHex(document.form.ip6_lan_sfps.value, 4);

@@ -94,7 +94,7 @@ start_u2ec(void)
 		return;
 
 	unlink("/var/run/u2ec.pid");
-	system("/usr/sbin/u2ec &");
+	doSystem("/usr/sbin/u2ec &");
 	nvram_set("apps_u2ec_ex", "1");
 }
 
@@ -114,7 +114,7 @@ start_lpd(void)
 		return;
 
 	unlink("/var/run/lpdparent.pid");
-	system("/usr/sbin/lpd &");
+	doSystem("/usr/sbin/lpd &");
 }
 
 void
@@ -154,7 +154,7 @@ exec_printer_daemons(int call_fw)
 	char dev_lp[16];
 
 	for (i = 0; i < 10; i++) {
-		sprintf(dev_lp, "/dev/usb/lp%d", i);
+		snprintf(dev_lp, sizeof(dev_lp), "/dev/usb/lp%d", i);
 		if (check_if_dev_exist(dev_lp)) {
 			has_printer = 1;
 			if (call_fw) {

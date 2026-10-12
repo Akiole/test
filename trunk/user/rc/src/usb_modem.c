@@ -153,7 +153,7 @@ find_modem_node(const char* pattern, int fetch_pref, int fetch_devnum, int fetch
 	for (i=0; i<MAX_USB_NODE; i++) {
 		node_pref = 0;
 		node_devnum = 0;
-		sprintf(node_fname, "%s/%s%d", MODEM_NODE_DIR, pattern, i);
+		snprintf(node_fname, sizeof(node_fname), "%s/%s%d", MODEM_NODE_DIR, pattern, i);
 		fp = fopen(node_fname, "r+");
 		if (fp) {
 			char buf[32];
@@ -223,14 +223,14 @@ get_modem_node_ras(char node_name[16], int *devnum_out)
 	// check ACM device
 	valid_node = get_modem_node("ttyACM", 0, devnum_out);
 	if (valid_node >= 0) {
-		sprintf(node_name, "ttyACM%d", valid_node);
+		snprintf(node_name, 16, "ttyACM%d", valid_node);
 		return 1;
 	}
 
 	// check serial device
 	valid_node = get_modem_node("ttyUSB", 0, devnum_out);
 	if (valid_node >= 0) {
-		sprintf(node_name, "ttyUSB%d", valid_node);
+		snprintf(node_name, 16, "ttyUSB%d", valid_node);
 		return 1;
 	}
 
@@ -302,12 +302,12 @@ get_modem_ndis_ifname(char ndis_ifname[16], int *devnum_out)
 
 	valid_node = find_modem_node("wwan", 0, 0, -1, devnum_out); // first exist node
 	if (valid_node >= 0) {
-		sprintf(ndis_ifname, "wwan%d", valid_node);
+		snprintf(ndis_ifname, 16, "wwan%d", valid_node);
 		return 1;
 	} else {
 		valid_node = find_modem_node("weth", 0, 0, -1, devnum_out); // first exist node
 		if (valid_node >= 0) {
-			sprintf(ndis_ifname, "weth%d", valid_node);
+			snprintf(ndis_ifname, 16, "weth%d", valid_node);
 			return 1;
 		}
 	}
@@ -503,12 +503,12 @@ ndis_control_network(char *ndis_ifname, int devnum, int is_start)
 	/* check wdm device */
 	valid_node = find_modem_node("cdc-wdm", 0, 0, -1, NULL); // todo (need devnode for cdc-wdm)
 	if (valid_node >= 0)
-		sprintf(control_node_wdm, "cdc-wdm%d", valid_node);
+		snprintf(control_node_wdm, sizeof(control_node_wdm), "cdc-wdm%d", valid_node);
 
 	/* check tty device */
 	valid_node = get_modem_node("ttyUSB", devnum, NULL);
 	if (valid_node >= 0)
-		sprintf(control_node_tty, "ttyUSB%d", valid_node);
+		snprintf(control_node_tty, sizeof(control_node_tty), "ttyUSB%d", valid_node);
 
 	if (strlen(control_node_wdm) > 0) {
 		if (is_usbnet_has_module(ndis_ifname, "qmi_wwan"))
@@ -818,9 +818,9 @@ launch_usb_modeswitch(int vid, int pid, int inquire)
 	}
 
 	/* first, check custom rule in /etc/storage */
-	sprintf(eject_file, "/etc/storage/%04x:%04x", vid, pid);
+	snprintf(eject_file, sizeof(eject_file), "/etc/storage/%04x:%04x", vid, pid);
 	if (!check_if_file_exist(eject_file)) {
-		sprintf(eject_file, "%s/usb_modeswitch.d/%04x:%04x%s", MODEM_SCRIPTS_DIR, vid, pid, addon);
+		snprintf(eject_file, sizeof(eject_file), "%s/usb_modeswitch.d/%04x:%04x%s", MODEM_SCRIPTS_DIR, vid, pid, addon);
 		if (!check_if_file_exist(eject_file)) {
 			logmessage("usb_modeswitch", "no rule for device %04x:%04x", vid, pid);
 			return 1;

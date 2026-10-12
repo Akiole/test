@@ -50,7 +50,7 @@ if(m_list.length > 0){
 var isMenuopen = 0;
 function initial(){
 	show_banner(2);
-	show_menu(24, 0);
+	show_menu(25,0);
 	showmenu();
 	fill_status(zerotier_status());
 	showMRULESList();

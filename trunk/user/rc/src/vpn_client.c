@@ -214,7 +214,7 @@ stop_vpn_client(void)
 	if (get_xl2tpd_vpnc_active() && pids("xl2tpd"))
 		control_xl2tpd("d", "VPNC");
 
-	sprintf(pppd_pid, "/var/run/ppp-%s.pid", VPNC_PPP_LINK_NAME);
+	snprintf(pppd_pid, sizeof(pppd_pid), "/var/run/ppp-%s.pid", VPNC_PPP_LINK_NAME);
 	kill_process_pidfile(pppd_pid, 5, 1);
 
 #if defined(APP_OPENVPN)

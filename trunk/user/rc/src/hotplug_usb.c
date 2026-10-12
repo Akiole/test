@@ -227,7 +227,7 @@ int mdev_wdm_main(int argc, char **argv)
 	if (!isWDMNode(device_name))
 		return 1;
 
-	sprintf(node_fname, "%s/%s", MODEM_NODE_DIR, device_name);
+	snprintf(node_fname, sizeof(node_fname), "%s/%s", MODEM_NODE_DIR, device_name);
 
 	// Check Lock.
 	if ((isLock = file_lock(device_name)) == -1)
@@ -278,7 +278,7 @@ int mdev_net_main(int argc, char **argv)
 	if (!is_usbnet_interface(device_name))
 		return 1;
 
-	sprintf(node_fname, "%s/%s", MODEM_NODE_DIR, device_name);
+	snprintf(node_fname, sizeof(node_fname), "%s/%s", MODEM_NODE_DIR, device_name);
 
 	// Check Lock.
 	if ((isLock = file_lock(device_name)) == -1)
@@ -342,7 +342,7 @@ int mdev_tty_main(int argc, char **argv)
 	if (!isSerialNode(device_name) && !isACMNode(device_name))
 		return 1;
 
-	sprintf(node_fname, "%s/%s", MODEM_NODE_DIR, device_name);
+	snprintf(node_fname, sizeof(node_fname), "%s/%s", MODEM_NODE_DIR, device_name);
 
 	// Check Lock.
 	if((isLock = file_lock(device_name)) == -1)

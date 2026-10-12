@@ -211,10 +211,16 @@ static void btn_ev_handle(btn_event *ev)
 
 int start_gpio_btn(void)
 {
+	int ret;
+
 	if (pids("gpio_btn"))
 		return 0;
 
-	return eval("/sbin/gpio_btn");
+	ret = eval("/sbin/gpio_btn");
+	if (ret)
+		logmessage("gpio_btn", "start failed (ret=%d)", ret);
+
+	return ret;
 }
 
 int btn_main(int argc, char *argv[])

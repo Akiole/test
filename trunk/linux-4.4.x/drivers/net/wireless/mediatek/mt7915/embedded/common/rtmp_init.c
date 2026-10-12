@@ -1634,8 +1634,8 @@ VOID UserCfgInit(RTMP_ADAPTER *pAd)
 	}
 #endif /* CHANNEL_OPTIMIZATION */
 	pAd->bPS_Retrieve = 1;
-	pAd->CommonCfg.bTXRX_RXV_ON = 0;
-	pAd->parse_rxv_stat_enable = 0;
+	pAd->CommonCfg.bTXRX_RXV_ON = 1;
+	pAd->parse_rxv_stat_enable = 1;
 
 	for (band_idx = BAND0; band_idx < DBDC_BAND_NUM; band_idx++) {
 		pAd->rx_stat_rxv[band_idx].rxv_cnt = 0;

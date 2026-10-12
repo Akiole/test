@@ -38,7 +38,7 @@ $j(document).ready(function() {
 
 function initial(){
 	show_banner(1);
-	show_menu(5,1,2);
+	show_menu(5,3,2);
 	show_footer();
 
 	document.form.rt_guest_date_x_Sun.checked = getDateCheck(document.form.rt_guest_date_x.value, 0);

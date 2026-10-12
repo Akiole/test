@@ -638,7 +638,7 @@ start_httpd(int restart_fw)
 			nvram_set_int("http_lanport", http_port);
 		}
 		
-		sprintf(http_port_s, "%d", http_port);
+		snprintf(http_port_s, sizeof(http_port_s), "%d", http_port);
 		
 		httpd_argv[argv_index++] = "-p";
 		httpd_argv[argv_index++] = http_port_s;
@@ -654,7 +654,7 @@ start_httpd(int restart_fw)
 			nvram_set_int("https_lport", https_port);
 		}
 		
-		sprintf(https_port_s, "%d", https_port);
+		snprintf(https_port_s, sizeof(https_port_s), "%d", https_port);
 		
 		httpd_argv[argv_index++] = "-s";
 		httpd_argv[argv_index++] = https_port_s;
@@ -830,10 +830,10 @@ doSystem("/usr/sbin/skipd -d /etc/storage/db");
 #if defined(APP_MENTOHUST)
 	start_mentohust();
 #endif
-	system("/usr/bin/iappd.sh restart");
-	system("modprobe -q xt_TPROXY");
-	system("modprobe -q br_netfilter");
-	system("/usr/bin/iappd.sh test");
+	doSystem("/usr/bin/iappd.sh restart");
+	doSystem("modprobe -q xt_TPROXY");
+	doSystem("modprobe -q br_netfilter");
+	doSystem("/usr/bin/iappd.sh test");
 	return 0;
 }
 

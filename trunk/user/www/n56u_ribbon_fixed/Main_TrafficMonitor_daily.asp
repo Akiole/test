@@ -45,7 +45,7 @@ $j(window).bind('hashchange', function(){
 
 function initial(){
 	show_banner(0);
-	show_menu(11, -1, 0);
+	show_menu(11,-1, 0);
 	show_footer();
 
 	initDate();

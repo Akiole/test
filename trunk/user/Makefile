@@ -133,6 +133,17 @@ ifeq ($(CONFIG_FIRMWARE_INCLUDE_INADYN),y)
 dir_y += inadyn
 endif
 dir_y += miniupnpd
+ifeq ($(CONFIG_FIRMWARE_ENABLE_IPV6),y)
+# Build odhcp6c only when BusyBox dhcp6c is NOT enabled.
+# Runtime auto-select prefers BusyBox dhcp6c when present; odhcp6c is
+# the fallback. Skip compiling odhcp6c to save ~69KB flash when BusyBox
+# dhcp6c is already available. Detect generated config first, then base config.
+BUSYBOX_DHCP6C_CFG := $(firstword $(wildcard busybox/busybox.config.generated) busybox/busybox.config)
+BUSYBOX_DHCP6C_ON := $(shell grep -q '^CONFIG_DHCP6C=y' $(BUSYBOX_DHCP6C_CFG) 2>/dev/null && echo y || echo n)
+ifeq ($(BUSYBOX_DHCP6C_ON),n)
+dir_y += odhcp6c
+endif
+endif
 
 # UDPXY and MSD_LITE are mutually exclusive
 ifeq ($(CONFIG_FIRMWARE_INCLUDE_MSD_LITE),y)

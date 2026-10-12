@@ -60,7 +60,7 @@ var clients_info = getclient(1,0);
 var sort_mode = parseInt(localStorage.getItem('sortMode'));
 function initial(){
 	show_banner(1);
-	show_menu(5,4,1);
+	show_menu(5,2,1);
 	show_footer();
 
 	if (!support_ipv4_ppe()){
