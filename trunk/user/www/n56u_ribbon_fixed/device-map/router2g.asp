@@ -35,6 +35,7 @@ $j(document).ready(function() {
     init_itoggle('rt_radio_x', safe_wps_change);
     init_itoggle('rt_closed', safe_wps_change);
     init_itoggle('rt_WPS', safe_wps_change);
+    init_itoggle('mesh_enable');
 
     wps_status_poll();
     setInterval(wps_status_poll, 10000);
@@ -757,7 +758,7 @@ window.onunload  = function(){
 <form method="post" name="form" id="form" action="/start_apply.htm">
 <input type="hidden" name="current_page" value="">
 <input type="hidden" name="next_page" value="">
-<input type="hidden" name="sid_list" value="WLANConfig11b;">
+<input type="hidden" name="sid_list" value="WLANConfig11b;MeshConfig;">
 <input type="hidden" name="group_id" value="">
 <input type="hidden" name="action_mode" value="">
 <input type="hidden" name="action_script" value="">
@@ -798,6 +799,20 @@ window.onunload  = function(){
             </div>
         </div>
     </td>
+  </tr>
+  <tr>
+      <th width="110"><#MeshEnable#></th>
+      <td>
+          <div class="main_itoggle">
+              <div id="mesh_enable_on_of">
+                  <input type="checkbox" id="mesh_enable_fake" <% nvram_match_x("", "mesh_enable", "1", "value=1 checked"); %><% nvram_match_x("", "mesh_enable", "0", "value=0"); %>>
+              </div>
+          </div>
+          <div style="position: absolute; margin-left: -10000px;">
+              <input type="radio" name="mesh_enable" id="mesh_enable_1" value="1" <% nvram_match_x("", "mesh_enable", "1", "checked"); %>/><#checkbox_Yes#>
+              <input type="radio" name="mesh_enable" id="mesh_enable_0" value="0" <% nvram_match_x("", "mesh_enable", "0", "checked"); %>/><#checkbox_No#>
+          </div>
+      </td>
   </tr>
   <tr>
     <th><#Wireless_name#> (SSID)</th>

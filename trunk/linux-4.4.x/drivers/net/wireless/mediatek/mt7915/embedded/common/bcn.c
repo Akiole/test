@@ -1663,7 +1663,8 @@ VOID UpdateBeaconHandler(
 		goto end;
 	}
 
-	if (WDEV_BSS_STATE(wdev) < BSS_READY) {
+	/* DISABLE_TX must run even before BSS_READY: ap_link_down/restart_ap stop beacon while BSS_ACTIVE */
+	if (WDEV_BSS_STATE(wdev) < BSS_READY && reason != BCN_UPDATE_DISABLE_TX) {
 		MTWF_LOG(DBG_CAT_AP, CATAP_BCN, DBG_LVL_ERROR,
 				 ("%s, wdev(%d) bss not ready (state:%d, caller:%pS)!!\n",
 				 __func__, wdev->wdev_idx, WDEV_BSS_STATE(wdev), OS_TRACE));

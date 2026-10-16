@@ -1246,15 +1246,6 @@ gen_ralink_config(int is_soc_ap, int is_aband, int disable_autoscan)
 	fprintf(fp, "WapiAsIpAddr=\n");
 	fprintf(fp, "WapiAsPort=\n");
 
-	// Mesh
-	fprintf(fp, "MeshAutoLink=%d\n", 0);
-	fprintf(fp, "MeshAuthMode=\n");
-	fprintf(fp, "MeshEncrypType=\n");
-	fprintf(fp, "MeshDefaultkey=%d\n", 0);
-	fprintf(fp, "MeshWEPKEY=\n");
-	fprintf(fp, "MeshWPAKEY=\n");
-	fprintf(fp, "MeshId=\n");
-
 	//RekeyInterval (MBSSID used, auto copy to all BSSID)
 	p_str = "TIME";
 	i_val = nvram_wlan_get_int(is_aband, "wpa_gtk_rekey");
@@ -1682,6 +1673,14 @@ gen_ralink_config(int is_soc_ap, int is_aband, int disable_autoscan)
 
 	for (i = 0; i < 4; i++)
 		fprintf(fp, "Wds%dKey=%s\n", i, p_str);
+
+	// EasyMesh (MAP)
+	i_val = nvram_get_int("mesh_enable");
+	if (i_val) {
+		fprintf(fp, "MapMode=%d\n", 1);
+	} else {
+		fprintf(fp, "MapMode=%d\n", 0);
+	}
 
 	// RADIUS
 	fprintf(fp, "session_timeout_interval=%d\n", 0);

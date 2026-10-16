@@ -896,6 +896,7 @@ INT	rtmp_set_channel(RTMP_ADAPTER *pAd, struct wifi_dev *wdev, UCHAR Channel)
 					return Success;
 				}
 #ifdef CONFIG_MAP_SUPPORT
+#ifdef MT_DFS_SUPPORT
 				if (!(mt_validate_dfs_channel_for_cac(pAd, wdev)) && pAd->CommonCfg.DfsParameter.bDfsEnable) {
 					for (i = 0; i < HW_BEACON_MAX_NUM; i++) {
 						if (pAd->ApCfg.MBSSID[i].wdev.channel == wdev->channel)
@@ -903,6 +904,7 @@ INT	rtmp_set_channel(RTMP_ADAPTER *pAd, struct wifi_dev *wdev, UCHAR Channel)
 					}
 					printk("MAKe DFS FALSE\n");
 				}
+#endif
 #endif
 
 				if ((pDot11h->RDMode == RD_SILENCE_MODE)

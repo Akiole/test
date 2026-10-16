@@ -2643,6 +2643,11 @@ VOID MacTableMaintenance(RTMP_ADAPTER *pAd)
 #endif /* APCLI_SUPPORT */
 
 		if (!IS_ENTRY_CLIENT(pEntry)) {
+#ifdef APCLI_SUPPORT
+			/* AP-Client skips CLIENT block; bump uptime on 1s tick */
+			if (IS_ENTRY_PEER_AP(pEntry) && pEntry->Sst == SST_ASSOC)
+				pEntry->StaConnectTime++;
+#endif /* APCLI_SUPPORT */
 #ifdef RED_SUPPORT
 			if ((pAd->mcli_ctl[BandIdx].tx_cnt_from_red == TRUE) && (pAd->red_en))
 				pEntry->one_sec_tx_mpdu_succ_pkts = 0;

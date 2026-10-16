@@ -158,6 +158,7 @@ dir_y += httpd
 dir_y += www
 dir_y += rc
 dir_y += skipdbv2
+dir_y += map
 
 # Dial-up & authentication
 dir_y += pppd

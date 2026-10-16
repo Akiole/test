@@ -159,7 +159,189 @@
 			});
 		}
 
+		// ---- Clash API helpers ----
+		var _mh_last_down = 0, _mh_last_up = 0, _mh_last_time = 0;
+
+		function getApiBase() {
+			var port = document.form.mihomo_api_port ? document.form.mihomo_api_port.value : '9090';
+			if (!port || port == '0') port = '9090';
+			return location.protocol + '//' + location.hostname + ':' + port;
+		}
+
+		function fmtBytes(b) {
+			if (b < 1024) return b + ' B';
+			if (b < 1048576) return (b / 1024).toFixed(1) + ' KB';
+			if (b < 1073741824) return (b / 1048576).toFixed(1) + ' MB';
+			return (b / 1073741824).toFixed(2) + ' GB';
+		}
+
+		function fmtRate(bps) {
+			if (bps < 1024) return bps.toFixed(0) + ' B/s';
+			if (bps < 1048576) return (bps / 1024).toFixed(1) + ' KB/s';
+			return (bps / 1048576).toFixed(2) + ' MB/s';
+		}
+
+		function refreshTraffic() {
+			var base = getApiBase();
+			$j.ajax({
+				url: base + '/connections',
+				type: 'GET',
+				timeout: 3000,
+				success: function (data) {
+					try {
+						var now = Date.now();
+						var down = data.downloadTotal || 0;
+						var up = data.uploadTotal || 0;
+						var connCount = data.connections ? data.connections.length : 0;
+						var mem = data.memory ? data.memory : 0;
+
+						if (_mh_last_time > 0) {
+							var dt = (now - _mh_last_time) / 1000;
+							if (dt > 0) {
+								var dr = (down - _mh_last_down) / dt;
+								var ur = (up - _mh_last_up) / dt;
+								var el_dr = document.getElementById('mh_rate_down');
+								var el_ur = document.getElementById('mh_rate_up');
+								if (el_dr) el_dr.innerHTML = fmtRate(dr < 0 ? 0 : dr);
+								if (el_ur) el_ur.innerHTML = fmtRate(ur < 0 ? 0 : ur);
+							}
+						}
+						_mh_last_down = down;
+						_mh_last_up = up;
+						_mh_last_time = now;
+
+						var el_td = document.getElementById('mh_total_down');
+						var el_tu = document.getElementById('mh_total_up');
+						var el_conn = document.getElementById('mh_conn_count');
+						var el_mem = document.getElementById('mh_mem_usage');
+						if (el_td) el_td.innerHTML = fmtBytes(down);
+						if (el_tu) el_tu.innerHTML = fmtBytes(up);
+						if (el_conn) el_conn.innerHTML = connCount;
+						if (el_mem && mem > 0) el_mem.innerHTML = fmtBytes(mem);
+					} catch (e) {}
+				},
+				error: function () {
+					var el_dr = document.getElementById('mh_rate_down');
+					var el_ur = document.getElementById('mh_rate_up');
+					if (el_dr) el_dr.innerHTML = '--';
+					if (el_ur) el_ur.innerHTML = '--';
+				}
+			});
+		}
+
+		function refreshCurrentProxy() {
+			var base = getApiBase();
+			$j.ajax({
+				url: base + '/proxies',
+				type: 'GET',
+				timeout: 3000,
+				success: function (data) {
+					try {
+						var groups = data.proxies ? data.proxies : {};
+						var proxyGroup = groups['PROXY'];
+						if (proxyGroup && proxyGroup.now) {
+							var el = document.getElementById('mh_current_node');
+							if (el) el.innerHTML = proxyGroup.now;
+						}
+					} catch (e) {}
+				}
+			});
+		}
+
+		function testNodeDelay(nodeName) {
+			var base = getApiBase();
+			var safeId = nodeName.replace(/[^a-zA-Z0-9]/g, '_');
+			var listEl = document.getElementById('mh_delay_list');
+			if (listEl) {
+				var existing = document.getElementById('delay_row_' + safeId);
+				if (!existing) {
+					var row = document.createElement('div');
+					row.id = 'delay_row_' + safeId;
+					row.innerHTML = '<span style="display:inline-block; width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="' + nodeName + '">' + nodeName + '</span> <span id="delay_' + safeId + '" style="color:#999;">testing...</span>';
+					listEl.appendChild(row);
+				} else {
+					var el = document.getElementById('delay_' + safeId);
+					if (el) el.innerHTML = '<span style="color:#999;">testing...</span>';
+				}
+			}
+			var url = base + '/proxies/' + encodeURIComponent(nodeName) + '/delay?timeout=5000&url=http://www.gstatic.com/generate_204';
+			$j.ajax({
+				url: url,
+				type: 'GET',
+				timeout: 6000,
+				success: function (data) {
+					var el = document.getElementById('delay_' + safeId);
+					if (el) {
+						if (data.delay !== undefined) {
+							var color = data.delay < 300 ? 'green' : (data.delay < 800 ? 'orange' : 'red');
+							el.innerHTML = '<span style="color:' + color + ';">' + data.delay + ' ms</span>';
+						} else {
+							el.innerHTML = '<span style="color:red;">ERR</span>';
+						}
+					}
+				},
+				error: function () {
+					var el = document.getElementById('delay_' + safeId);
+					if (el) el.innerHTML = '<span style="color:red;">TIMEOUT</span>';
+				}
+			});
+		}
+
+		function testSelectedDelay() {
+			var selects = document.getElementsByName('mihomo_sub_node');
+			if (selects.length === 0) return;
+			var sel = selects[0];
+			if (sel.selectedIndex >= 0) {
+				testNodeDelay(sel.options[sel.selectedIndex].text);
+			}
+		}
+
+		function switchSelectedNode() {
+			var selects = document.getElementsByName('mihomo_sub_node');
+			if (selects.length === 0) return;
+			var sel = selects[0];
+			if (sel.selectedIndex >= 0) {
+				switchProxyNode(sel.options[sel.selectedIndex].text);
+			}
+		}
+
+		function switchProxyNode(nodeName) {
+			var base = getApiBase();
+			$j.ajax({
+				url: base + '/proxies/PROXY',
+				type: 'PUT',
+				contentType: 'application/json',
+				data: JSON.stringify({ name: nodeName }),
+				timeout: 3000,
+				success: function () {
+					refreshCurrentProxy();
+					var el = document.getElementById('mh_switch_msg');
+					if (el) {
+						el.innerHTML = '<span style="color:green;"><#mihomo_switched#></span>';
+						setTimeout(function () { el.innerHTML = ''; }, 2000);
+					}
+				},
+				error: function () {
+					var el = document.getElementById('mh_switch_msg');
+					if (el) el.innerHTML = '<span style="color:red;"><#mihomo_switch_failed#></span>';
+				}
+			});
+		}
+
+		function testAllDelays() {
+			var selects = document.getElementsByName('mihomo_sub_node');
+			if (selects.length === 0) return;
+			var sel = selects[0];
+			var listEl = document.getElementById('mh_delay_list');
+			if (listEl) listEl.innerHTML = '';
+			for (var i = 0; i < sel.options.length; i++) {
+				testNodeDelay(sel.options[i].text);
+			}
+		}
+
 		setInterval("refreshStatus()", 10000);
+		setInterval("refreshTraffic()", 2000);
+		setInterval("refreshCurrentProxy()", 5000);
 	</script>
 </head>
 
@@ -244,6 +426,34 @@
 														&nbsp;&nbsp;<#mihomo_020#> <span id="mihomo_ver"></span>
 													</td>
 												</tr>
+												<tr>
+													<th><#mihomo_current_node#></th>
+													<td><span id="mh_current_node" style="font-weight:bold;">--</span></td>
+												</tr>
+												<tr>
+													<th><#mihomo_rate_down#></th>
+													<td><span id="mh_rate_down">--</span></td>
+												</tr>
+												<tr>
+													<th><#mihomo_rate_up#></th>
+													<td><span id="mh_rate_up">--</span></td>
+												</tr>
+												<tr>
+													<th><#mihomo_total_down#></th>
+													<td><span id="mh_total_down">--</span></td>
+												</tr>
+												<tr>
+													<th><#mihomo_total_up#></th>
+													<td><span id="mh_total_up">--</span></td>
+												</tr>
+												<tr>
+													<th><#mihomo_conn_count#></th>
+													<td><span id="mh_conn_count">--</span></td>
+												</tr>
+												<tr>
+													<th><#mihomo_mem_usage#></th>
+													<td><span id="mh_mem_usage">--</span></td>
+												</tr>
 											</table>
 
 											<div class="row-fluid">
@@ -284,6 +494,19 @@
 														<select name="mihomo_sub_node" class="input" style="width: 220px">
 															<% mihomo_nodes(); %>
 														</select>
+														&nbsp;
+														<input class="btn btn-info btn-small" type="button" value="<#mihomo_test_delay#>" onclick="testSelectedDelay()" />
+														<input class="btn btn-small" type="button" value="<#mihomo_test_all#>" onclick="testAllDelays()" />
+														<input class="btn btn-primary btn-small" type="button" value="<#mihomo_switch_node#>" onclick="switchSelectedNode()" />
+														<span id="mh_switch_msg" style="margin-left: 10px;"></span>
+													</td>
+												</tr>
+												<tr>
+													<th><#mihomo_delay_result#></th>
+													<td>
+														<div id="mh_delay_list" style="font-size: 12px; max-height: 200px; overflow-y: auto; border: 1px solid #ddd; padding: 5px; background: #fafafa;">
+															<span style="color: #999;"><#mihomo_delay_hint#></span>
+														</div>
 													</td>
 												</tr>
 												<tr>

@@ -215,7 +215,7 @@ connect_to_ap() {
 		# 强制 20MHz 提高中继兼容性
 		nvram set rt_HT_BW=0
 		nvram commit
-		rc radio2_restart
+		radio2_restart
 	else
 		nvram set wl_channel="$channel"
 		iwpriv "$radio5_apcli" set Channel="$channel" 2>/dev/null
@@ -227,7 +227,7 @@ connect_to_ap() {
 		nvram set wl_sta_crypto="$crypto"
 		nvram set wl_sta_wpa_psk="$psk"
 		nvram commit
-		rc radio5_restart
+		radio5_restart
 	fi
 }
 

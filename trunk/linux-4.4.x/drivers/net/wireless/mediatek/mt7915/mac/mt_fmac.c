@@ -2554,10 +2554,27 @@ INT32 mtf_trans_rxd_into_rxblk(RTMP_ADAPTER *pAd, struct _RX_BLK *rx_blk, PNDIS_
 		rx_blk->rx_rate.field.MCS = ((rxd_grp3->rxd_16 & BITS(0, 6)) >> 0);
 	}
 
+	/* rx mode: fill MODE/BW/GI/nsts so LastRxRate shows real Rx throughput
+	 * (same encoding as cfg80211drv MtCmdPhyGetRxRate path) */
+	if ((rxd_grp0->rxd_1 & (RXD_GROUP3_VLD | RXD_GROUP5_VLD)) == (RXD_GROUP3_VLD | RXD_GROUP5_VLD)) {
+		UINT8 rx_rate = (rxd_grp3->rxd_16 & BITS(0, 6)) >> 0;
+		UINT8 rx_nsts = (rxd_grp3->rxd_16 & BITS(7, 9)) >> 7;
+		UINT8 rx_mode = (rxd_grp5->rxd_18 & BITS(4, 7)) >> 4;
+		UINT8 rx_bw = (rxd_grp5->rxd_18 & BITS(8, 10)) >> 8;
+		UINT8 rx_gi = (rxd_grp5->rxd_18 & BITS(13, 14)) >> 13;
 
-	/* rx mode */
-	if (rxd_grp0->rxd_1 & RXD_GROUP5_VLD)
 		pAd->phy_stat_elem.rx_raw2 = rxd_grp5->rxd_18;
+		rx_blk->rx_rate.field.MODE = rx_mode;
+		rx_blk->rx_rate.field.BW = rx_bw;
+		rx_blk->rx_rate.field.ShortGI = (rx_gi > 0) ? 1 : 0;
+
+		if (rx_mode >= MODE_VHT)
+			rx_blk->rx_rate.field.MCS = ((rx_nsts & 0x3) << 4) + (rx_rate & 0xf);
+		else if (rx_mode == MODE_OFDM)
+			rx_blk->rx_rate.field.MCS = getLegacyOFDMMCSIndex(rx_rate & 0xf) & 0x3f;
+		else
+			rx_blk->rx_rate.field.MCS = rx_rate;
+	}
 
 	if (((rxd_grp0->rxd_1 & (RXD_GROUP3_VLD | RXD_GROUP5_VLD)) == (RXD_GROUP3_VLD | RXD_GROUP5_VLD))
 		&& pAd->tr_ctl.en_rx_profiling) {

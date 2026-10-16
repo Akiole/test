@@ -767,6 +767,15 @@ init_router(void)
 	if (!log_remote)
 		start_logger(1);
 
+	/* EasyMesh Agent: auto switch to AP (bridge) mode */
+	if (nvram_match("mesh_enable", "1") && nvram_match("mesh_agent", "1")) {
+		if (nvram_invmatch("wan_route_x", "IP_Bridged")) {
+			logmessage("easymesh", "Agent mode requires AP (bridged) mode, switching wan_route_x to IP_Bridged");
+			nvram_set("wan_route_x", "IP_Bridged");
+			nvram_commit();
+		}
+	}
+
 	is_ap_mode = get_ap_mode();
 
 	init_loopback();
@@ -821,6 +830,14 @@ init_router(void)
 	doSystem("/usr/bin/copyscripts.sh &");
 	doSystem("/etc/storage/started_script.sh &");
 	doSystem("/usr/bin/autostart.sh &");
+
+	/* EasyMesh: start MAP daemon based on role */
+	if (nvram_match("mesh_enable", "1")) {
+		if (nvram_match("mesh_agent", "1"))
+			doSystem("/sbin/map_agent &");
+		else
+			doSystem("/sbin/map_controller &");
+	}
 }
 
 /*

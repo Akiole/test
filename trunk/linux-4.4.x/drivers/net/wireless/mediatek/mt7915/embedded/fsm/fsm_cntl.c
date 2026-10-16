@@ -409,13 +409,14 @@ BOOLEAN cntl_connect_request(
 		if (!cntl_idle(wdev)) {
 			SCAN_CTRL *ScanCtrl = get_scan_ctrl_by_wdev(pAd, wdev);
 			MTWF_LOG(DBG_CAT_CLIENT, CATCLIENT_APCLI, DBG_LVL_ERROR,
-				("%s,Return since CNTL not IDLE,CNTL(%ld),SYNC(%ld),AUTH(%ld),ASSOC(%ld)\n",
+				("%s,CNTL not IDLE, force reset FSM,CNTL(%ld),SYNC(%ld),AUTH(%ld),ASSOC(%ld)\n",
 				__func__,
 				wdev->cntl_machine.CurrState,
 				ScanCtrl->SyncFsm.CurrState,
 				wdev->auth_machine.CurrState,
 				wdev->assoc_machine.CurrState));
-			return FALSE;
+			/* Reset FSMs to IDLE to avoid CNTL stuck in non-IDLE state. */
+			wdev_fsm_init(wdev);
 		}
 
 		if (data && data_len)

@@ -1355,6 +1355,21 @@ asus_nvram_commit(int eid, webs_t wp, int argc, char **argv)
 		nvram_commit_safe();
 	}
 
+	/* EasyMesh: auto-enable Agent mode when switching to AP (bridged) mode */
+	if (nvram_match("mesh_enable", "1") && nvram_match("wan_route_x", "IP_Bridged")) {
+		if (nvram_invmatch("mesh_agent", "1")) {
+			nvram_set("mesh_agent", "1");
+			nvram_commit();
+		}
+	}
+
+	/* EasyMesh Agent: start map_agent immediately when Agent mode enabled */
+	if (nvram_match("mesh_enable", "1") && nvram_match("mesh_agent", "1")) {
+		if (system("pidof map_agent >/dev/null 2>&1") != 0) {
+			system("/sbin/map_agent &");
+		}
+	}
+
 	return 0;
 }
 
@@ -2717,10 +2732,22 @@ static int
 wps_action_hook(int eid, webs_t wp, int argc, char **argv)
 {
 	int sys_result;
+
+	/* Trigger WPS PBC on 2.4GHz (EasyMesh pairing) */
+	sys_result = doSystem("/bin/iwpriv %s set WscMode=2", IFNAME_2G_MAIN);
+	if (sys_result != 0)
+		goto exit;
+	sys_result = doSystem("/bin/iwpriv %s set WscGetConf=1", IFNAME_2G_MAIN);
+	if (sys_result != 0)
+		goto exit;
+
+#if BOARD_HAS_5G_RADIO
+	/* Trigger WPS PBC on 5GHz */
 	sys_result = doSystem("/bin/iwpriv %s set WscMode=2", IFNAME_5G_MAIN);
 	if (sys_result != 0)
 		goto exit;
 	sys_result = doSystem("/bin/iwpriv %s set WscGetConf=1", IFNAME_5G_MAIN);
+#endif
 
 exit:
 	websWrite(wp, "{\"status\": \"%d\"}", sys_result);

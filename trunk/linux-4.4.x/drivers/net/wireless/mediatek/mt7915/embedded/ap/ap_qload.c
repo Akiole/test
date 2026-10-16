@@ -566,7 +566,7 @@ VOID update_ap_qload_to_bcn(RTMP_ADAPTER *pAd)
 				pMbss = wdev->func_dev;
 
 				if (pMbss) {
-					if (wdev->bAllowBeaconing)
+					if (wdev->bAllowBeaconing && WDEV_BSS_STATE(wdev) >= BSS_READY)
 						UpdateBeaconHandler(pAd, wdev, BCN_UPDATE_IE_CHG);
 				}
 			}

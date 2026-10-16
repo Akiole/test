@@ -611,6 +611,10 @@ start_wifi_apcli_wl(int radio_on)
 
 	if (radio_on && (i_mode_x == 3 || i_mode_x == 4) && (strlen(nvram_wlan_get(1, "sta_ssid")) > 0))
 	{
+		/* Wait 5G AP BSS_READY before ApCli to avoid DBDC mlme race. */
+#if defined (BOARD_MT7915_DBDC) || defined (BOARD_MT7615_DBDC)
+		usleep(1500000);
+#endif
 		wif_control(ifname_apcli, 1);
 		br_add_del_if(IFNAME_BR, ifname_apcli, !is_apcli_wisp_wl() || get_ap_mode());
 		if (nvram_wlan_get_int(1, "sta_auto"))
@@ -641,6 +645,10 @@ start_wifi_apcli_rt(int radio_on)
 
 	if (radio_on && (i_mode_x == 3 || i_mode_x == 4) && (strlen(nvram_wlan_get(0, "sta_ssid")) > 0))
 	{
+		/* Wait 2.4G AP BSS_READY before ApCli to avoid DBDC mlme race. */
+#if defined (BOARD_MT7915_DBDC) || defined (BOARD_MT7615_DBDC)
+		usleep(1500000);
+#endif
 		wif_control(ifname_apcli, 1);
 #if !defined(USE_RT3352_MII)
 		br_add_del_if(IFNAME_BR, ifname_apcli, !is_apcli_wisp_rt() || get_ap_mode());
@@ -739,6 +747,8 @@ restart_wifi_wl(int radio_on, int need_reload_conf)
 #if defined (BOARD_MT7615_DBDC) || defined (BOARD_MT7915_DBDC)
 	if (need_reload_conf) {
 		int rt_radio_on = get_enabled_radio_rt();
+		/* Wait 5G ApCli settle before 2.4G to avoid DBDC shared queue race. */
+		usleep(1000000);
 		if (rt_radio_on)
 			rt_radio_on = is_radio_allowed_rt();
 		start_wifi_ap_rt(rt_radio_on);
@@ -785,6 +795,8 @@ restart_wifi_rt(int radio_on, int need_reload_conf)
 #if defined (BOARD_MT7615_DBDC) || defined (BOARD_MT7915_DBDC)
 	if (need_reload_conf) {
 		int wl_radio_on = get_enabled_radio_wl();
+		/* Wait 2.4G ApCli settle before 5G to avoid DBDC shared queue race. */
+		usleep(1000000);
 		if (wl_radio_on)
 			wl_radio_on = is_radio_allowed_wl();
 		start_wifi_ap_wl(wl_radio_on);

@@ -270,6 +270,7 @@ function change_led_all(){
                                                     <option value="11"><#TweaksWPSItem03#> 2.4</option>
                                                     <option value="12"><#TweaksWPSItem03#> 5</option>
                                                     <option value="13"><#TweaksWPSItem03#> 2.4 & 5</option>
+                                                    <option value="14"><#TweaksWPSItem15#></option>
                                                     <option value="5" ><#TweaksWPSItem10#></option>
                                                     <option value="21"><#TweaksWPSItem11#></option>
                                                     <option value="22"><#TweaksWPSItem12#></option>

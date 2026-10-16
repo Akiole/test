@@ -229,6 +229,22 @@ ez_action_led_toggle(void)
 	show_hide_front_leds(is_show);
 }
 
+static void
+ez_action_wps_pbc(void)
+{
+	logmessage("gpio_btn", "Perform WPS PBC trigger (EasyMesh pairing)");
+
+	/* Trigger WPS PBC on 2.4GHz */
+	doSystem("/bin/iwpriv %s set WscMode=2", IFNAME_2G_MAIN);
+	doSystem("/bin/iwpriv %s set WscGetConf=1", IFNAME_2G_MAIN);
+
+#if BOARD_HAS_5G_RADIO
+	/* Trigger WPS PBC on 5GHz */
+	doSystem("/bin/iwpriv %s set WscMode=2", IFNAME_5G_MAIN);
+	doSystem("/bin/iwpriv %s set WscGetConf=1", IFNAME_5G_MAIN);
+#endif
+}
+
 void
 btn_event_short(int btn_id)
 {
@@ -299,6 +315,9 @@ btn_event_short(int btn_id)
 	case 13: // WiFi AP Guest 2.4 & 5GHz Enable/Disable trigger
 		ez_action_change_guest_wifi2();
 		ez_action_change_guest_wifi5();
+		break;
+	case 14: // WPS PBC trigger (EasyMesh pairing)
+		ez_action_wps_pbc();
 		break;
 #if (BOARD_NUM_USB_PORTS > 1)
 	case 21: // Safe removal USB #1

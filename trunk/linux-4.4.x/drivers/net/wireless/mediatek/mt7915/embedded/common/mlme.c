@@ -853,16 +853,18 @@ static BOOLEAN mlme_bss_clear(struct _MLME_STRUCT *mlme, struct wifi_dev *wdev)
 	BOOLEAN ret = TRUE;
 	/*suspend mlme a while*/
 	mlme_suspend(mlme);
-	/*check mlme is idle*/
-	while (mlme->bRunning && cnt < 10) {
+	/* Check mlme idle; 10s timeout for DBDC WISP firmware busy (0xc00000bb). */
+	while (mlme->bRunning && cnt < 100) {
 		OS_WAIT(100);
 		cnt++;
 	}
 	/*check mlme polling idle status*/
 	if (mlme->bRunning) {
 		MTWF_LOG(DBG_CAT_MLME, DBG_SUBCAT_ALL, DBG_LVL_ERROR,
-			("mlme can't polling to idle, timeout\n"));
+			("mlme can't polling to idle, timeout (cnt=%d), force clear queue\n", cnt));
 		ret = FALSE;
+		/* Force clear queue on timeout to avoid stale cmd loops. */
+		mlme_bss_clear_by_wdev(mlme, wdev);
 		goto end;
 	}
 	/*clear bss related mlme entry*/

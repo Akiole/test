@@ -66,6 +66,13 @@ function saveMode(){
 		}
 	}
 
+	/* EasyMesh: auto-enable Agent when switching to AP mode; disable when leaving AP mode */
+	if (o1[2].checked && document.form.mesh_enable.value == "1") {
+		document.form.mesh_agent.value = "1";
+	} else if (!o1[2].checked) {
+		document.form.mesh_agent.value = "0";
+	}
+
 	showLoading();
 
 	document.form.action_mode.value = " Apply ";
@@ -211,10 +218,28 @@ function render_ap_list(band, list){
 function sync_ssid(band, ssid, channel){
 	var field_ssid = (band == 1) ? 'wl_ssid' : 'rt_ssid';
 	var field_channel = (band == 1) ? 'wl_channel' : 'rt_channel';
+	var field_psk = (band == 1) ? 'wl_wpa_psk' : 'rt_wpa_psk';
+	var field_auth = (band == 1) ? 'wl_auth_mode' : 'rt_auth_mode';
+	var field_wpa = (band == 1) ? 'wl_wpa_mode' : 'rt_wpa_mode';
+	var field_crypto = (band == 1) ? 'wl_crypto' : 'rt_crypto';
 	var label = (band == 1) ? '5GHz' : '2.4GHz';
+
+	/* Prompt for Wi-Fi password (cannot be obtained from scan) */
+	var psk = prompt('<#AP_sync_password_prompt#>', '');
+	if (psk === null) return;  /* user cancelled */
+	if (psk.length < 8) {
+		alert('<#AP_sync_password_error#>');
+		return;
+	}
+
 	document.form[field_ssid].value = ssid;
-	document.form[field_channel].value = 0;
-	$j('#ap_sync_status_' + band).html('<span class="label label-success">' + label + ' <#AP_synced#>: ' + ssid + ' ( <#AP_channel_auto#> )</span>');
+	document.form[field_channel].value = 0;  /* auto channel */
+	document.form[field_psk].value = psk;
+	document.form[field_auth].value = 'psk';
+	document.form[field_wpa].value = '2';    /* WPA2 */
+	document.form[field_crypto].value = 'aes';
+
+	$j('#ap_sync_status_' + band).html('<span class="label label-success">' + label + ' <#AP_sync_success#>: ' + ssid + ' <#AP_sync_apply_hint#></span>');
 }
 
 </script>
@@ -244,7 +269,7 @@ table td {text-align: center; }
     <iframe name="hidden_frame" id="hidden_frame" src="" width="0" height="0" frameborder="0"></iframe>
 
     <form method="post" name="form" id="ruleForm" action="/start_apply.htm" target="hidden_frame">
-    <input type="hidden" name="sid_list" value="IPConnection;WLANConfig11a;WLANConfig11b;">
+    <input type="hidden" name="sid_list" value="IPConnection;WLANConfig11a;WLANConfig11b;MeshConfig;">
     <input type="hidden" name="group_id" value="">
     <input type="hidden" name="action_mode" value="">
     <input type="hidden" name="prev_page" value="">
@@ -254,8 +279,18 @@ table td {text-align: center; }
     <input type="hidden" name="lan_ipaddr" value="<% nvram_get_x("", "lan_ipaddr"); %>">
     <input type="hidden" name="rt_ssid" value="<% nvram_get_x("", "rt_ssid"); %>">
     <input type="hidden" name="rt_channel" value="<% nvram_get_x("", "rt_channel"); %>">
+    <input type="hidden" name="rt_wpa_psk" value="<% nvram_get_x("", "rt_wpa_psk"); %>">
+    <input type="hidden" name="rt_auth_mode" value="<% nvram_get_x("", "rt_auth_mode"); %>">
+    <input type="hidden" name="rt_wpa_mode" value="<% nvram_get_x("", "rt_wpa_mode"); %>">
+    <input type="hidden" name="rt_crypto" value="<% nvram_get_x("", "rt_crypto"); %>">
     <input type="hidden" name="wl_ssid" value="<% nvram_get_x("", "wl_ssid"); %>">
     <input type="hidden" name="wl_channel" value="<% nvram_get_x("", "wl_channel"); %>">
+    <input type="hidden" name="wl_wpa_psk" value="<% nvram_get_x("", "wl_wpa_psk"); %>">
+    <input type="hidden" name="wl_auth_mode" value="<% nvram_get_x("", "wl_auth_mode"); %>">
+    <input type="hidden" name="wl_wpa_mode" value="<% nvram_get_x("", "wl_wpa_mode"); %>">
+    <input type="hidden" name="wl_crypto" value="<% nvram_get_x("", "wl_crypto"); %>">
+    <input type="hidden" name="mesh_enable" value="<% nvram_get_x("", "mesh_enable"); %>">
+    <input type="hidden" name="mesh_agent" value="<% nvram_get_x("", "mesh_agent"); %>">
 
     <div class="container-fluid">
         <div class="row-fluid">

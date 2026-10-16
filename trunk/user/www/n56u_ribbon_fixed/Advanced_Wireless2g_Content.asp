@@ -28,6 +28,15 @@ var $j = jQuery.noConflict();
 $j(document).ready(function() {
 	init_itoggle('rt_radio_x');
 	init_itoggle('rt_closed');
+	init_itoggle('mesh_enable');
+	init_itoggle('mesh_agent');
+
+	/* Disable Agent mode if device is in router mode (not bridged) */
+	var wan_route_x = $j('#wan_route_x_val').val();
+	if (wan_route_x != "IP_Bridged") {
+		$j('#mesh_agent_on_of').css({'opacity': '0.4', 'pointer-events': 'none'});
+		$j('#mesh_agent_notice').show();
+	}
 });
 
 </script>
@@ -270,10 +279,11 @@ function validate_wlphrase(s, v, obj){
     <input type="hidden" name="current_page" value="Advanced_Wireless2g_Content.asp">
     <input type="hidden" name="next_page" value="">
     <input type="hidden" name="next_host" value="">
-    <input type="hidden" name="sid_list" value="WLANConfig11b;">
+    <input type="hidden" name="sid_list" value="WLANConfig11b;MeshConfig;">
     <input type="hidden" name="group_id" value="">
     <input type="hidden" name="action_mode" value="">
     <input type="hidden" name="action_script" value="">
+    <input type="hidden" id="wan_route_x_val" value="<% nvram_get_x("","wan_route_x"); %>">
 
     <input type="hidden" name="rt_radio_date_x" value="<% nvram_get_x("","rt_radio_date_x"); %>">
     <input type="hidden" name="rt_radio_time_x" value="<% nvram_get_x("","rt_radio_time_x"); %>">
@@ -330,6 +340,37 @@ function validate_wlphrase(s, v, obj){
                                                     <input type="radio" value="1" id="rt_radio_x_1" name="rt_radio_x" class="input" <% nvram_match_x("","rt_radio_x", "1", "checked"); %>/><#checkbox_Yes#>
                                                     <input type="radio" value="0" id="rt_radio_x_0" name="rt_radio_x" class="input" <% nvram_match_x("","rt_radio_x", "0", "checked"); %>/><#checkbox_No#>
                                                 </div>
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <th><#MeshEnable#></th>
+                                            <td>
+                                                <div class="main_itoggle">
+                                                    <div id="mesh_enable_on_of">
+                                                        <input type="checkbox" id="mesh_enable_fake" <% nvram_match_x("", "mesh_enable", "1", "value=1 checked"); %><% nvram_match_x("", "mesh_enable", "0", "value=0"); %>>
+                                                    </div>
+                                                </div>
+                                                <div style="position: absolute; margin-left: -10000px;">
+                                                    <input type="radio" name="mesh_enable" id="mesh_enable_1" class="input" value="1" <% nvram_match_x("", "mesh_enable", "1", "checked"); %>/><#checkbox_Yes#>
+                                                    <input type="radio" name="mesh_enable" id="mesh_enable_0" class="input" value="0" <% nvram_match_x("", "mesh_enable", "0", "checked"); %>/><#checkbox_No#>
+                                                </div>
+                                                <span style="font-size: 11px; color: #999; margin-left: 8px;"><#EasyMeshEnableDesc#></span>
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <th><#MeshAgent#></th>
+                                            <td>
+                                                <div class="main_itoggle">
+                                                    <div id="mesh_agent_on_of">
+                                                        <input type="checkbox" id="mesh_agent_fake" <% nvram_match_x("", "mesh_agent", "1", "value=1 checked"); %><% nvram_match_x("", "mesh_agent", "0", "value=0"); %>>
+                                                    </div>
+                                                </div>
+                                                <div style="position: absolute; margin-left: -10000px;">
+                                                    <input type="radio" name="mesh_agent" id="mesh_agent_1" class="input" value="1" <% nvram_match_x("", "mesh_agent", "1", "checked"); %>/><#checkbox_Yes#>
+                                                    <input type="radio" name="mesh_agent" id="mesh_agent_0" class="input" value="0" <% nvram_match_x("", "mesh_agent", "0", "checked"); %>/><#checkbox_No#>
+                                                </div>
+                                                <span style="font-size: 11px; color: #999; margin-left: 8px;"><#MeshAgentDesc#></span>
+                                                <div id="mesh_agent_notice" style="display:none; font-size: 11px; color: #d9534f; margin-top: 4px; margin-left: 8px;"><#MeshAgentRouterModeNotice#></div>
                                             </td>
                                         </tr>
                                         <tr>

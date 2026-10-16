@@ -5065,7 +5065,42 @@ copy_mac_table_entry(PRTMP_ADAPTER pAd, RT_802_11_MAC_ENTRY_PDV *pDst, MAC_TABLE
 	pDst->ConnectedTime = pEntry->StaConnectTime;
 
 	pDst->TxRate.word = RTMPGetLastTxRate(pAd, pEntry);
+#ifdef RACTRL_FW_OFFLOAD_SUPPORT
+	/* Query FW for real Rx rate (mac-layer LastRxRate lacks MODE/BW/GI) */
+	{
+		struct _RTMP_CHIP_CAP *cap = hc_get_chip_cap(pAd->hdev_ctrl);
+		if (cap->fgRateAdaptFWOffload == TRUE) {
+			EXT_EVENT_PHY_STATE_RX_RATE rRxStatResult;
+			HTTRANSMIT_SETTING LastRxRate;
+			UCHAR ucBand = HcGetBandByWdev(pEntry->wdev);
+
+			MtCmdPhyGetRxRate(pAd, CMD_PHY_STATE_CONTENTION_RX_PHYRATE, ucBand, pEntry->wcid, &rRxStatResult);
+			/* No-RX-data guard: FW rate=0 -> dash */
+			if (rRxStatResult.u1RxRate == 0) {
+				pDst->LastRxRate = 0;
+			} else {
+				/* FW mode enum wider than 3-bit MODE: map HE variants to MODE_HE */
+				LastRxRate.field.MODE = (rRxStatResult.u1RxMode > MODE_VHT) ? MODE_HE : rRxStatResult.u1RxMode;
+				LastRxRate.field.BW = rRxStatResult.u1BW;
+				LastRxRate.field.ldpc = rRxStatResult.u1Coding;
+				LastRxRate.field.ShortGI = rRxStatResult.u1Gi ? 1 : 0;
+				LastRxRate.field.STBC = rRxStatResult.u1Stbc;
+
+				if (LastRxRate.field.MODE >= MODE_VHT)
+					LastRxRate.field.MCS = ((rRxStatResult.u1RxNsts & 0x3) << 4) + rRxStatResult.u1RxRate;
+				else if (LastRxRate.field.MODE == MODE_OFDM)
+					LastRxRate.field.MCS = getLegacyOFDMMCSIndex(rRxStatResult.u1RxRate & 0xF);
+				else
+					LastRxRate.field.MCS = rRxStatResult.u1RxRate;
+
+				pDst->LastRxRate = LastRxRate.word;
+			}
+		} else
+			pDst->LastRxRate = pEntry->LastRxRate;
+	}
+#else
 	pDst->LastRxRate = pEntry->LastRxRate;
+#endif /* RACTRL_FW_OFFLOAD_SUPPORT */
 }
 
 VOID RTMPIoctlGetMacTableStaInfo(
@@ -5080,6 +5115,7 @@ VOID RTMPIoctlGetMacTableStaInfo(
 	POS_COOKIE pObj = (POS_COOKIE)pAd->OS_Cookie;
 	struct tx_rx_ctl *tr_ctl = &pAd->tr_ctl;
 	STA_TR_ENTRY *tr_entry;
+	struct _RTMP_CHIP_CAP *cap = hc_get_chip_cap(pAd->hdev_ctrl);
 
 	wrq->u.data.length = 0;
 
@@ -5142,7 +5178,39 @@ VOID RTMPIoctlGetMacTableStaInfo(
 			/* the connected time per entry*/
 			pDst->ConnectedTime = pEntry->StaConnectTime;
 			pDst->TxRate.word = RTMPGetLastTxRate(pAd, pEntry);
+#ifdef RACTRL_FW_OFFLOAD_SUPPORT
+			/* Query FW for real Rx rate (mac-layer LastRxRate lacks MODE/BW/GI) */
+			if (cap->fgRateAdaptFWOffload == TRUE) {
+				EXT_EVENT_PHY_STATE_RX_RATE rRxStatResult;
+				HTTRANSMIT_SETTING LastRxRate;
+				UCHAR ucBand = HcGetBandByWdev(pEntry->wdev);
+
+				MtCmdPhyGetRxRate(pAd, CMD_PHY_STATE_CONTENTION_RX_PHYRATE, ucBand, pEntry->wcid, &rRxStatResult);
+				/* No-RX-data guard: FW rate=0 -> dash */
+				if (rRxStatResult.u1RxRate == 0) {
+					pDst->LastRxRate = 0;
+				} else {
+					/* FW mode enum wider than 3-bit MODE: map HE variants to MODE_HE */
+					LastRxRate.field.MODE = (rRxStatResult.u1RxMode > MODE_VHT) ? MODE_HE : rRxStatResult.u1RxMode;
+					LastRxRate.field.BW = rRxStatResult.u1BW;
+					LastRxRate.field.ldpc = rRxStatResult.u1Coding;
+					LastRxRate.field.ShortGI = rRxStatResult.u1Gi ? 1 : 0;
+					LastRxRate.field.STBC = rRxStatResult.u1Stbc;
+
+					if (LastRxRate.field.MODE >= MODE_VHT)
+						LastRxRate.field.MCS = ((rRxStatResult.u1RxNsts & 0x3) << 4) + rRxStatResult.u1RxRate;
+					else if (LastRxRate.field.MODE == MODE_OFDM)
+						LastRxRate.field.MCS = getLegacyOFDMMCSIndex(rRxStatResult.u1RxRate & 0xF);
+					else
+						LastRxRate.field.MCS = rRxStatResult.u1RxRate;
+
+					pDst->LastRxRate = LastRxRate.word;
+				}
+			} else
+				pDst->LastRxRate = pEntry->LastRxRate;
+#else
 			pDst->LastRxRate = pEntry->LastRxRate;
+#endif /* RACTRL_FW_OFFLOAD_SUPPORT */
 			pMacTab->Num += 1;
 		}
 	}
@@ -5205,6 +5273,7 @@ VOID RTMPIoctlGetMacTable(
 	struct tx_rx_ctl *tr_ctl = &pAd->tr_ctl;
 	STA_TR_ENTRY *tr_entry;
 	char *msg;
+	struct _RTMP_CHIP_CAP *cap = hc_get_chip_cap(pAd->hdev_ctrl);
 	/* allocate memory */
 	os_alloc_mem(NULL, (UCHAR **)&pMacTab, sizeof(RT_802_11_MAC_TABLE));
 
@@ -5236,7 +5305,37 @@ VOID RTMPIoctlGetMacTable(
 			/* the connected time per entry*/
 			pDst->ConnectedTime = pEntry->StaConnectTime;
 			pDst->TxRate.word = RTMPGetLastTxRate(pAd, pEntry);
-			pDst->LastRxRate = pEntry->LastRxRate;
+#ifdef RACTRL_FW_OFFLOAD_SUPPORT
+			/* Query FW for real Rx rate (mac-layer LastRxRate lacks MODE/BW/GI) */
+			if (cap->fgRateAdaptFWOffload == TRUE) {
+				EXT_EVENT_PHY_STATE_RX_RATE rRxStatResult;
+				HTTRANSMIT_SETTING LastRxRate;
+				UCHAR ucBand = HcGetBandByWdev(pEntry->wdev);
+
+				MtCmdPhyGetRxRate(pAd, CMD_PHY_STATE_CONTENTION_RX_PHYRATE, ucBand, pEntry->wcid, &rRxStatResult);
+				/* No-RX-data guard: FW rate=0 -> dash */
+				if (rRxStatResult.u1RxRate == 0) {
+					pDst->LastRxRate = 0;
+				} else {
+					/* FW mode enum wider than 3-bit MODE: map HE variants to MODE_HE */
+					LastRxRate.field.MODE = (rRxStatResult.u1RxMode > MODE_VHT) ? MODE_HE : rRxStatResult.u1RxMode;
+					LastRxRate.field.BW = rRxStatResult.u1BW;
+					LastRxRate.field.ldpc = rRxStatResult.u1Coding;
+					LastRxRate.field.ShortGI = rRxStatResult.u1Gi ? 1 : 0;
+					LastRxRate.field.STBC = rRxStatResult.u1Stbc;
+
+					if (LastRxRate.field.MODE >= MODE_VHT)
+						LastRxRate.field.MCS = ((rRxStatResult.u1RxNsts & 0x3) << 4) + rRxStatResult.u1RxRate;
+					else if (LastRxRate.field.MODE == MODE_OFDM)
+						LastRxRate.field.MCS = getLegacyOFDMMCSIndex(rRxStatResult.u1RxRate & 0xF);
+					else
+						LastRxRate.field.MCS = rRxStatResult.u1RxRate;
+
+					pDst->LastRxRate = LastRxRate.word;
+				}
+			} else
+#endif /* RACTRL_FW_OFFLOAD_SUPPORT */
+				pDst->LastRxRate = pEntry->LastRxRate;
 			pMacTab->Num += 1;
 		}
 	}

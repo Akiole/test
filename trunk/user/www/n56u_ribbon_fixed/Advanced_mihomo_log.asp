@@ -23,6 +23,9 @@
 
 <script>
 var $j = jQuery.noConflict();
+var _log_auto_refresh = false;
+var _log_refresh_timer = null;
+var _log_refresh_interval = 5000;
 
 $j(document).ready(function(){
 	var textArea = E('textarea');
@@ -33,6 +36,44 @@ function initial(){
 	show_banner(2);
 	show_menu(19,0);
 	show_footer();
+}
+
+function toggleAutoRefresh() {
+	_log_auto_refresh = document.getElementById('auto_refresh_cb').checked;
+	if (_log_auto_refresh) {
+		var sel = document.getElementById('refresh_interval');
+		_log_refresh_interval = parseInt(sel.value) * 1000;
+		_log_refresh_timer = setInterval("refreshLog()", _log_refresh_interval);
+	} else {
+		if (_log_refresh_timer) {
+			clearInterval(_log_refresh_timer);
+			_log_refresh_timer = null;
+		}
+	}
+}
+
+function changeRefreshInterval() {
+	if (_log_auto_refresh) {
+		if (_log_refresh_timer) clearInterval(_log_refresh_timer);
+		var sel = document.getElementById('refresh_interval');
+		_log_refresh_interval = parseInt(sel.value) * 1000;
+		_log_refresh_timer = setInterval("refreshLog()", _log_refresh_interval);
+	}
+}
+
+function refreshLog() {
+	location.reload();
+}
+
+function clearLog() {
+	$j.ajax({
+		type: "POST",
+		url: "/Advanced_mihomo_action.asp",
+		data: { connect_action: "Clear_log" },
+		success: function () {
+			setTimeout("location.reload()", 500);
+		}
+	});
 }
 </script>
 
@@ -91,6 +132,18 @@ function initial(){
                                             <td width="15%" style="text-align: left; padding-bottom: 0px;">
                                             <input type="button" onClick="location.href=location.href" value="<#CTL_refresh#>" class="btn btn-primary" style="width: 150px">
                                             <input type="button" onClick="location.href='Advanced_mihomo.asp'" value="<#mihomo_039#>" class="btn" style="width: 150px">
+                                            <input type="button" onClick="clearLog()" value="<#mihomo_clear_log#>" class="btn btn-danger" style="width: 150px">
+                                            </td>
+                                            <td width="85%" style="text-align: right; padding-bottom: 0px;">
+                                            <label style="font-weight: normal; margin-right: 10px;">
+                                                <input type="checkbox" id="auto_refresh_cb" onchange="toggleAutoRefresh()" /> <#mihomo_auto_refresh#>
+                                            </label>
+                                            <select id="refresh_interval" class="input" style="width: 100px;" onchange="changeRefreshInterval()">
+                                                <option value="3">3 <#mihomo_seconds#></option>
+                                                <option value="5" selected>5 <#mihomo_seconds#></option>
+                                                <option value="10">10 <#mihomo_seconds#></option>
+                                                <option value="30">30 <#mihomo_seconds#></option>
+                                            </select>
                                             </td>
                                         </tr>
                                     </table>

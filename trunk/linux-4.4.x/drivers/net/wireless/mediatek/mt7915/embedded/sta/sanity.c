@@ -394,7 +394,7 @@ BOOLEAN PeerAssocRspSanity(
 #endif /*CONFIG_OWE_SUPPORT*/
 				break;
 			default:
-				MTWF_LOG(DBG_CAT_AP, DBG_SUBCAT_ALL, DBG_LVL_ERROR,
+				MTWF_LOG(DBG_CAT_AP, DBG_SUBCAT_ALL, DBG_LVL_INFO,
 					("RESP IE_WLAN_EXTENSION: no handler for extension_id:%d\n", *extension_id));
 				break;
 			}

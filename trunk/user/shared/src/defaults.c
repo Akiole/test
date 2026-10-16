@@ -233,6 +233,8 @@ struct nvram_pair router_defaults[] = {
 	{ "wl_wdslist_x", "" },                        /* WDS list */
 	{ "wl_maclist_x", "" },                        /* MAC filter list */
 	{ "wl_macdesc_x", "" },                        /* MAC description list */
+	{ "mesh_enable", "1" },                        /* EasyMesh (MAP) enable */
+	{ "mesh_agent", "0" },                         /* EasyMesh Agent auto AP mode */
 	{ "wl_wpa_mode", "6" },                        /* WPA mode (6=WPA2/WPA3-Mixed Personal) */
 	{ "wl_stream_tx", STR(BOARD_NUM_ANT_5G_TX) },
 	{ "wl_stream_rx", STR(BOARD_NUM_ANT_5G_RX) },
@@ -1078,12 +1080,8 @@ struct nvram_pair router_defaults[] = {
 
 	{ "wol_mac_last", "" },                        /* Last WOL MAC */
 	{ "gw_arp_ping", "0" },                        /* Gateway ARP ping */
-	{ "ez_action_short", "0" },                    /* EZ button short press */
-#if defined(BOARD_K2P)
-	{ "ez_action_long", "15" },                    /* Reset */
-#else
-	{ "ez_action_long", "0" },                     /* EZ button long press */
-#endif
+	{ "ez_action_short", "14" },                   /* EZ button short press: WPS PBC (EasyMesh pairing) */
+	{ "ez_action_long", "0" },                     /* EZ button long press: no action (reset button handles factory reset) */
 	{ "fn1_action_short", "0" },                   /* FN1 short press */
 	{ "fn1_action_long", "0" },                    /* FN1 long press */
 	{ "fn2_action_short", "0" },                   /* FN2 short press */

@@ -56,6 +56,7 @@
 #define IFNAME_2G_WDS1			"wds1"
 #define IFNAME_2G_WDS2			"wds2"
 #define IFNAME_2G_WDS3			"wds3"
+#define IFNAME_2G_MESH			"meshx"
 #else
 #define IFNAME_2G_MAIN			"rai0"
 #define IFNAME_2G_GUEST			"rai1"
@@ -64,6 +65,7 @@
 #define IFNAME_2G_WDS1			"wdsi1"
 #define IFNAME_2G_WDS2			"wdsi2"
 #define IFNAME_2G_WDS3			"wdsi3"
+#define IFNAME_2G_MESH			"meshi"
 #endif
 
 #if BOARD_HAS_5G_RADIO
@@ -75,6 +77,7 @@
 #define IFNAME_5G_WDS1			"wds1"
 #define IFNAME_5G_WDS2			"wds2"
 #define IFNAME_5G_WDS3			"wds3"
+#define IFNAME_5G_MESH			"mesh"
 #else
 #if defined (BOARD_MT7615_DBDC) || defined (BOARD_MT7915_DBDC)
 #define IFNAME_5G_MAIN			"ra0"
@@ -89,6 +92,7 @@
 #define IFNAME_5G_WDS1			"wdsi1"
 #define IFNAME_5G_WDS2			"wdsi2"
 #define IFNAME_5G_WDS3			"wdsi3"
+#define IFNAME_5G_MESH			"meshi"
 #endif
 #endif
 

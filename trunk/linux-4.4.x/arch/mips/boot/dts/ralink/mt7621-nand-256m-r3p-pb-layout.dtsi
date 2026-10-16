@@ -1,0 +1,65 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/* Xiaomi R3P PandoraBox 256MB NAND layout, firmware 32MB @ 0x200000 */
+
+&bch {
+	status = "okay";
+};
+
+&nand {
+	status = "okay";
+
+	flash@0 {
+		reg = <0>;
+		nand-ecc-mode = "hw";
+		partitions {
+			compatible = "fixed-partitions";
+			#address-cells = <1>;
+			#size-cells = <1>;
+
+			partition@0 {
+				label = "Bootloader";
+				reg = <0x00000 0x40000>; /* 256K */
+			};
+
+			partition@40000 {
+				label = "CFG_Bdata";
+				reg = <0x40000 0x80000>; /* 512K */
+			};
+
+			partition@c0000 {
+				label = "Factory";
+				reg = <0xc0000 0x40000>; /* 256K */
+			};
+
+			partition@100000 {
+				label = "Reserved";
+				reg = <0x100000 0x100000>; /* 1MB */
+			};
+
+			partition@200000 {
+				label = "firmware";
+				reg = <0x200000 0x2000000>; /* 32MB */
+			};
+
+			partition@2200000 {
+				label = "Config";
+				reg = <0x2200000 0x80000>; /* 512K */
+			};
+
+			partition@2280000 {
+				label = "Storage";
+				reg = <0x2280000 0x400000>; /* 4MB */
+			};
+
+			partition@2680000 {
+				label = "RWFS";
+				reg = <0x2680000 0xd900000>; /* ~217MB */
+			};
+
+			partition@all {
+				label = "ALL";
+				reg = <0x0 0xff80000>; /* 255.5MB */
+			};
+		};
+	};
+};

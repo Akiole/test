@@ -1620,6 +1620,7 @@ VOID RTMPIoctlSendNullDataFrame(
 void wapp_prepare_nop_channel_list(PRTMP_ADAPTER pAd,
 	struct nop_channel_list_s *nop_list)
 {
+#ifdef MT_DFS_SUPPORT
 	UINT_8 i;
 	PDFS_PARAM pDfsParam = &pAd->CommonCfg.DfsParameter;
 
@@ -1630,6 +1631,7 @@ void wapp_prepare_nop_channel_list(PRTMP_ADAPTER pAd,
 			nop_list->channel_count++;
 		}
 	}
+#endif /* MT_DFS_SUPPORT */
 }
 INT	wapp_event_handle(
 	PRTMP_ADAPTER pAd,

@@ -765,6 +765,7 @@ ipt_filter_rules(char *man_if, char *wan_if, char *lan_if, char *lan_ip,
 	int is_url_enabled, is_lwf_enabled;
 	int i_vpns_enable, i_vpns_type, i_vpns_actl, i_http_proto, i_bfplimit_ref;
 	int i_vpnc_enable, i_vpnc_type, i_vpnc_sfw, i_mac_filter;
+	int wan_mtu, tcp_mss;	/* MSS = MTU - IPv4 header(20) - TCP header(20) */
 #if defined (APP_OPENVPN)
 	int i_vpns_ov_mode = nvram_get_int("vpns_ov_mode");
 #endif
@@ -815,6 +816,14 @@ ipt_filter_rules(char *man_if, char *wan_if, char *lan_if, char *lan_ip,
 
 	if (!(fp=fopen(ipt_file, "w")))
 		return 0;
+
+	/* Calculate TCP MSS from WAN interface MTU: MSS = MTU - 40 (IPv4+TCP headers) */
+	wan_mtu = get_interface_mtu(man_if);
+	if (wan_mtu <= 0)
+		wan_mtu = 1500;
+	tcp_mss = wan_mtu - 40;
+	if (tcp_mss < 536)
+		tcp_mss = 536;	/* RFC 879 minimum MSS for IPv4 */
 
 	fprintf(fp, "*%s\n", "filter");
 	fprintf(fp, ":%s %s [0:0]\n", "INPUT", (is_fw_enabled) ? "DROP" : "ACCEPT");
@@ -1069,19 +1078,20 @@ ipt_filter_rules(char *man_if, char *wan_if, char *lan_if, char *lan_ip,
 		ret |= MODULE_WEBSTR_MASK;
 	}
 
-	/* Clamp TCP MSS to PMTU of WAN interface before accepting RELATED packets */
+	/* Clamp TCP MSS to WAN interface MTU before accepting RELATED packets */
 	if (!tcp_mss_need) {
 		if (i_vpnc_enable) {
 			char *vpnc_if = get_tcp_mss_ifname_vpnc(i_vpnc_type);
 			if (vpnc_if)
-				fprintf(fp, "-A %s%s -o %s -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu\n", dtype, "", vpnc_if);
+				fprintf(fp, "-A %s%s -o %s -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --set-mss %d\n", dtype, "", vpnc_if, tcp_mss);
 		}
 		if (i_vpns_enable) {
 			char *vpns_if = get_tcp_mss_ifname_vpns(i_vpns_type);
 			if (vpns_if)
-				fprintf(fp, "-A %s%s -i %s -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu\n", dtype, "", vpns_if);
+				fprintf(fp, "-A %s%s -i %s -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --set-mss %d\n", dtype, "", vpns_if, tcp_mss);
 		}
 	} else {
+		/* Clamp to path MTU for variable-MTU WAN links (WISP, PPPoE). */
 		fprintf(fp, "-A %s%s -o %s -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu\n", dtype, " !", lan_if);
 	}
 
@@ -1381,6 +1391,7 @@ ip6t_filter_rules(char *man_if, char *wan_if, char *lan_if,
 	int ret, wport, lport;
 	int ipv6_type, is_fw_enabled, is_url_enabled, is_logaccept, is_logdrop;
 	int i_http_proto, i_bfplimit_ref, i_mac_filter;
+	int wan_mtu, tcp_mss;	/* MSS = MTU - IPv6 header(40) - TCP header(20) */
 	const char *ipt_file = "/tmp/ip6t_filter.rules";
 
 	ret = 0;
@@ -1398,6 +1409,14 @@ ip6t_filter_rules(char *man_if, char *wan_if, char *lan_if,
 
 	if (!(fp=fopen(ipt_file, "w")))
 		return 0;
+
+	/* Calculate TCP MSS from WAN interface MTU: MSS = MTU - 60 (IPv6+TCP headers) */
+	wan_mtu = get_interface_mtu(man_if);
+	if (wan_mtu <= 0)
+		wan_mtu = 1500;
+	tcp_mss = wan_mtu - 60;
+	if (tcp_mss < 1220)
+		tcp_mss = 1220;	/* RFC 2460 minimum MSS for IPv6 (1280 - 60) */
 
 	fprintf(fp, "*%s\n", "filter");
 	fprintf(fp, ":%s %s [0:0]\n", "INPUT", (is_fw_enabled) ? "DROP" : "ACCEPT");
@@ -1575,7 +1594,7 @@ ip6t_filter_rules(char *man_if, char *wan_if, char *lan_if,
 		ret |= MODULE_WEBSTR_MASK;
 	}
 
-	/* Clamp TCP MSS to PMTU of WAN interface before accepting RELATED packets */
+	/* Clamp to path MTU for variable-MTU WAN links (WISP, PPPoE). */
 	if ((ipv6_type != IPV6_NATIVE_STATIC && ipv6_type != IPV6_NATIVE_DHCP6) || tcp_mss_need)
 		fprintf(fp, "-A %s%s -o %s -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu\n", dtype, " !", lan_if);
 

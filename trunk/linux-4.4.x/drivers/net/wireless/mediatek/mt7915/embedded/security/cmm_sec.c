@@ -2335,14 +2335,22 @@ VOID store_pmkid_cache_in_sec_config(
 #endif
 #ifdef CONFIG_STA_SUPPORT
 			{
-				PSTA_ADMIN_CONFIG pStaCfg = GetStaCfgByWdev(pAd, pEntry->wdev);
+				/* Skip AP wdev: PMKID already set from ApCfg above. */
+				if (pEntry->wdev &&
+				    (pEntry->wdev->wdev_type == WDEV_TYPE_STA
+#ifdef MAC_REPEATER_SUPPORT
+					|| pEntry->wdev->wdev_type == WDEV_TYPE_REPEATER
+#endif
+					)) {
+					PSTA_ADMIN_CONFIG pStaCfg = GetStaCfgByWdev(pAd, pEntry->wdev);
 
-				if (pStaCfg) {
-					pEntry->SecConfig.pmkid = pStaCfg->SavedPMK[cache_idx].PMKID;
-					pEntry->SecConfig.pmk_cache = pStaCfg->SavedPMK[cache_idx].PMK;
-				} else
-					MTWF_LOG(DBG_CAT_SEC, DBG_SUBCAT_ALL, DBG_LVL_ERROR,
-							("%s(): pStaCfg is null\n", __func__));
+					if (pStaCfg) {
+						pEntry->SecConfig.pmkid = pStaCfg->SavedPMK[cache_idx].PMKID;
+						pEntry->SecConfig.pmk_cache = pStaCfg->SavedPMK[cache_idx].PMK;
+					} else
+						MTWF_LOG(DBG_CAT_SEC, DBG_SUBCAT_ALL, DBG_LVL_ERROR,
+								("%s(): pStaCfg is null\n", __func__));
+				}
 			}
 #endif
 		}

@@ -162,7 +162,8 @@ static BOOLEAN phy_freq_adjust(struct wifi_dev *wdev, struct freq_cfg *cfg, stru
 
 	/*initial to legacy setting*/
 	if (cfg->prim_ch == 0) {
-		MTWF_LOG(DBG_CAT_ALL, DBG_SUBCAT_ALL, DBG_LVL_ERROR,
+		/* Normal during early bring-up before channel is configured. */
+		MTWF_LOG(DBG_CAT_ALL, DBG_SUBCAT_ALL, DBG_LVL_TRACE,
 				("%s : no prim_ch value for adjust!\n", __func__));
 		return FALSE;
 	}
