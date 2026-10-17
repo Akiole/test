@@ -23,7 +23,7 @@ jobs:
       fail-fast: false
       matrix:
         host: [ubuntu-latest, macos-14]
-        target: [PHICOMM-K2P-USB]
+        target: [PHICOMM-K2P]
         toolchain: [mipsel-linux-musl, mipsel-linux-uclibc]
 
     steps:
